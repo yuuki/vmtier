@@ -137,8 +137,8 @@ results.
 | Allocation | Accounting and lifetime |
 | --- | --- |
 | Downloaded index/payload bytes and physical decoded timestamp/value pairs | Charged to the reader's per-query allowance, including cache hits and rows before clipping |
-| Parsed index and validation scratch | Separately bounded by pack/index limits (16 MiB encoded index, 10,000 series, 100,000 blocks by default); Go maps, strings, decoder scratch, and allocation overhead are not equal to encoded bytes |
-| Materialized sample results | Kept under the reservation through iterator close/deadline; gateway also enforces response, block, and series limits |
+| Parsed index and validation scratch | A structural estimate for the current parsed index is charged to query work, alongside pack/index limits (16 MiB encoded index, 10,000 series, 100,000 blocks by default); decoder scratch and allocator overhead still require measured headroom |
+| Materialized sample results | Physical rows, copied native names and block bookkeeping are charged before payload reads; the reservation remains through iterator close/deadline and the gateway also enforces response, block, and series limits |
 | Metadata results | Reservation covers conversion; the pinned upstream API returns slices without a serialization-completion callback, so serialization occurs after release under the RPC concurrency limit |
 | Immutable cache | Independent `cache_bytes` allowance, up to 256 MiB; shared between admitted queries |
 | Shared cache-miss flights | Independently capped at 16 flights without a wait queue; include canceled downloads still unwinding and their transient buffers when measuring combined memory |
@@ -149,9 +149,10 @@ The metrics `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, and
 `vmtier_query_memory_reserved_bytes` expose this accounting. Resource refusals use
 `vmtier_query_limit_refusals_total{reason="memory_admission"}`. Counters and
 reservations reset on restart. A smaller shared allowance reduces admitted query
-work without changing stored data. Combined RSS under concurrent archival, cache
-pressure, metadata serialization, and large workloads still needs qualification;
-the small differential fixtures do not establish that envelope.
+work without changing stored data. See [memory accounting](query-memory.md) for
+component formulas, lifetimes, Go heap and archive metrics, and exclusions from
+the logical allowance. The small differential fixtures alone do not establish a
+combined process-memory envelope.
 
 ## Shared S3 budget
 

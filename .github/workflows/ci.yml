@@ -22,6 +22,10 @@ jobs:
       - run: python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/ci-s3
       - run: python scripts/e2e_serve.py --backend local --workdir .cache/ci-serve-local
       - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-serve-s3
+      - name: Exercise workload qualification harness
+        run: python scripts/qualify_workload.py --tenants 2 --series 1000 --history-hours 4 --dense-hours 2 --replicas 2 --workdir .cache/ci-workload
+      - name: Exercise catalog qualification harness
+        run: python scripts/catalog_capacity.py --hours 24 --tenants 2 --repeats 1 --output .cache/ci-catalog/results.json --workdir .cache/ci-catalog/work
       - name: Package E2E evidence
         if: always()
         run: python scripts/package_evidence.py
