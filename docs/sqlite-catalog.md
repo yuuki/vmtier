@@ -1,5 +1,9 @@
 # SQLite catalog, maintenance, and migration
 
+For a stopped SQLite-to-PostgreSQL cutover preserving existing S3 objects, follow
+the [PostgreSQL migration guide](postgres-migration.md). The source directory must
+remain offline during import and its old supervisor must stay disabled afterward.
+
 SQLite is the catalog backend for the single-owner [`serve` runtime](serve.md).
 The service owns the repository, archive scheduler, and read RPC gateway for its
 lifetime. Catalog initialization, import, backup, restore, inspection, and payload

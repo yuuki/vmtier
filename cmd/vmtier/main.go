@@ -32,11 +32,13 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: vmtier serve|archive|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-backup|catalog-restore|catalog-upgrade; version")
+		return errors.New("usage: vmtier serve|archive|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-import-postgres|catalog-backup|catalog-restore|catalog-upgrade; version")
 	}
 	switch args[0] {
 	case "serve":
 		return runServeCommand(args)
+	case "catalog-import-postgres":
+		return runPostgresImport(args)
 	case "catalog-inspect", "catalog-import", "catalog-backup", "catalog-restore", "catalog-upgrade":
 		return runCatalogMaintenance(args)
 	}

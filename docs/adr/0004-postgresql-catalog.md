@@ -11,6 +11,8 @@ request budgets, migration, and failure qualification are explicit work stages.
 Stage 3 adds static aggregate S3 budget allocation, paired gateway/proxy examples,
 and a stock-VM failover harness. The outer L4 and database HA controllers remain
 operator-provided dependencies.
+Stage 4 adds stopped-writer SQLite import with atomic destination verification and
+a cutover exercise against stock VM using the same object references.
 
 ## Context
 

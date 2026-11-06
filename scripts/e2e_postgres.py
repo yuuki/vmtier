@@ -27,7 +27,7 @@ import uuid
 
 from e2e import (ROOT, HTTP, Cluster, Processes, api, compare, fixture,
                  fixture_horizon, free_port, metrics, positive_int, remote_write, request)
-from e2e_serve import ControlledSource, expressions, provenance, start_tiered_select, wait_ready
+from e2e_serve import ControlledSource, expressions, provenance, snapshot, start_tiered_select, wait_ready
 from s3_compat_proxy import S3CompatibilityProxy
 from blob_outage import assert_running_blob_failure
 
@@ -135,6 +135,21 @@ def proxy_stats(port):
             if row['# pxname' if '# pxname' in row else 'pxname'] == 'gateways'}
 
 
+def normalized_catalog(value):
+    """Compare portable metadata; backend row IDs/schema/authority ID differ."""
+    state = value['state']
+    windows = []
+    for window in sorted(value['windows'] or [], key=lambda row: row['generation']):
+        refs = [{key: val for key, val in ref.items() if key != 'window_id'}
+                for ref in sorted(value['packs'] or [], key=lambda row: row['ordinal'])
+                if ref['window_id'] == window['id']]
+        windows.append({**{key: val for key, val in window.items() if key != 'id'}, 'packs': refs})
+    return {'vm_version': state['vm_version'], 'generation': state['generation'],
+            'contract': json.loads(state['contract_json']), 'blob': json.loads(state['blob_json']),
+            'coverage': sorted(value['coverage'], key=lambda row: (row['tenant'], row['source_id'])),
+            'windows': windows}
+
+
 def run(work, args):
     procs = Processes(work, args.gomaxprocs)
     source = proxy = None
@@ -146,7 +161,7 @@ def run(work, args):
               'limitations': ['single PostgreSQL server, no DB promotion in this harness',
                               'outer L4 fixture is single; production needs a redundant managed LB or fenced VIP',
                               'loopback Moto; no real Sakura/provider qualification'],
-              'checks': [], 'runtime': procs.runtime}
+              'migrated_sqlite': args.migrate_sqlite, 'checks': [], 'runtime': procs.runtime}
     env = {'AWS_ACCESS_KEY_ID': 'vmtier-test', 'AWS_SECRET_ACCESS_KEY': 'vmtier-test-secret'}
     try:
         dsn = os.environ.get('VMTIER_TEST_POSTGRES_DSN', '')
@@ -192,6 +207,10 @@ def run(work, args):
         tenants = ['1:2', '7:9']
         for i, tenant in enumerate(tenants):
             data = fixture(start, boundary, end, i)
+            if args.migrate_sqlite and i == 0:
+                # A real source-verified empty window must survive migration.
+                data = [(labels, [(stamp, value) for stamp, value in samples
+                                  if stamp >= start + horizon['window_ms']]) for labels, samples in data]
             remote_write(ref.insert, tenant, data)
             remote_write(hot.insert, tenant, data)
         ref.flush()
@@ -205,8 +224,51 @@ def run(work, args):
                'service': {'archive_interval': '100ms', 'archive_lease_ttl': '3s', 'max_replicas': 2}}
         config = work / 'config.json'
         config.write_text(json.dumps(cfg, indent=2) + '\n')
-        procs.command_stats([binary, 'catalog-init', '-backend', 'postgres', '-config', config, '-id', 'ha-e2e'],
-                            work / 'catalog-init.log', env)
+        imported = source_snapshot = None
+        if args.migrate_sqlite:
+            sqlite_dir = work / 'sqlite-source'
+            sqlite_config = work / 'sqlite-source.json'
+            sqlite_cfg = json.loads(json.dumps(cfg))
+            sqlite_cfg['catalog'] = {'type': 'sqlite', 'path': str(sqlite_dir), 'id': 'ha-sqlite-source'}
+            sqlite_cfg['service'] = {'archive_interval': '100ms'}
+            sqlite_config.write_text(json.dumps(sqlite_cfg, indent=2) + '\n')
+            procs.command_stats([binary, 'catalog-init', '-backend', 'sqlite', '-config', sqlite_config,
+                                 '-path', sqlite_dir, '-id', 'ha-sqlite-source'], work / 'sqlite-init.log', env)
+            sqlite_rpc, sqlite_http = free_port(), free_port()
+            source.unavailable_tenants = {tenants[1]}
+            source.unavailable = False
+            sqlite_owner = procs.start('sqlite-source', [binary, 'serve', '-config', sqlite_config,
+                                        '-listen', f'127.0.0.1:{sqlite_rpc}', '-http', f'127.0.0.1:{sqlite_http}'],
+                                        f'http://127.0.0.1:{sqlite_http}/health', env)
+            wait_until(lambda: snapshot(sqlite_dir / 'catalog.db')['state']['generation'] == 3,
+                       'SQLite partial-prefix publication')
+            procs.stop(sqlite_owner)
+            assert sqlite_owner.returncode == 0
+            source_snapshot = snapshot(sqlite_dir / 'catalog.db')
+            source.unavailable = True
+            puts_before = proxy.snapshot()['put_requests']
+            procs.command_stats([binary, 'catalog-import-postgres', '-config', config, '-from', sqlite_dir,
+                                 '-source-id', 'ha-sqlite-source'], work / 'sqlite-to-postgres-import.log', env)
+            imported = json.loads(sql("SELECT json_build_object('state',(SELECT row_to_json(s) FROM catalog_state s),"
+                                      "'coverage',(SELECT json_agg(c) FROM coverage c),"
+                                      "'windows',(SELECT json_agg(w) FROM windows w),"
+                                      "'packs',(SELECT json_agg(p) FROM packs p))"))
+            compare(normalized_catalog(source_snapshot), normalized_catalog(imported), 'SQLite import portable metadata')
+            assert imported['state']['catalog_id'] == 'ha-e2e' != source_snapshot['state']['catalog_id']
+            empty = sum(window['pack_count'] == 0 for window in imported['windows'])
+            assert empty == 1 and len(imported['packs']) == 2
+            assert int(sql('SELECT count(*) FROM object_keys')) == 2 * len(imported['packs'])
+            procs.command_stats([binary, 'verify', '-config', config], work / 'verify-imported-payloads.log', env)
+            assert proxy.snapshot()['put_requests'] == puts_before
+            assert snapshot(sqlite_dir / 'catalog.db') == source_snapshot
+            report['migration'] = {'source_id': 'ha-sqlite-source', 'destination_id': 'ha-e2e',
+                                   'preserved_generation': 3, 'preserved_windows': 3, 'preserved_packs': 2,
+                                   'preserved_empty_windows': empty, 'additional_blob_puts': 0,
+                                   'portable_metadata_equal': True, 'payload_verification': 'passed'}
+            report['checks'].append('stopped SQLite owner imports into a new PostgreSQL identity with identical contract, locator, coverage, digests and refs; verified empty window and payloads preserved without blob PUTs')
+        else:
+            procs.command_stats([binary, 'catalog-init', '-backend', 'postgres', '-config', config, '-id', 'ha-e2e'],
+                                work / 'catalog-init.log', env)
         rpc_ports, http_ports = [free_port(), free_port()], [free_port(), free_port()]
         services = []
 
@@ -232,7 +294,7 @@ def run(work, args):
         wait_until(lambda: state()['generation'] == 3, 'healthy tenant coverage while other source is unavailable')
         before = state()
         initial_token = int(sql('SELECT token FROM archive_lease'))
-        assert before['windows'] == 3 and before['packs'] == 3
+        assert before['windows'] == 3 and before['packs'] == (2 if args.migrate_sqlite else 3)
         began = time.monotonic()
         services[active].kill()
         services[active].wait(timeout=5)
@@ -251,7 +313,7 @@ def run(work, args):
         for i in range(2):
             wait_ready(services[i], http_ports[i], work)
         stable = state()
-        assert stable['windows'] == stable['packs'] == 6
+        assert stable['windows'] == 6 and stable['packs'] == (5 if args.migrate_sqlite else 6)
         assert all(row['end_ms'] == boundary for row in stable['coverage'])
 
         # Separate HAProxy processes give one logical Cold node to vmselect.
@@ -360,6 +422,11 @@ def run(work, args):
                                'measurement_tolerance': '2 handler completions for concurrency; concurrency+2 arrivals for one-second transport jitter', **observation}
         report['checks'].append('both candidates S3 retries pass transport admission; summed admitted attempts equal observed failed GETs and aggregate observed rate/concurrency stay within stated bounds')
         assert state() == stable
+        if args.migrate_sqlite:
+            assert snapshot(sqlite_dir / 'catalog.db') == source_snapshot
+            report['migration']['source_unchanged_after_postgres_advance'] = True
+            report['migration']['post_cutover_differential_checks'] = count
+            report['checks'].append('PostgreSQL catch-up and exact queries succeed after Hot old data removal; stopped SQLite source remains unchanged')
         report['catalog'] = stable
         report['s3_compatibility_proxy'] = proxy.snapshot()
         assert report['s3_compatibility_proxy']['conditional_requests_rejected'] == 0
@@ -391,6 +458,7 @@ def run(work, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workdir', type=Path)
+    parser.add_argument('--migrate-sqlite', action='store_true', help='archive and stop SQLite, import metadata, then qualify the PostgreSQL cutover')
     parser.add_argument('--replicas', choices=(1, 2), default=1, type=int, help='Hot/reference VM storage replication')
     parser.add_argument('--gomaxprocs', type=positive_int)
     args = parser.parse_args()

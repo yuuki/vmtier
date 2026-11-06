@@ -40,6 +40,7 @@ jobs:
       - run: python scripts/e2e_serve.py --backend local --workdir .cache/ci-serve-local
       - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --workdir .cache/ci-serve-s3
       - run: python scripts/e2e_postgres.py --replicas 2 --workdir .cache/ci-postgres-ha
+      - run: python scripts/e2e_postgres.py --replicas 2 --migrate-sqlite --workdir .cache/ci-postgres-migration
       - name: Package E2E evidence
         if: always()
         run: python scripts/package_evidence.py

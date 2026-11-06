@@ -105,3 +105,20 @@ redundancy of that outer load balancer. It also uses a single PostgreSQL server;
 database replication, promotion, partition handling, old-primary fencing and
 synchronous-commit durability require separate qualification. RPO 0 is a
 property of the configured database failure model, not of this example alone.
+
+To qualify an actual SQLite cutover with the same failure and query checks, use
+an additional fresh work directory:
+
+```sh
+python scripts/e2e_postgres.py --migrate-sqlite --replicas 2 --workdir .cache/ha-migration-e2e
+```
+
+This mode archives a partial prefix using the SQLite service, including a
+source-verified empty window, and stops that owner before importing into a new
+PostgreSQL identity. It compares normalized contract, blob location, coverage,
+window digests and ordered pack references, verifies imported payloads, and
+checks that migration issued no blob PUTs. PostgreSQL then catches up, survives
+the same gateway/proxy failures, and passes the full query comparison after old
+Hot data is removed. The stopped SQLite source must remain unchanged. See the
+[migration guide](../../docs/postgres-migration.md) for production cutover and
+rollback boundaries.

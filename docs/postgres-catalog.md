@@ -61,6 +61,10 @@ SQLite `catalog-backup`/`catalog-restore` do not back up PostgreSQL. Use Postgre
 native backups and WAL/PITR, test restoration, and fence the old authority before
 cutover. A backup alone cannot recover expired Hot history or missing S3 objects.
 
+To move an existing stopped SQLite service without rewriting objects, use
+[`catalog-import-postgres`](postgres-migration.md). It creates a fresh destination
+under a new identity and verifies metadata equivalence before committing.
+
 ## Repository behavior
 
 `CreatePostgres` explicitly initializes a catalog in an existing dedicated database
