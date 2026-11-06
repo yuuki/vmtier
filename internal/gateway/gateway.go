@@ -116,10 +116,6 @@ func (a *API) search(sq *storage.SearchQuery, deadline uint64) (blocks []storage
 	if sq.MinTimestamp > sq.MaxTimestamp {
 		return nil, nil, fmt.Errorf("invalid query interval")
 	}
-	matcher, err := CompileMatcher(sq.TagFilterss)
-	if err != nil {
-		return nil, nil, err
-	}
 	dl := time.Now().Add(a.limits.MaxRequestDuration)
 	if deadline != 0 {
 		if deadline > math.MaxInt64 {
@@ -138,6 +134,10 @@ func (a *API) search(sq *storage.SearchQuery, deadline uint64) (blocks []storage
 	}
 	reserved = lease
 	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	matcher, err := CompileMatcher(sq.TagFilterss)
+	if err != nil {
 		return nil, nil, err
 	}
 	if a.backend == nil {

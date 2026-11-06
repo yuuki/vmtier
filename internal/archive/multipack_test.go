@@ -66,8 +66,13 @@ func TestSQLiteMultiPackCrossPackConflictStaleAndOracleFailure(t *testing.T) {
 			defer server.Close()
 			cfg.Sources[0].URL = server.URL
 			cfg.PackLimits.MaxBlocks = 1
+			cfg.Memory = &MemoryStats{}
 			a, _ := newSQLiteArchiver(t, cfg)
 			result, err := a.RunPass(context.Background(), testNow)
+			memory := cfg.Memory.Snapshot()
+			if memory.VerifierBytes != 0 || memory.PackBytes != 0 || memory.VerifierPeakBytes < 10*16 || memory.PackPeakBytes == 0 {
+				t.Fatalf("archive memory components missing or retained after completion: %+v", memory)
+			}
 			state, statusErr := a.Catalog.Status(context.Background())
 			if statusErr != nil {
 				t.Fatal(statusErr)

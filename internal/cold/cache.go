@@ -33,11 +33,12 @@ type sharedRead struct {
 }
 
 type immutableCache struct {
-	mu      sync.Mutex
-	entries map[string]*list.Element
-	lru     list.List
-	used    int64
-	flights map[string]*sharedRead
+	mu        sync.Mutex
+	entries   map[string]*list.Element
+	lru       list.List
+	used      int64
+	evictions uint64
+	flights   map[string]*sharedRead
 }
 
 // CacheSnapshot accounts for retained raw data, keys and a per-entry bookkeeping
@@ -48,12 +49,13 @@ type CacheSnapshot struct {
 	LimitBytes int64
 	Entries    int
 	Inflight   int
+	Evictions  uint64
 }
 
 func (r *Reader) CacheStats() CacheSnapshot {
 	r.cache.mu.Lock()
 	defer r.cache.mu.Unlock()
-	return CacheSnapshot{r.cache.used, r.CacheBytes, len(r.cache.entries), len(r.cache.flights)}
+	return CacheSnapshot{r.cache.used, r.CacheBytes, len(r.cache.entries), len(r.cache.flights), r.cache.evictions}
 }
 
 func cacheKey(key string, offset, length int64, sum string) string {
@@ -91,6 +93,7 @@ func (r *Reader) cachePut(key string, b []byte) {
 		delete(r.cache.entries, entry.key)
 		r.cache.used -= entry.cost
 		r.cache.lru.Remove(oldest)
+		r.cache.evictions++
 	}
 	// Own precisely this block's bytes: a slice of a combined range must not
 	// retain the entire larger response while accounting only for its length.

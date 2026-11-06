@@ -37,6 +37,7 @@ type Reader struct {
 	MaxQueryBytes      int64
 	CacheBytes         int64
 	cache              immutableCache
+	work               workCounters
 	CacheHits          atomic.Uint64
 	CacheMisses        atomic.Uint64
 }
@@ -232,27 +233,37 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 	if e != nil {
 		return nil, e
 	}
-	var used int64
+	var work queryWork
+	defer r.recordWork(&work)
 	var result []storage.MetricBlock
 	for _, entry := range selected {
 		if e := ctx.Err(); e != nil {
 			return nil, e
 		}
 		ref := entry.Ref
-		if entry.CheckDescriptor && ref.IndexBytes > limit-used {
+		if entry.CheckDescriptor && ref.IndexBytes > limit-work.used() {
 			return nil, querylimit.Errorf(querylimit.ReadBytes, "query index/read byte limit exceeded")
 		}
 		data, e := r.cached(ctx, ref.IndexKey, 0, -1, ref.IndexSHA256)
 		if e != nil {
 			return nil, e
 		}
-		used += int64(len(data))
-		if used > limit {
+		work.read += int64(len(data))
+		work.observe()
+		if work.used() > limit {
 			return nil, querylimit.Errorf(querylimit.ReadBytes, "query index/read byte limit exceeded")
 		}
 		idx, e := pack.ParseIndex(data, pack.Limits{})
 		if e != nil {
 			return nil, e
+		}
+		// Only one parsed directory is needed at a time. Charge its structural
+		// estimate while processing this pack, rather than summing historical
+		// directories that are no longer retained by the query.
+		work.index = pack.IndexMemoryEstimate(idx)
+		work.observe()
+		if work.used() > limit {
+			return nil, querylimit.Errorf(querylimit.DecodedBytes, "query parsed-index work budget exceeded")
 		}
 		if idx.Tenant.String() != tenant || idx.Start != entry.Start || idx.End != entry.End {
 			return nil, errors.New("index disagrees with committed catalog")
@@ -272,10 +283,18 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 				// No gaps are fetched: the sum of original lengths is exactly the
 				// combined response size. Reserve all bytes before any payload I/O,
 				// including cache hits and physical rows before clipping.
-				used += b.Length + int64(b.Rows)*16
-				if used > limit || len(result)+len(blocks) >= 100000 {
+				// Decoding temporarily owns portable timestamp/value arrays as
+				// well as the retained VM arrays. Charge both, plus copied native
+				// names and per-block/selection/response bookkeeping allowances.
+				read, decoded := b.Length, int64(b.Rows)*32
+				resultEstimate := int64(len(s.NativeName))*2 + 512
+				if read+decoded+resultEstimate > limit-work.used() || len(result)+len(blocks) >= 100000 {
 					return nil, querylimit.Errorf(querylimit.DecodedBytes, "query decoded/read budget exceeded")
 				}
+				work.read += read
+				work.decoded += decoded
+				work.result += resultEstimate
+				work.observe()
 				blocks = append(blocks, selectedBlock{i, j, b})
 			}
 		}
@@ -285,6 +304,7 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 			return nil, e
 		}
 		result = append(result, decoded...)
+		work.index = 0
 	}
 	if e := ctx.Err(); e != nil {
 		return nil, e

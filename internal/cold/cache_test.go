@@ -45,7 +45,7 @@ func TestLRUPreservesRecentlyUsedEntriesUnderPressure(t *testing.T) {
 		t.Fatalf("recent entry evicted under pressure: %d GETs", got)
 	}
 	stats := r.CacheStats()
-	if stats.UsedBytes != cost*2 || stats.Entries != 2 || stats.UsedBytes > stats.LimitBytes {
+	if stats.UsedBytes != cost*2 || stats.Entries != 2 || stats.UsedBytes > stats.LimitBytes || stats.Evictions != 1 {
 		t.Fatalf("cache accounting: %+v", stats)
 	}
 	read("b")

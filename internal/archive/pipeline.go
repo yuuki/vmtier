@@ -53,6 +53,8 @@ func buildVerifiedPacks(ctx context.Context, cfg Config, source Source, tenant p
 	}
 	samples := map[string][]sample{}
 	names := map[string]string{}
+	var verifierBytes int64
+	defer cfg.Memory.setVerifier(0)
 	stats, err = pack.BuildPacksMeasured(contextReader{ctx, resp.Body}, tenant, start, end, cfg.PackLimits, catalog.SQLiteMaxPacksPerWindow, cfg.MaxSamples, func(idx *pack.Index, data []byte) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -63,7 +65,14 @@ func buildVerifiedPacks(ctx context.Context, cfg Config, source Source, tenant p
 			if previous, ok := names[key]; ok && previous != string(series.NativeName) {
 				return errors.New("inconsistent native name ordering across packs")
 			}
-			names[key] = string(series.NativeName)
+			if _, exists := names[key]; !exists {
+				// Each map can retain its own equal key across pack boundaries.
+				// Charge both, the native name and map/slice header allowances.
+				// Values use actual slice capacity below.
+				verifierBytes += int64(2*len(key)+len(series.NativeName)) + 256
+				names[key] = string(series.NativeName)
+				cfg.Memory.setVerifier(verifierBytes)
+			}
 			for bi, block := range series.Blocks {
 				mb, err := pack.LoadBlock(idx, si, bi, data[block.Offset:block.Offset+block.Length])
 				if err != nil {
@@ -76,12 +85,17 @@ func buildVerifiedPacks(ctx context.Context, cfg Config, source Source, tenant p
 					return err
 				}
 				ts, vs := mb.Block.AppendRowsWithTimeRangeFilter(nil, nil, storage.TimeRange{MinTimestamp: start, MaxTimestamp: end - 1})
+				rows := samples[key]
+				previousCapacity := cap(rows)
 				for i, timestamp := range ts {
 					if math.IsNaN(vs[i]) && !decimal.IsStaleNaN(vs[i]) {
 						return errors.New("ordinary NaN is unsupported by the pinned VM native decimal codec")
 					}
-					samples[key] = append(samples[key], sample{timestamp, vs[i]})
+					rows = append(rows, sample{timestamp, vs[i]})
 				}
+				samples[key] = rows
+				verifierBytes += int64(cap(rows)-previousCapacity) * 16
+				cfg.Memory.setVerifier(verifierBytes)
 			}
 		}
 		return emit(idx, data)
@@ -93,6 +107,7 @@ func buildVerifiedPacks(ctx context.Context, cfg Config, source Source, tenant p
 	// including conflicts and stale markers separated by pack boundaries.
 	for key, rows := range samples {
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].timestamp < rows[j].timestamp })
+		cfg.Memory.setVerifier(verifierBytes + int64(len(rows))*16)
 		ts, vs := make([]int64, len(rows)), make([]float64, len(rows))
 		for i, row := range rows {
 			ts[i], vs[i] = row.timestamp, row.value
@@ -103,6 +118,7 @@ func buildVerifiedPacks(ctx context.Context, cfg Config, source Source, tenant p
 			rows[i] = sample{ts[i], vs[i]}
 		}
 		samples[key] = rows
+		cfg.Memory.setVerifier(verifierBytes)
 	}
 	counts := countsOf(samples)
 	if err := verifyRaw(ctx, cfg, source, tenant, start, end, samples); err != nil {
@@ -168,6 +184,9 @@ func uploadPack(ctx context.Context, blobs objectstore.BlobStore, cfg Config, id
 	if err != nil {
 		return ref, err
 	}
+	packBytes := int64(cap(data)+cap(indexData)) + pack.IndexMemoryEstimate(idx)
+	cfg.Memory.setPack(packBytes)
+	defer cfg.Memory.setPack(0)
 	var nonce [16]byte
 	if _, err = rand.Read(nonce[:]); err != nil {
 		return ref, fmt.Errorf("allocate unique archive attempt: %w", err)
@@ -195,9 +214,11 @@ func uploadPack(ctx context.Context, blobs objectstore.BlobStore, cfg Config, id
 		if err != nil {
 			return ref, fmt.Errorf("verify uploaded object: %w", err)
 		}
+		cfg.Memory.setPack(packBytes + int64(cap(got)))
 		if !bytes.Equal(got, item.data) {
 			return ref, errors.New("uploaded object checksum or length mismatch")
 		}
+		cfg.Memory.setPack(packBytes)
 	}
 	return ref, nil
 }
