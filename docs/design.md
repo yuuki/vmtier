@@ -1,25 +1,28 @@
 # First-release design
 
 This is the implementation design for the first supported vmtier release. The
-[SQLite catalog](sqlite-catalog.md) and [`serve` runtime](serve.md) implement the
-first two delivery stages: transactional per-stream publication, offline migration
-and recovery commands, one owner for archival and queries, and a shared S3 request
-budget. The design also specifies work that remains unimplemented. See
+[SQLite catalog](sqlite-catalog.md) and [`serve` runtime](serve.md) provide
+transactional per-stream publication, offline migration and recovery commands, one
+owner for archival and queries, and a shared S3 request budget. Bounded archive
+rotation, incremental verification, preflight, reader caching/range improvements,
+and logical query admission are implemented. The design also identifies remaining
+measurement and release-qualification work. See
 [service validation](serve-validation.md) for runtime evidence and
 [ADR 0003](adr/0003-first-release-scope.md) for the selected scope.
 
 | Area | Current implementation |
 | --- | --- |
 | Catalog | SQLite schema 1, bounded indexed selection, independent stream coverage, offline v2 import and backup/restore |
-| Service | Lifetime state lock, age-based scheduler, read RPC, health/metrics, shared S3 attempt budget |
-| Archive | Existing exact native/raw oracle checks; zero packs for verified empty windows, one pack for each nonempty window |
-| Reader | SQLite selection and multiple-pack reading; existing cache and sequential block GETs |
-| Remaining work | Streaming pack rotation, incremental oracle parsing, LRU/miss coalescing, adjacent-range reads, workload and provider qualification |
+| Service | Lifetime state lock, age-based scheduler, read RPC, capacity/failure metrics, shared S3 attempt budget |
+| Archive | SQLite pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
+| Reader | SQLite selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |
+| Remaining work | Metadata deadline measurements; combined RSS/workload and catalog capacity; provider, retention, ingress, recovery, and release qualification |
 
 The legacy [JSON v2 MVP architecture](mvp-design.md) and its
 [historical validation](validation.md) remain the regression baseline. Neither
-those results nor completion of the first two stages establishes release capacity
-or real-provider support.
+those results nor the subsequent implementation work establishes release capacity
+or real-provider support. The retained JSON v2 writer remains single-pack; shared
+raw verification and reader improvements do not change its catalog format.
 
 The goal remains age-based archival of existing VictoriaMetrics samples to S3,
 with queries through an unmodified stock vmselect after those samples leave Hot.
@@ -132,9 +135,10 @@ bucket, prefix, endpoint, and region; credentials are not part of it. Changing
 these locator fields must require an explicit migration rather than silently
 redirecting relative object keys. Endpoint aliases are not auto-detected.
 
-The catalog and reader can represent multiple packs without changing `w`; the
-current writer still fails a nonempty window that exceeds one pack's limits.
-Step 3 will allow pack rotation within a logical window.
+The SQLite writer, catalog, and reader support multiple packs without changing
+`w`. [Pack rotation](archive-packs.md) preserves one logical window; it cannot
+bypass the whole-window native-input, physical-sample, pack-count, or time bounds.
+The retained JSON v2 writer continues to enforce a single-pack bound.
 Increasing archive age or allowed lateness in place remains rejected. Adding tenants,
 resharding sources, or changing the fixed contract needs an explicit future migration.
 Cache budgets, S3 limits, and timeouts can change through a controlled restart.
@@ -211,10 +215,11 @@ window. Scheduling resumes from persisted coverage, without a separate durable j
 queue; retry cooldowns are process-local. An internal one-pass operation supports
 tests, while the standalone `archive` CLI remains a JSON v2 tool.
 
-The following pipeline is the step 3 target. The current SQLite writer reuses the
-MVP's bounded whole-window verifier and raw JSON response handling. It already
-publishes independent streams and zero-pack empty windows, but nonempty windows
-still produce exactly one pack.
+The SQLite writer implements the following bounded pipeline. See
+[archive packing](archive-packs.md), [incremental oracle allocation evidence](raw-oracle-validation.md),
+and [capacity preflight](preflight.md) for implementation details, reproduction,
+and measured limits. Stock-VM integration evidence must identify the tested
+revision separately from focused unit and allocation checks.
 
 For one tenant/source/window:
 
@@ -235,59 +240,80 @@ For one tenant/source/window:
 5. Upload pack/index objects to a fresh attempt namespace with ordinary PUT and
    Content-MD5. Verify lengths and SHA-256 through GET. Packs may be staged before
    the whole window is verified to bound memory, but remain invisible until commit.
-   Keep at most one pack upload/read-back buffer in addition to the expected map.
+   Retain one pack at a time; read-back temporarily holds the returned object
+   alongside that pack. Index, decoded-block, deduplication, and HTTP scratch also
+   consume memory beyond the bounded expected map.
 6. Recheck retention, commit all references atomically, and record metrics.
 
 Native EOF can occur at a record boundary after a truncated export. Do not remove
 the independent oracle as an optimization. Source topology and immutable windows
 remain prerequisites; the two export paths are not a signed source snapshot.
 
-Keep the MVP's five-million physical-sample verifier cap initially. The initial
-whole-window native-input and raw-oracle response caps remain 128 MiB each, separate
-from the 64 MiB per-pack and 16 MiB per-index caps. Add finite pack-count and elapsed-
-time caps as well. Raise limits only with measured memory and workload evidence.
+The five-million physical-sample verifier cap includes replicated and out-of-window
+native rows before clipping or deduplication. Whole-window native input and the raw
+oracle response remain independently capped at 128 MiB, separate from the 64 MiB
+per-pack and 16 MiB per-index caps. SQLite attempts allow at most 1,024 packs and
+are bounded by `service.archive_timeout`. Raise limits only with measured memory
+and workload evidence.
 Incremental processing reduces copies; it does **not** make windows unbounded. An
 exceeded limit fails that window without advancing coverage. Preflight representative
 busy windows before binding a catalog, since window width is immutable afterward.
 
 Do not add a disk-backed sample spool, external merge sort, automatic temporal
 subdivision, or series-sharding framework now. A workload that demonstrably cannot
-fit the agreed envelope triggers that next design. Update misleading "choose a
-smaller window" diagnostics to explain preflight/migration for a bound catalog.
+fit the agreed envelope triggers that next design. Limit diagnostics distinguish
+choosing a window before initialization from migrating to a new catalog after
+the window has been bound; preflight performs neither initialization nor migration.
 
 ## Query planning and resource limits
 
-Indexed SQLite selection and multiple-pack reads are implemented. LRU eviction,
-concurrent-miss coalescing, adjacent-range reads, and combined memory qualification
-below remain planned; the current reader keeps the MVP's cache and sequential GETs.
+Indexed SQLite selection, multiple-pack reads, LRU eviction, concurrent-miss
+coalescing, adjacent-range reads, and logical query work admission are implemented.
+[Reader validation](reader-validation.md) records focused GET-count and cache
+accounting measurements. Metadata deadline reevaluation and combined process-memory
+qualification remain separate unfinished evidence.
 
-Use the actual storage RPC range, including VM lookbehind for range vectors,
-offset, subqueries, and `@`. Retrieve tenant/time catalog candidates, apply label
-matchers to bounded indexes, and select blocks. Preserve current metadata behavior
-and unsupported-RPC errors.
+The reader uses the actual storage RPC range, including VM lookbehind for range
+vectors, offsets, subqueries, and `@`. It retrieves tenant/time catalog candidates,
+applies label matchers to bounded indexes, and selects blocks. Metadata still
+validates payloads and actual sample times; no index-only shortcut is assumed.
+Unsupported RPCs continue to return errors.
 
-Group requested ranges by object, sort by offset, and merge adjacent ranges within
-a bounded read size. Start with adjacent ranges only; gap overfetch is unnecessary
-for the first implementation. Verify each original block's SHA-256 after slicing
-the combined response. Charge the full downloaded range to query budgets. Compare
-results with the existing reader while implementing this change.
+Selected ranges are sorted within each immutable object. Exactly adjacent uncached
+ranges are merged up to 4 MiB, without gap overfetch. Each original block checksum
+and native payload is validated after slicing. The whole selected payload and
+physical decoded-row allowance are charged before payload I/O, including warm
+cache hits. Corruption or an over-budget query returns no partial success.
 
-Use a byte-bounded LRU for immutable index/block data and coalesce concurrent misses
-for the same key. Identity includes object key, checksum, and range. Account for
-parsed index allocations as well as raw bytes. Do not cache successful catalog
-observations across queries or use them during database failure.
+The byte-bounded LRU accounts for owned raw bytes, cache keys, and a conservative
+entry allowance. Slices are copied into owned allocations to avoid retaining an
+unaccounted combined-response buffer. Parsed indexes are not retained in the cache;
+they are parsed and validated per query under index-size and structural bounds.
+Their transient allocation and allocator overhead are outside the cache total.
+Catalog authority and required coverage are checked on every query, even when
+all immutable objects are cached.
 
-Bound active and queued queries, candidate packs, selected blocks, downloaded bytes,
-decoded bytes, and cache memory. Reserve a per-query work allowance at admission
-so concurrent queries cannot each consume the whole process budget. Keep results
-materialized until validation succeeds, preserving no-partial-success behavior.
-The upstream API still limits immediate cancellation on client disconnect; deadlines
-bound work when the original client context is unavailable.
+Concurrent identical index/range misses share work under a finite 16-flight cap
+with no pending-key queue. Identity includes immutable object key, checksum, and
+range. Overlapping ranges with different grouping are not coalesced. Waiters can
+cancel independently; abandoned I/O stays counted until it unwinds. Shared-flight
+buffers are separately bounded from cache residency and query reservations.
 
-Use the current 128 MiB query allowance and eight active queries as starting
-measurements, not a memory guarantee. Measure Go heap overhead, decoder allocations,
-archive-map memory, and parsed indexes together, then set defaults. Prefer clear
-resource-limit errors over unlimited scans or retries of oversized queries.
+The gateway reserves each query's complete logical work allowance at admission.
+Defaults are 128 MiB per query and 256 MiB shared, allowing two admitted searches;
+the upstream RPC gate retains its separate eight-request ceiling. Excess work is
+refused rather than queued. Results stay materialized until validation succeeds.
+Reservations cover backend work and sample iterators; metadata serialization can
+continue after release because the upstream API returns slices without a completion
+callback. Client disconnect also cannot immediately cancel every upstream RPC;
+the existing deadline remains the work bound.
+
+These are accounted work limits, not a combined heap or RSS guarantee. Parsed
+indexes, shared cache flights, archive verification, metadata serialization,
+HTTP/SQLite/RPC buffers, and Go allocator overhead have separate lifetimes and
+limits. [Service accounting](serve.md#query-work-admission) describes those limits.
+Measure concurrent archive/query/cache pressure and process RSS before selecting
+production defaults; raising all limits does not establish capacity.
 
 ## S3 request budget
 
@@ -321,9 +347,13 @@ required. No lifecycle rule may delete referenced objects.
 
 ## Operations and recovery
 
-Expose archive lag/headroom per tenant/source, last publication, failed windows,
-catalog size, S3 attempts/bytes/waits, query limit failures, and cache usage. Keep
-metric labels bounded; do not label by object, series, or query text. Readiness
+The service exposes archive lag/headroom per tenant/source, last publication,
+failed window attempts, catalog size, S3 attempts/bytes/waits, query-limit refusals,
+and cache usage. Labels use configured streams and bounded reasons, never object,
+series, or query text. Committed object-byte totals are logical referenced bytes,
+not measured bucket usage; orphan attempts and provider accounting remain separate.
+See [service metrics](serve.md#health-metrics-and-shutdown) for units and restart semantics.
+Readiness
 requires valid catalog state and required coverage; health reports liveness.
 Archive failures leave already covered reads available, but a query intersecting
 missing required coverage fails.
@@ -386,11 +416,15 @@ full differential tests; this release is not a universal version adapter.
 Each step is a separate reviewable implementation change. Do not combine SQLite,
 pack splitting, and query optimization into one rewrite.
 
-Steps 1 and 2 are implemented. Step 2 also connects the existing archive verifier
-and read RPC to SQLite, so the service is usable end to end without waiting for
-pack rotation. Bounded catalog selection from step 4 is already used; the remaining
-archive and reader changes and step 5 qualification are still pending. Executed
-checks and their limits are recorded in the stage-specific validation reports.
+Steps 1 and 2 are implemented, along with the archive mechanisms in step 3 and
+reader mechanisms in step 4. Implementation completion does not complete every
+acceptance criterion: new stock-VM comparisons must be recorded separately, metadata
+deadline measurements are pending, and logical admission is not combined-memory
+qualification. Step 5 remains unqualified, including workload/catalog scale (#14),
+real Sakura (#15), natural retention (#16), enforced ingress lateness (#17),
+end-to-end recovery/cutover (#18), and reproducible release artifacts (#19).
+Executed checks and their limitations belong in stage-specific validation reports;
+historical results remain evidence only for their recorded revision.
 
 | Step | Work | Required evidence |
 | --- | --- | --- |

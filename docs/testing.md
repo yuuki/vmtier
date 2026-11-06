@@ -240,3 +240,35 @@ Run the focused harness regressions with:
 ```sh
 python3 -m unittest discover -s scripts -p 'test_e2e_harness.py' -v
 ```
+
+## Metadata measurement
+
+Both harnesses record `metadata_measurements` for label names, two label-value
+selectors, and series discovery for both tenants. Each observation includes exact
+reference comparison status, tiered latency, and deltas in object GET requests,
+Range GET requests, and downloaded bytes. The initial `uncached` phase disables
+the immutable cache; stock vmselect result caching stays disabled throughout.
+
+To reevaluate the stock five-second labels deadline after reader changes and
+collect repeat measurements on the same fixture, use fresh work directories:
+
+```sh
+python3 scripts/e2e.py --backend s3 --replicas 2 --labels-api-duration 5s \
+  --measure-warm-metadata --workdir .cache/metadata-json-5s
+python3 scripts/e2e_serve.py --backend s3 --replicas 2 --labels-api-duration 5s \
+  --measure-warm-metadata --workdir .cache/metadata-sqlite-5s
+```
+
+`--labels-api-duration` accepts `5s` or the retained default `30s`; the effective
+value appears in the report and the child vmselect command. A deadline failure
+remains a failed suite and the partial metadata measurement is retained. Do not
+interpret a successful query with fewer returned series as an improvement: all
+phases keep the exact reference comparisons.
+
+The optional `prime` and `warm` passes run after the existing 32 MiB cache test.
+The prime pass may reuse entries from prior calls, so it is not a cold-cache
+measurement. The subsequent warm pass is a repeated workload, not a guarantee
+that every entry fits or that zero GETs occur. These per-call counters are process
+observations; in this fixture archival has completed and does not upload during
+the measurement. On S3, request counts include transport retries. Loopback latency
+and this small fixture do not establish a general metadata deadline guarantee.

@@ -441,6 +441,40 @@ def metrics(port):
     return result
 
 
+
+def check_metadata(reference_port, tiered_port, metrics_port, tenants, start, end,
+                   phase, cache_bytes, measurements):
+    """Measure exact metadata comparisons with immutable-cache state explicit."""
+    for tenant in tenants:
+        for path in ['labels', 'label/cold_label/values', 'label/__name__/values', 'series']:
+            params = {'start': start / 1000, 'end': end / 1000, 'match[]': '{__name__!=""}'}
+            expected = api(reference_port, tenant, path, params)
+            before = metrics(metrics_port)
+            observation = {'tenant': tenant, 'path': path, 'phase': phase,
+                           'cache_bytes': cache_bytes, 'vm_result_cache': 'disabled'}
+            measurements.append(observation)
+            began = time.perf_counter()
+            try:
+                actual = api(tiered_port, tenant, path, params)
+                if expected and isinstance(expected[0], str):
+                    expected, actual = sorted(expected), sorted(actual)
+                compare(expected, actual, f'{tenant} metadata {path} {phase}')
+                observation['status'] = 'passed'
+            except Exception as error:
+                observation['status'], observation['error'] = 'failed', str(error)
+                raise
+            finally:
+                observation['latency_ms'] = (time.perf_counter() - began) * 1000
+                try:
+                    after = metrics(metrics_port)
+                    for label, counter in [('get_requests', 'vmtier_object_get_requests_total'),
+                                           ('range_requests', 'vmtier_object_range_requests_total'),
+                                           ('download_bytes', 'vmtier_object_download_bytes_total')]:
+                        observation[label] = after.get(counter, 0) - before.get(counter, 0)
+                except (OSError, urllib.error.URLError) as error:
+                    observation['metrics_error'] = str(error)
+
+
 def run(work, args):
     work = work.resolve()
     procs = Processes(work, args.gomaxprocs)
@@ -449,7 +483,7 @@ def run(work, args):
                'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                'vm_revision': '9a009c491da4c17531893ab4acb6a5f1b5e0eaf2',
                'dedup_interval': '1ms', 'vm_result_cache': 'disabled',
-               'tiered_vm_labels_api_max_duration': '30s',
+               'tiered_vm_labels_api_max_duration': args.labels_api_duration,
                'comparison': 'exact timestamps, labels and numeric strings; no tolerance',
                'checks': [], 'query_timings_ms': {}, 'runtime': procs.runtime}
     tenants = ['1:2', '7:9']
@@ -695,7 +729,7 @@ def run(work, args):
         top_select = free_port()
         # Cold metadata validates full blocks; the default five-second label
         # deadline can expire on an uncached S3 scan without a result mismatch.
-        start_select(procs, 'tiered-select', top_select, hot.storage_read + [gateway_port], labels_api_duration='30s')
+        start_select(procs, 'tiered-select', top_select, hot.storage_read + [gateway_port], labels_api_duration=args.labels_api_duration)
         expressions = [
             'requests_total', 'temperature', 'cold_only', 'hot_only', 'irregular', 'special', 'stale_series',
             'duplicates', 'churn', 'millisecond_boundary',
@@ -738,14 +772,9 @@ def run(work, args):
                     diff_count += 1
         reports['differential_checks'] = diff_count
         reports['checks'].append(f'{diff_count} exact differential instant/range queries passed across Cold, Hot and boundary')
-        for tenant in tenants:
-            for path in ['labels', 'label/cold_label/values', 'label/__name__/values', 'series']:
-                params = {'start': start / 1000, 'end': end / 1000, 'match[]': '{__name__!=""}'}
-                expected = api(ref.select, tenant, path, params)
-                actual = api(top_select, tenant, path, params)
-                if expected and isinstance(expected[0], str):
-                    expected, actual = sorted(expected), sorted(actual)
-                compare(expected, actual, f'{tenant} metadata {path}')
+        reports['metadata_measurements'] = []
+        check_metadata(ref.select, top_select, gateway_http, tenants, start, end,
+                       'uncached', 0, reports['metadata_measurements'])
         reports['checks'].append('label names/values and series discovery include Cold; tenant-separated values match reference')
         reports['dedicated_latency_ms'] = {}
         for label, expr, lo, hi in [('hot_only', 'hot_only', boundary + 900000, end),
@@ -793,6 +822,12 @@ def run(work, args):
             'read_amplification_denominator': 'returned raw timestamp+float64 pairs, 16 bytes/sample',
             'cache_limit_bytes': cfg['cache_bytes'], 'vm_result_cache': 'disabled'}
         reports['checks'].append('immutable block cache reuses data with zero additional Range GETs; values unchanged')
+        if args.measure_warm_metadata:
+            check_metadata(ref.select, top_select, gateway_http, tenants, start, end,
+                           'prime', cfg['cache_bytes'], reports['metadata_measurements'])
+            check_metadata(ref.select, top_select, gateway_http, tenants, start, end,
+                           'warm', cfg['cache_bytes'], reports['metadata_measurements'])
+            reports['checks'].append('warm metadata measurements preserve exact reference parity')
         # A warm blob cache cannot replace the authoritative control-plane read.
         procs.stop(catalog_process)
         outage_params = dict(cache_params, timeout='3s')
@@ -921,6 +956,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workdir', type=Path)
     parser.add_argument('--gomaxprocs', type=positive_int, help='GOMAXPROCS for workload children (default: outer GOMAXPROCS, else 2)')
+    parser.add_argument('--labels-api-duration', choices=['5s', '30s'], default='30s', help='stock tiered vmselect labels API deadline')
+    parser.add_argument('--measure-warm-metadata', action='store_true', help='prime and measure repeated metadata calls with the immutable cache enabled')
     parser.add_argument('--backend', choices=['local', 's3'], default='local')
     parser.add_argument('--replicas', type=int, choices=[1, 2], default=1)
     parser.add_argument('--vm-only', action='store_true', help='Validate stock fixture ingestion/export before vmtier integration')

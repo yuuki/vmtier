@@ -17,6 +17,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/yuuki/vmtier/internal/pack"
+	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
 // SQLite owns one local catalog for its lifetime. It deliberately does not
@@ -489,7 +490,7 @@ func (s *SQLite) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
 			planBytes += 256 + int64(len(sel.Tenant)+len(source.ID))
 			if len(selected) >= sel.MaxWindows || planBytes > sel.MaxPlanBytes {
 				rows.Close()
-				return out, errors.New("query catalog plan limit exceeded")
+				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan limit exceeded")
 			}
 			selected = append(selected, v)
 		}
@@ -502,7 +503,7 @@ func (s *SQLite) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
 	packCount := 0
 	for _, v := range selected {
 		if v.count > sel.MaxPacks-packCount {
-			return out, errors.New("query catalog pack limit exceeded")
+			return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog pack limit exceeded")
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM packs WHERE window_id=? ORDER BY ordinal`, v.id)
 		if err != nil {
@@ -523,7 +524,7 @@ func (s *SQLite) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
 			planBytes += 256 + int64(len(ref.DataKey)+len(ref.IndexKey)+len(ref.DataSHA256)+len(ref.IndexSHA256))
 			if planBytes > sel.MaxPlanBytes {
 				rows.Close()
-				return out, errors.New("query catalog plan byte limit exceeded")
+				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
 			}
 			v.window.Packs = append(v.window.Packs, ref)
 		}
@@ -542,7 +543,7 @@ func (s *SQLite) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
 		out.Windows = append(out.Windows, v.window)
 	}
 	if planBytes > sel.MaxPlanBytes {
-		return out, errors.New("query catalog plan byte limit exceeded")
+		return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
 	}
 	return out, tx.Commit()
 }

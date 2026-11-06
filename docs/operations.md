@@ -72,9 +72,46 @@ The gateway exposes `/health`, `/ready`, and `/metrics`. `/ready` returns HTTP 5
 | `vmtier_object_get_requests_total`, `vmtier_object_range_requests_total`, `vmtier_object_download_bytes_total`, `vmtier_object_put_requests_total` | Per-process object-store I/O. |
 | `vmtier_cache_hits_total`, `vmtier_cache_misses_total` | Immutable index and block cache activity. |
 
-An external scheduler collects the one-shot archiver's structured JSON logs, exit code, and standard output. There is no resident archive metrics exporter. The gateway's metrics endpoint also consults the catalog. Monitor catalog health, persistent-disk capacity and I/O errors, and backup status separately.
+For the legacy one-shot archiver, an external scheduler collects structured JSON logs, exit code, and standard output. The SQLite service exposes archive metrics directly. Metrics also consult the catalog. Monitor catalog health, persistent-disk capacity and I/O errors, and backup status separately.
 
 Retention headroom is the finite time until the oldest unarchived sample can no longer be queried or exported. An alert does not extend it. VM can exclude samples through its retention filter even while their physical parts remain on disk, so physical file existence is not extra recovery time.
+
+### Service capacity and failure accounting
+
+The SQLite service additionally exposes these capacity signals without listing
+the blob backend:
+
+| Metric | Accounting |
+| --- | --- |
+| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
+| `vmtier_catalog_committed_object_bytes{kind="data\|index"}` | Sum of byte lengths in committed pack descriptors, retained across restart. Excludes unreferenced/failed attempts, other prefixes, provider versions, and provider overhead; this is **not measured bucket usage**. |
+| `vmtier_catalog_windows`, `vmtier_catalog_packs` | Committed logical windows (including empty windows) and immutable pack references. |
+| `vmtier_catalog_capacity_available` | One only when the current bounded observation succeeds. Capacity gauges are omitted on failure, rather than reporting stale values or false zeroes. |
+| `vmtier_cache_used_bytes`, `vmtier_cache_limit_bytes`, `vmtier_cache_entries`, `vmtier_cache_inflight_reads` | Retained immutable raw bytes plus keys and a conservative per-entry bookkeeping allowance; excludes allocator/GC overhead, transient parsed indexes and active-query allocations. In-flight shared reads are bounded separately. |
+| `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
+| `vmtier_query_limit_refusals_total{reason=...}` | Resource refusals with a fixed reason vocabulary: `memory_admission`, `shared_reads`, `read_bytes`, `decoded_bytes`, `catalog_plan`, `blocks`, `series`, or `response_bytes`. Other backend failures and cancellations do not masquerade as limit refusals. |
+| `vmtier_archive_failed_windows_total{tenant=...,source=...,reason=...}` | Errored attempts for configured tenant/source pairs only; reasons are `error`, `timeout`, and `canceled`. A retry increments again; skipped/backoff windows do not. Shutdown cancellation is counted if a window was attempted. No timestamp or error-message labels are used. |
+
+Attempt/refusal counters and cache/admission state start over on process restart;
+committed totals are read afresh from SQLite. An errored attempt is not necessarily
+a new missing window: failure after commit acknowledgement can leave the window
+committed, so interpret failures together with coverage and lag. The service does
+not estimate orphan bytes or perform automatic GC. Use provider accounting for
+actual bucket growth and host monitoring for disk availability and peak RSS.
+Each capacity scrape aggregates the complete `packs` and `windows` tables on
+the catalog's single SQLite connection. The shared five-second scrape context
+bounds the observation time, not the number of rows scanned. Large catalogs or
+frequent scrapes can therefore contend with publication and query selection;
+include scrape load in the catalog-capacity qualification tracked by
+[#14](https://github.com/yuuki/vmtier/issues/14).
+Compare rising failed-window/refusal rates with declining retention headroom
+before increasing workloads or resource limits. These signals do not extend the
+time available to recover an unarchived suffix.
+
+Cache and query-admission/refusal metrics are also available in the retained
+JSON v2 gateway. Catalog capacity and failed-window metrics describe the SQLite
+service only. The SQL capacity totals use a constant-memory scan of committed
+descriptors under the scrape timeout; they do not add an in-memory catalog mirror.
 
 ## Failure and restart behavior
 
