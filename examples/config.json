@@ -1,0 +1,33 @@
+{
+  "store": {
+    "type": "s3",
+    "endpoint": "http://127.0.0.1:5000",
+    "region": "us-east-1",
+    "bucket": "vmtier",
+    "prefix": "demo"
+  },
+  "tenants": [
+    "1:2",
+    "7:9"
+  ],
+  "sources": [
+    {
+      "id": "hot",
+      "url": "http://127.0.0.1:8481"
+    }
+  ],
+  "archive_age": "720h",
+  "hot_retention": "888h",
+  "lateness": "48h",
+  "safety_margin": "24h",
+  "window": "6h",
+  "lateness_enforced": false,
+  "coverage_start_ms": 0,
+  "cache_bytes": 33554432,
+  "max_query_bytes": 134217728,
+  "catalog": {
+    "type": "http",
+    "url": "http://127.0.0.1:8491",
+    "id": "demo-v2"
+  }
+}

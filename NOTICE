@@ -1,0 +1,18 @@
+vmtier
+An independent, unofficial project; not a VictoriaMetrics product or endorsement.
+
+This project uses VictoriaMetrics OSS code as a Go library:
+Copyright 2019-2025 VictoriaMetrics, Inc.
+Licensed under the Apache License, Version 2.0.
+
+The following notices are reproduced from dependencies used by the S3 adapter:
+
+AWS SDK for Go
+Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Copyright 2014-2015 Stripe, Inc.
+
+Smithy Go
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+See THIRD_PARTY_NOTICES.md and the generated vendor tree for dependency-specific
+license texts, notices, versions, and redistribution requirements.
