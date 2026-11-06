@@ -1,0 +1,177 @@
+# Run the SQLite service
+
+`vmtier serve` runs the archiver, SQLite catalog, and Cold read gateway in one
+process. They share one blob-store client and its S3 request budget. The catalog
+is independent of S3: no conditional PUT, ETag CAS, or LIST-based discovery is used.
+
+This implements the service-integration stage of the [first-release design](design.md).
+It is still under development. The [stage 2 validation](serve-validation.md) distinguishes
+tests of this service from older JSON v2 evidence and from untested real providers.
+Automatic pack splitting, LRU caching, range coalescing, GC, and HA remain separate work.
+
+## Configuration and startup
+
+Build using the [README](../README.md). Copy [the Sakura configuration](../examples/serve-sakura.json)
+and set the real bucket, fixed Hot-only source URLs, tenants, archive policy, and
+window-aligned `coverage_start_ms`. The example deliberately has an invalid coverage
+start and `lateness_enforced=false`; do not enable that assertion until all ingestion
+paths actually enforce the lateness limit. Source data must still be queryable in Hot.
+
+The service settings are:
+
+```json
+{
+  "catalog": {
+    "type": "sqlite",
+    "path": ".state/catalog-sqlite",
+    "id": "sakura-serve-001"
+  },
+  "service": {
+    "archive_interval": "30s",
+    "archive_timeout": "2m"
+  }
+}
+```
+
+This fragment belongs in the full configuration, not in a standalone file. Initialize
+the authority explicitly, then start the service:
+
+```sh
+.bin/vmtier catalog-init -backend sqlite -config serve.json \
+  -path .state/catalog-sqlite -id sakura-serve-001
+.bin/vmtier serve -config serve.json \
+  -listen 127.0.0.1:8489 -http 127.0.0.1:8490
+```
+
+The initialization path/ID must match the service configuration. Startup refuses
+missing state, another owner, wrong identity, or a changed contract/blob locator.
+Startup does not silently create a catalog or contact S3 before those checks.
+S3 credentials use the same environment variables as the MVP; do not place them in JSON.
+
+Keep the state directory on persistent local storage. The lock covers this directory
+on this host, not another host or another directory targeting the same bucket.
+Run only one owner for the bucket. No automatic failover is provided.
+
+Use the same stock vmselect Hot/Cold frontend as the MVP, with
+`-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false
+-search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`.
+The gateway RPC address is a storage node alongside Hot; the archiver's source must
+be a separate Hot-only vmselect. Do not export from the combined frontend.
+
+Label/series metadata currently uses the same validated block search as sample
+queries. An uncached S3 request can exceed stock vmselect's default five-second
+label API deadline even on a small replicated dataset. The service E2E harness
+sets `-search.maxLabelsAPIDuration=30s` on the combined frontend. Size this deadline
+for the deployment's workload and S3 budget; a longer deadline does not improve
+throughput. The gateway also caps individual requests at 30 seconds, so increasing
+the frontend setting further cannot remove that limit. Larger time ranges or
+cardinality can still time out. Metadata-specific reads and cache/range optimizations
+remain future work.
+
+## Scheduling and publication
+
+The first archive pass starts immediately. Each pass attempts at most one oldest
+eligible window per tenant/source, ordered by coverage end. Successful progress
+triggers another pass immediately, allowing catch-up without one fixed sleep per
+historical window. Once no progress is made, the worker waits `archive_interval`.
+Each failed stream also receives that retry cooldown while healthy streams advance.
+
+`archive_timeout` bounds the complete attempt for one stream/window, including
+source export, exact oracle comparison, upload/read-back, and publication. Its default
+is two minutes. A timeout fails that stream instead of canceling the rest of the pass.
+Both durations accept whole milliseconds from 10 ms through 24 hours. Increase a
+timeout only while retaining sufficient Hot retention headroom.
+
+The process publishes only after independent raw-data comparison and object
+verification. Publication and coverage update are one SQLite transaction per
+tenant/source/window. An empty verified window publishes zero pack references.
+Nonempty windows still produce one bounded pack in this stage. Restart resumes
+from committed coverage; uploaded but uncommitted objects can remain as orphans.
+
+The time contract is unchanged: `H > L >= 0` and
+`R > H + safety_margin + window`. H, L, window, coverage start, tenants, sources,
+and blob location are fixed. Retention is checked before work and before commit.
+vmtier does not enforce ingestion lateness or shorten Hot retention. Expired source
+history, late writes into published windows, backfill, and deletion are not repaired
+automatically. Missing required Cold coverage makes the relevant query fail.
+
+## Shared S3 budget
+
+SQLite S3 configurations default to:
+
+```json
+{
+  "requests_per_second": 80,
+  "max_concurrent_requests": 8,
+  "max_queued_requests": 64
+}
+```
+
+These fields belong inside `store`. If overriding them, supply all three positive
+values. The limiter paces requests without bursts and uses a bounded FIFO queue.
+Every HTTP attempt, including SDK retries, waits on the same budget. An in-flight
+permit remains held until the response body closes. Queue overflow returns an error;
+waiting respects the operation's deadline and shutdown cancellation.
+
+The defaults leave headroom under the documented Sakura standard-plan limits, but
+have not been qualified against the real service. An archive-plan candidate is
+eight requests/s, one concurrent request, and a queue of 64; its performance is
+unverified. Check current provider limits before deployment. A dedicated prefix
+does not isolate bucket-wide quotas. Other clients or instances sharing the bucket
+invalidate the claim that this process controls all requests.
+
+Legacy JSON v2 commands keep their original behavior when all limit fields are zero.
+They do not share another process's budget. A SQLite service must not run a separate
+archive process or independent maintenance client against its bucket.
+
+## Health, metrics, and shutdown
+
+`/health` reports process liveness. `/ready` returns 503 until every configured stream
+has required coverage and catalog checks pass. It does not scrub all S3 payloads or
+prove that external ingestion/retention settings match the contract. A failing
+stream makes global readiness fail; another tenant's fully covered queries can
+still succeed. A stopped service can fail Hot-only queries as well because stock
+vmselect fans out to both storage nodes and partial responses are disabled.
+
+`/metrics` retains the gateway, object-I/O, and tenant coverage metrics and adds:
+
+| Metric | Meaning |
+| --- | --- |
+| `vmtier_archive_passes_total`, `vmtier_archive_failed_passes_total` | Scheduler attempts and passes containing errors |
+| `vmtier_archive_committed_windows_total`, `vmtier_archive_samples_total`, `vmtier_archive_bytes_total` | Successful publication work in this process |
+| `vmtier_archive_last_commit_timestamp_seconds` | Last commit observed by this process; zero before one occurs |
+| `vmtier_stream_coverage_end_ms`, `vmtier_stream_archive_lag_seconds`, `vmtier_stream_retention_headroom_seconds` | Coverage and remaining time per tenant/source |
+| `vmtier_catalog_generation` | Current persisted generation |
+| `vmtier_s3_attempts_total`, `vmtier_s3_waited_requests_total`, `vmtier_s3_wait_seconds_total` | Budget admissions and queue/pacing waits |
+| `vmtier_s3_rejected_requests_total`, `vmtier_s3_canceled_requests_total` | Queue refusals and canceled waits |
+| `vmtier_s3_in_flight_requests`, `vmtier_s3_queued_requests` | Current budget occupancy |
+
+Counters reset on process restart; persisted coverage does not. Keep these HTTP and
+RPC endpoints on a trusted network with suitable access controls/TLS termination.
+There is no online mutation or management API.
+
+SIGINT/SIGTERM cancels archive and read work, drains listeners/handlers, and then
+releases catalog ownership. The catalog remains locked while any owned work drains.
+Published windows survive restart; an interrupted attempt does not advance coverage.
+
+## Maintenance and JSON v2 migration
+
+Stop `serve` before running `inspect -config serve.json`, `verify -config serve.json`,
+or the catalog backup/restore commands. They acquire the same directory lock and
+refuse a live owner. Offline verification uses the same S3 budget and validates
+every referenced index, payload, and native block. Plan enough Hot headroom for the
+downtime. `archive` and `gateway` with a SQLite configuration explicitly direct the
+operator to `serve`; separate workers would defeat the ownership/request-budget model.
+
+Follow the [catalog management guide](sqlite-catalog.md) to import a stopped JSON v2
+catalog. The source config must retain the old catalog ID and matching source/blob
+settings. Then prepare a service config pointing to the imported SQLite directory
+and its new ID. Start `serve`, wait for readiness, and compare Cold-only/Hot/boundary
+queries before switching the query frontend. Keep old catalog state and objects
+until validation completes; do not run both archivers concurrently.
+
+After restoring an older SQLite backup under a new ID, `serve` attempts the missing
+suffix from Hot. This succeeds only while that source history is still queryable
+outside the safety margin. Source expiry requires an external complete recovery
+copy. Restoring metadata alone is not lossless disaster recovery. No real-provider
+or natural-retention recovery claim follows from the local tests.

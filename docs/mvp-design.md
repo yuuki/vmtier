@@ -1,6 +1,12 @@
-# Implemented MVP design and data contract
+# Legacy JSON v2 MVP design and data contract
 
-This document describes the implemented MVP. The [first-release design](design.md) describes subsequent work; planned features are not implied to exist in this implementation.
+This document describes the retained JSON v2 MVP with separate archive, catalog,
+and gateway processes. The current [SQLite service](serve.md) combines these owners
+and adds per-stream publication and a shared S3 request budget while keeping native
+pack/index v1 and the pinned VM read RPC. See [catalog migration](sqlite-catalog.md)
+for cutover and the [first-release design](design.md) for implementation progress.
+The limits and command architecture below belong to the legacy MVP; they do not
+describe the SQLite catalog's storage or lifecycle.
 
 vmtier is an independent archiver and read gateway, not an official VictoriaMetrics product. The supported OSS cluster version is pinned to `v1.128.0-cluster`, commit `9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. See the [prior-art comparison](prior-art.md), [native gateway decision](adr/0001-native-gateway.md), and [compatibility reference](compatibility.md).
 

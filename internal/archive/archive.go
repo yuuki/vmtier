@@ -3,10 +3,7 @@
 package archive
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -178,61 +175,18 @@ func Run(ctx context.Context, blobs objectstore.BlobStore, catalogs catalog.Stor
 				if err = ctx.Err(); err != nil {
 					return out, err
 				}
-				idx, data, e := export(ctx, cfg, source, tenant, start, end)
-				if e != nil {
-					return out, fmt.Errorf("export tenant %s source %s: %w", tenant.String(), source.ID, e)
-				}
-				samples, e := extractSamples(idx, data, cfg.MaxSamples)
+				idx, data, samples, e := verifiedExport(ctx, cfg, source, tenant, start, end)
 				if e != nil {
 					return out, e
 				}
-				counts := countsOf(samples)
-				if e = verifyRaw(ctx, cfg, source, tenant, start, end, samples); e != nil {
-					return out, fmt.Errorf("raw verification tenant %s source %s: %w", tenant.String(), source.ID, e)
-				}
-				if e = verifyCounts(ctx, cfg, source, tenant, start, end, counts); e != nil {
-					return out, fmt.Errorf("verify tenant %s source %s: %w", tenant.String(), source.ID, e)
-				}
-				if e = hook(cfg, "exported"); e != nil {
-					return out, e
-				}
-				indexData, e := pack.MarshalIndex(idx, cfg.PackLimits)
+				ref, e := uploadPack(ctx, blobs, cfg, idx, data)
 				if e != nil {
 					return out, e
 				}
-				nonce := make([]byte, 16)
-				if _, e = rand.Read(nonce); e != nil {
-					return out, fmt.Errorf("allocate unique archive attempt: %w", e)
-				}
-				prefix := fmt.Sprintf("tenants/%s/attempts/%s/%s", tenant.String(), hex.EncodeToString(nonce), pack.Sum(indexData))
-				dataKey, indexKey := prefix+".pack", prefix+".json"
-				if e = blobs.Put(ctx, dataKey, data); e != nil {
-					return out, fmt.Errorf("upload payload: %w", e)
-				}
-				if e = blobs.Put(ctx, indexKey, indexData); e != nil {
-					return out, fmt.Errorf("upload index: %w", e)
-				}
-				if e = hook(cfg, "uploaded"); e != nil {
-					return out, e
-				}
-				for _, item := range []struct {
-					k string
-					b []byte
-				}{{dataKey, data}, {indexKey, indexData}} {
-					got, e := blobs.Get(ctx, item.k)
-					if e != nil {
-						return out, fmt.Errorf("verify uploaded object: %w", e)
-					}
-					if !bytes.Equal(got, item.b) {
-						return out, errors.New("uploaded object checksum or length mismatch")
-					}
-				}
-				entry := catalog.Entry{Tenant: tenant.String(), Start: start, End: end, SourceID: source.ID, IndexKey: indexKey, DataKey: dataKey, IndexSHA256: pack.Sum(indexData), SourceFingerprint: pack.Sum([]byte(strings.TrimRight(source.URL, "/")))}
+				entry := catalog.Entry{Tenant: tenant.String(), Start: start, End: end, SourceID: source.ID, IndexKey: ref.IndexKey, DataKey: ref.DataKey, IndexSHA256: ref.IndexSHA256, SourceFingerprint: pack.Sum([]byte(strings.TrimRight(source.URL, "/")))}
 				entries = append(entries, entry)
-				for _, c := range counts {
-					out.Samples += uint64(c.normal + c.stale)
-				}
-				out.Bytes += int64(len(data) + len(indexData))
+				out.Samples += samples
+				out.Bytes += ref.DataBytes + ref.IndexBytes
 			}
 		}
 		if start <= now.Add(time.Since(runStart)).UnixMilli()-cfg.Retention.Milliseconds()+cfg.SafetyMargin.Milliseconds() {
@@ -264,7 +218,7 @@ func hook(c Config, stage string) error {
 	return nil
 }
 
-func validateTopology(m *catalog.Manifest, c Config) error {
+func archiveContract(c Config) catalog.Contract {
 	contract := catalog.Contract{CoverageStart: c.CoverageStart, WindowMS: c.Window.Milliseconds(), DedupMS: 1, AgeMS: c.Age.Milliseconds(), LatenessMS: c.Lateness.Milliseconds()}
 	for _, s := range c.Tenants {
 		t, _ := pack.ParseTenant(s)
@@ -275,6 +229,11 @@ func validateTopology(m *catalog.Manifest, c Config) error {
 	}
 	sort.Strings(contract.Tenants)
 	sort.Slice(contract.Sources, func(i, j int) bool { return contract.Sources[i].ID < contract.Sources[j].ID })
+	return contract
+}
+
+func validateTopology(m *catalog.Manifest, c Config) error {
+	contract := archiveContract(c)
 	if m.Generation == 0 {
 		if len(m.Entries) != 0 {
 			return errors.New("unpublished catalog contains entries")

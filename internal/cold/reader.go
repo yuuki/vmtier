@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +22,8 @@ type Reader struct {
 	// allocation policy; a fresh nonce namespaces each archive attempt.
 	Store              objectstore.BlobStore
 	CatalogStore       catalog.Store
+	SQLiteCatalog      *catalog.SQLite
+	BlobLocator        catalog.BlobLocator
 	Tenants            map[string]bool
 	Sources            []string
 	SourceFingerprints map[string]string
@@ -44,9 +47,35 @@ func (r *Reader) RequiredEnd(now time.Time) int64 {
 	}
 	return (now.Add(-r.Age).UnixMilli() / w) * w
 }
+func (r *Reader) expectedContract() (catalog.Contract, error) {
+	if r.Store == nil || (r.CatalogStore == nil) == (r.SQLiteCatalog == nil) || r.Window.Milliseconds() <= 0 || r.Window%time.Millisecond != 0 || r.Age <= 0 || r.Age%time.Millisecond != 0 || r.LatenessMS < 0 || r.Age.Milliseconds() <= r.LatenessMS || len(r.Sources) == 0 || len(r.Tenants) == 0 || len(r.SourceFingerprints) != len(r.Sources) || r.CoverageStart < 0 || r.DedupMS <= 0 || r.MaxQueryBytes < 0 || r.CacheBytes < 0 {
+		return catalog.Contract{}, errors.New("invalid Cold reader configuration")
+	}
+	want := catalog.Contract{CoverageStart: r.CoverageStart, WindowMS: r.Window.Milliseconds(), DedupMS: r.DedupMS, AgeMS: r.Age.Milliseconds(), LatenessMS: r.LatenessMS}
+	for tenant, enabled := range r.Tenants {
+		if !enabled {
+			return catalog.Contract{}, errors.New("configured tenant must be enabled")
+		}
+		want.Tenants = append(want.Tenants, tenant)
+	}
+	seen := make(map[string]bool, len(r.Sources))
+	for _, source := range r.Sources {
+		if seen[source] {
+			return catalog.Contract{}, errors.New("duplicate configured source")
+		}
+		seen[source] = true
+		want.Sources = append(want.Sources, catalog.Source{ID: source, Fingerprint: r.SourceFingerprints[source]})
+	}
+	return want, nil
+}
+
 func (r *Reader) Catalog(ctx context.Context) (*catalog.Manifest, error) {
-	if r.Store == nil || r.CatalogStore == nil || r.Window.Milliseconds() <= 0 || r.Window%time.Millisecond != 0 || r.Age <= 0 || r.Age%time.Millisecond != 0 || r.LatenessMS < 0 || r.Age.Milliseconds() <= r.LatenessMS || len(r.Sources) == 0 || len(r.Tenants) == 0 || len(r.SourceFingerprints) != len(r.Sources) || r.CoverageStart < 0 || r.DedupMS <= 0 || r.MaxQueryBytes < 0 || r.CacheBytes < 0 {
-		return nil, errors.New("invalid Cold reader configuration")
+	want, e := r.expectedContract()
+	if e != nil {
+		return nil, e
+	}
+	if r.SQLiteCatalog != nil {
+		return nil, errors.New("SQLite readers use bounded selection, not a full manifest")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -60,27 +89,66 @@ func (r *Reader) Catalog(ctx context.Context) (*catalog.Manifest, error) {
 	if m == nil || generation == 0 {
 		return nil, errors.New("catalog unbound: archive has not committed")
 	}
-	want := catalog.Contract{CoverageStart: r.CoverageStart, WindowMS: r.Window.Milliseconds(), DedupMS: r.DedupMS, AgeMS: r.Age.Milliseconds(), LatenessMS: r.LatenessMS}
-	for tenant, enabled := range r.Tenants {
-		if !enabled {
-			return nil, errors.New("configured tenant must be enabled")
-		}
-		want.Tenants = append(want.Tenants, tenant)
-	}
-	seen := make(map[string]bool, len(r.Sources))
-	for _, source := range r.Sources {
-		if seen[source] {
-			return nil, errors.New("duplicate configured source")
-		}
-		seen[source] = true
-		want.Sources = append(want.Sources, catalog.Source{ID: source, Fingerprint: r.SourceFingerprints[source]})
-	}
 	if !catalog.EqualContract(m.Contract, want) {
 		return nil, errors.New("catalog immutable contract differs from reader configuration")
 	}
 	return m, nil
 }
+
+// SQLiteStatus validates the fixed authority and blob location. Contract and
+// locator cannot change during this catalog's lifetime, so a subsequent Select
+// can safely take a newer publication snapshot without reinterpreting its keys.
+func (r *Reader) SQLiteStatus(ctx context.Context) (catalog.SQLiteStatus, error) {
+	want, err := r.expectedContract()
+	if err != nil {
+		return catalog.SQLiteStatus{}, err
+	}
+	if r.SQLiteCatalog == nil {
+		return catalog.SQLiteStatus{}, errors.New("SQLite catalog is not configured")
+	}
+	state, err := r.SQLiteCatalog.Status(ctx)
+	if err != nil {
+		return state, err
+	}
+	if !catalog.EqualContract(state.Contract, want) {
+		return state, errors.New("catalog immutable contract differs from reader configuration")
+	}
+	blob, err := catalog.NormalizeBlobLocator(r.BlobLocator)
+	if err != nil {
+		return state, err
+	}
+	if state.Blob != blob {
+		return state, errors.New("catalog blob locator differs from reader configuration")
+	}
+	return state, nil
+}
+
+func sqliteCoverage(state catalog.SQLiteStatus) map[string]int64 {
+	out := make(map[string]int64, len(state.Contract.Tenants))
+	for _, stream := range state.Coverage {
+		previous, ok := out[stream.Tenant]
+		if !ok || stream.End < previous {
+			out[stream.Tenant] = stream.End
+		}
+	}
+	return out
+}
+
 func (r *Reader) Ready(ctx context.Context) (map[string]int64, error) {
+	if r.SQLiteCatalog != nil {
+		state, err := r.SQLiteStatus(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := sqliteCoverage(state)
+		need := r.RequiredEnd(time.Now())
+		for tenant, end := range out {
+			if end < need {
+				return out, fmt.Errorf("archive coverage for %s ends at %d; required %d", tenant, end, need)
+			}
+		}
+		return out, nil
+	}
 	m, e := r.Catalog(ctx)
 	if e != nil {
 		return nil, e
@@ -153,11 +221,14 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 	if !r.Tenants[tenant] {
 		return nil, errors.New("tenant not configured")
 	}
-	m, e := r.Catalog(ctx)
+	limit := r.MaxQueryBytes
+	if limit <= 0 {
+		limit = 128 << 20
+	}
+	selected, coverage, e := r.selectPacks(ctx, tenant, sq, limit)
 	if e != nil {
 		return nil, e
 	}
-	coverage := catalog.Coverage(m, tenant, r.Sources, r.CoverageStart)
 	required := r.RequiredEnd(time.Now())
 	if coverage < required && sq.MaxTimestamp >= coverage && sq.MinTimestamp < required {
 		return nil, fmt.Errorf("unarchived required interval [%d,%d)", coverage, required)
@@ -166,20 +237,17 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 	if e != nil {
 		return nil, e
 	}
-	limit := r.MaxQueryBytes
-	if limit <= 0 {
-		limit = 128 << 20
-	}
 	var used int64
 	var result []storage.MetricBlock
-	for _, entry := range m.Entries {
-		if entry.Tenant != tenant || entry.End <= sq.MinTimestamp || entry.Start > sq.MaxTimestamp {
-			continue
-		}
+	for _, entry := range selected {
 		if e := ctx.Err(); e != nil {
 			return nil, e
 		}
-		data, e := r.cached(ctx, entry.IndexKey, 0, -1, entry.IndexSHA256)
+		ref := entry.Ref
+		if entry.CheckDescriptor && ref.IndexBytes > limit-used {
+			return nil, errors.New("query index/read byte limit exceeded")
+		}
+		data, e := r.cached(ctx, ref.IndexKey, 0, -1, ref.IndexSHA256)
 		if e != nil {
 			return nil, e
 		}
@@ -194,6 +262,9 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 		if idx.Tenant.String() != tenant || idx.Start != entry.Start || idx.End != entry.End {
 			return nil, errors.New("index disagrees with committed catalog")
 		}
+		if entry.CheckDescriptor && (int64(len(data)) != ref.IndexBytes || idx.Size != ref.DataBytes || idx.SHA256 != ref.DataSHA256) {
+			return nil, errors.New("index disagrees with committed pack descriptor")
+		}
 		for i, s := range idx.Series {
 			if !matcher.MatchLabels(s.Labels) {
 				continue
@@ -206,7 +277,7 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 				if used > limit || len(result) >= 100000 {
 					return nil, errors.New("query decoded/read budget exceeded")
 				}
-				raw, e := r.cached(ctx, entry.DataKey, b.Offset, b.Length, b.SHA256)
+				raw, e := r.cached(ctx, ref.DataKey, b.Offset, b.Length, b.SHA256)
 				if e != nil {
 					return nil, e
 				}
@@ -221,4 +292,54 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 		}
 	}
 	return result, nil
+}
+
+type selectedPack struct {
+	Start, End      int64
+	Ref             catalog.PackRef
+	CheckDescriptor bool
+}
+
+func (r *Reader) selectPacks(ctx context.Context, tenant string, sq *storage.SearchQuery, limit int64) ([]selectedPack, int64, error) {
+	var out []selectedPack
+	if r.SQLiteCatalog == nil {
+		m, err := r.Catalog(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, entry := range m.Entries {
+			if entry.Tenant == tenant && entry.End > sq.MinTimestamp && entry.Start <= sq.MaxTimestamp {
+				out = append(out, selectedPack{Start: entry.Start, End: entry.End, Ref: catalog.PackRef{
+					DataKey: entry.DataKey, IndexKey: entry.IndexKey, IndexSHA256: entry.IndexSHA256,
+				}})
+			}
+		}
+		return out, catalog.Coverage(m, tenant, r.Sources, r.CoverageStart), nil
+	}
+	state, err := r.SQLiteStatus(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	start := max(sq.MinTimestamp, r.CoverageStart)
+	end := sq.MaxTimestamp
+	if end < math.MaxInt64 {
+		end++
+	}
+	// A committed half-open window can never contain MaxInt64 itself. Metadata
+	// requests commonly use that inclusive upper bound; avoid overflowing it.
+	if start >= end {
+		return nil, sqliteCoverage(state)[tenant], nil
+	}
+	plan, err := r.SQLiteCatalog.Select(ctx, catalog.Selection{
+		Tenant: tenant, Start: start, End: end, MaxPlanBytes: min(limit, 16<<20),
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, window := range plan.Windows {
+		for _, ref := range window.Packs {
+			out = append(out, selectedPack{Start: window.Start, End: window.End, Ref: ref, CheckDescriptor: true})
+		}
+	}
+	return out, plan.CoverageEnd, nil
 }

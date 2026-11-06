@@ -1,14 +1,49 @@
-# Reproducing MVP validation
+# Reproducing validation
 
 The target is **VictoriaMetrics OSS v1.128.0-cluster**, commit
 `9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. No VM patches are applied.
 `build-vm.sh` verifies the SHA-256 of a pinned source archive and builds
 vmstorage, vminsert, and vmselect using upstream vendored dependencies.
 Use Go 1.25.3 or newer and Python 3.10 or newer.
-The current v2 suite tests an independent persistent HTTP catalog authority and
-a blob store using ordinary PUT/GET/Range requests. Evidence from the previous
+The retained JSON v2 suite tests an independent persistent HTTP catalog authority and
+a blob store using ordinary PUT/GET/Range requests. The SQLite service has a separate
+harness described below. Evidence from the previous
 all-S3 catalog architecture is kept under [legacy-v1](results/legacy-v1/README.md)
 and is not included in current results.
+
+## SQLite service
+
+After building vmtier and the pinned stock VM binaries and installing the Python
+dependencies shown below, run:
+
+```sh
+python3 scripts/e2e_serve.py --backend local --workdir .cache/serve-local-fresh
+MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e_serve.py \
+  --backend s3 --replicas 2 --workdir .cache/serve-s3-fresh
+```
+
+This harness starts one SQLite `serve` process. It exercises automatic archive
+progress, a failed tenant alongside a healthy tenant, interrupted export and restart,
+exclusive ownership, configuration drift rejection, Hot absence, 360 exact query
+comparisons, metadata, cache behavior, corrupt objects, and offline maintenance.
+It uses the same strict S3 proxy and disposable VM fixture as the JSON v2 suite.
+The archive-age boundary is held between complete windows by a fixture-specific H;
+there is no runtime clock override or scheduler pause mode.
+
+The combined stock vmselect uses `-search.maxLabelsAPIDuration=30s`. The default
+five-second label API deadline was exceeded by an uncached S3 metadata scan; the
+reader still validates full payload blocks and is not optimized for metadata.
+See [service validation](serve-validation.md) for results, preserved failure evidence,
+provenance, and unexecuted checks. Loopback timings do not qualify provider performance.
+
+## Legacy JSON v2 suite
+
+The current regression harness also sets `-search.maxLabelsAPIDuration=30s` on
+the combined frontend. Its uncached S3 metadata reads share the full-block cost
+described above, even without the SQLite service's request limiter. This setting
+is recorded in new reports; the historical MVP reports retain their original
+configuration. See [stage 2 validation](serve-validation.md) for the default-deadline
+failure and subsequent regression results.
 
 ```sh
 ./scripts/build-vm.sh
@@ -136,6 +171,9 @@ gateway fails queries and readiness even with a warm cache. Coverage-gap tests u
 fixtures whose initial contract already has a shorter H, rather than substituting
 a later configuration mismatch for an actual missing-coverage test.
 
-The automatic archive no-op check assumes a normal short run that finishes in the
-same UTC hour as fixture generation. After an interruption crossing the next UTC
-hour, another window becomes age-eligible; retry the suite with a new workdir.
+The JSON v2 fixture assumes the run finishes in the same UTC hour as fixture
+generation. Crossing the next UTC hour makes another window age-eligible: the
+automatic no-op check can change, and queries requiring that unarchived window
+correctly fail. Start this suite with enough time before the hour boundary and
+retry with a new workdir if it crosses. The SQLite service fixture uses its own
+archive-age offset to keep the next eligible window about 30 minutes away.

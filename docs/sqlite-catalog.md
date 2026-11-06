@@ -1,17 +1,20 @@
-# SQLite catalog foundation
+# SQLite catalog, maintenance, and migration
 
-This implements the catalog foundation of [the first-release design](design.md).
-It is available through an internal Go repository and **offline management commands**.
-The existing `archive`, `gateway`, `inspect`, `verify`, and catalog HTTP service still
-use JSON catalog v2. They do not read or publish SQLite catalogs yet. The single-owner
-`serve` process and runtime integration are the next step.
+SQLite is the catalog backend for the single-owner [`serve` runtime](serve.md).
+The service owns the repository, archive scheduler, and read RPC gateway for its
+lifetime. Catalog initialization, import, backup, restore, inspection, and payload
+verification are **offline operations**: stop `serve` before opening its state
+directory with another command.
 
-Do not set `catalog.type=sqlite`: that setting is not supported yet. Imported SQLite
-state is a migration candidate for inspection and testing, not a replacement query
-backend at this implementation stage.
+Use `catalog.type="sqlite"` with an explicit state path and ID for `serve`, `inspect`,
+and `verify`. Standalone `archive` and `gateway` reject SQLite configurations; they
+remain part of the legacy JSON v2 deployment. The catalog HTTP service also remains
+a JSON v2 tool. SQLite has no public catalog HTTP API.
 
-Executed tests and remaining verification are recorded in
-[stage 1 validation](sqlite-catalog-validation.md).
+The [stage 1 validation](sqlite-catalog-validation.md) records the original repository
+and offline-command checks. Current runtime evidence and unexecuted checks are in
+[service validation](serve-validation.md); the remaining implementation stages are
+tracked in the [first-release design](design.md).
 
 ## Repository behavior
 
@@ -42,7 +45,8 @@ v1.14.32` archive and generates vendor files. CGO compiles bundled SQLite, so a 
 compiler is required. The default build needs no separate SQLite service or system
 SQLite library. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 
-Use a valid existing-format configuration for archive policy and blob location.
+Use a valid configuration for archive policy and blob location, such as the
+[SQLite service example](../examples/serve-sakura.json).
 The usual tenant/source, timing, and `lateness_enforced` checks apply. Initialization
 does not prove capacity or enforce ingestion policy. S3 credentials and connectivity
 are not needed to initialize or inspect catalog metadata.
@@ -54,9 +58,23 @@ are not needed to initialize or inspect catalog metadata.
   -path .state/sqlite-catalog -id catalog-sqlite-001
 ```
 
-The explicit `-id` identifies the new catalog. Legacy `catalog.type` and connection
-fields do not select a SQLite runtime. Initialization binds the contract and creates
+The explicit `-id` identifies the new catalog. For runtime use, set the configuration
+to the same path and ID:
+
+```json
+{
+  "catalog": {
+    "type": "sqlite",
+    "path": ".state/sqlite-catalog",
+    "id": "catalog-sqlite-001"
+  }
+}
+```
+
+Initialization binds the archive contract and normalized blob locator and creates
 per-stream checkpoints at coverage start; it does not create archived coverage.
+`serve` never initializes missing state. A different contract, ID, or blob locator
+fails startup before the S3 client is opened.
 
 Inspect a bounded reference plan with half-open millisecond timestamps, replacing
 these example times with an archived interval:
@@ -68,8 +86,22 @@ these example times with an archived interval:
 ```
 
 The result contains references and complete coverage end, **not metric query results
-or an assertion that the requested interval is fully covered**. The future reader
-must still apply age/coverage rules and verify object contents.
+or an assertion that the requested interval is fully covered**. The service reader
+applies age/coverage rules and verifies fetched object contents separately.
+
+The configuration-based maintenance commands are also available while `serve` is
+stopped:
+
+```sh
+.bin/vmtier inspect -config config.json
+.bin/vmtier verify -config config.json
+```
+
+`inspect` reports SQLite status. `verify` performs a full historical payload scrub
+through bounded selections, one logical time window at a time, including source
+windows ahead of a tenant's minimum coverage. Neither command can bypass the state
+directory's lifetime ownership lock. A full scrub can take significant time and
+S3 requests; allow enough Hot headroom for maintenance and subsequent catch-up.
 
 Default selection caps are 4,096 windows, 4,096 packs, and 16 MiB of descriptors.
 Internal API maxima are 100,000 windows/packs and 64 MiB of plan budget. One window
@@ -101,10 +133,25 @@ Coverage and references are the migration invariants.
 Unbound state, policy mismatch, gaps, bad indexes, and existing destinations fail.
 Staging remains private until the whole import succeeds. Gap repair and all-S3 v1
 migration are not automated. Keep the old writer stopped during the import: v2's
-file adapter does not provide a lifetime process lock. After inspection, resume the
-existing JSON archiver/catalog deployment for actual queries and archival. The
-SQLite candidate is then only a point-in-time snapshot; import fresh state before
-a future cutover. Runtime cutover and source catch-up await service integration.
+file adapter does not provide a lifetime process lock.
+
+To cut over after inspection:
+
+1. Create a service configuration with `catalog.type="sqlite"`,
+   `catalog.path=".state/imported-sqlite"`, and `catalog.id="catalog-sqlite-002"`.
+   Preserve the imported archive contract and blob locator, including source IDs
+   and URLs, tenants, timing, coverage start, and object-store location.
+2. Keep the old writer stopped and start `vmtier serve -config FILE` against the
+   imported state. The scheduler resumes from each stream's committed coverage.
+   Missing eligible windows can be caught up only while Hot still provides them
+   within the configured retention safety margin.
+3. Check `/ready`, coverage, Cold-only queries, and Hot/Cold boundary queries before
+   switching the query frontend to the new listener or considering a retention
+   change. vmtier never changes Hot retention itself.
+
+If the old JSON deployment is resumed instead, the imported database is only a
+point-in-time snapshot. Import fresh state under a new ID before a later cutover.
+Retain the old authority and objects until rollback and recovery needs are resolved.
 
 ## Offline backup and restore
 
@@ -128,7 +175,15 @@ Restore checks database length/checksum, schema, metadata, contiguous coverage,
 publication digests, and pack references. A new ID and nonexistent destination are
 required. Existing state is never overwritten. Restore does not contact S3, scrub
 payloads, discover orphans, or recover commits missing from an older backup.
-Repository tests exercise restored publication/catch-up mechanics, not VM recovery.
+Repository tests exercise restored publication/catch-up mechanics; those checks do
+not establish recovery from a real VM or object-store disaster.
+
+Set a service configuration to `catalog.type="sqlite"`, the restored path, and
+the new ID, preserving the saved contract and blob locator. Once the old owner is
+isolated, start `serve`. Its scheduler automatically resumes from restored coverage
+and rearchives the missing suffix while Hot retention permits. `/ready` remains
+unsuccessful until all required streams catch up. Restoring the metadata alone
+does not restore missing object bytes or expired Hot history.
 
 Operational recovery still requires backup age plus restore/catch-up time to fit Hot
 headroom. A backup cannot restore expired source history. Unsupported schema versions
@@ -140,7 +195,10 @@ This is a single-host component requiring correct local filesystem locks and syn
 A directory lock does not exclude another host or directory targeting the same
 bucket. HA, distributed fencing, online backups, and automatic restore are absent.
 
-The new repository represents multiple packs and independent streams. The MVP
-archiver still emits one pack per stream/window and publishes JSON across configured
-streams. Pack rotation, shared S3 throttling, LRU caching, range coalescing, and
-runtime use of this repository remain separate work.
+The repository and reader support multiple packs and independent streams. The
+SQLite archiver publishes independently per tenant/source/window, emits zero packs
+for a verified empty window, and still emits one pack for a nonempty window. The
+service shares one S3 request budget across archival and reads. Streaming pack
+rotation, incremental oracle parsing, LRU caching, and range coalescing remain
+separate implementation stages. Actual Sakura compatibility, capacity, natural Hot
+retention transitions, and deployment ingress enforcement still require testing.

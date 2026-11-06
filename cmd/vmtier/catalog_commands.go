@@ -15,8 +15,7 @@ import (
 	"github.com/yuuki/vmtier/internal/pack"
 )
 
-// SQLite management is offline until the single-owner service is implemented.
-// It deliberately does not adapt the bounded repository into a whole-manifest API.
+// SQLite management is offline and refuses a directory owned by serve.
 func initializeSQLite(ctx context.Context, file, dir, id string) error {
 	c, err := config.Read(file)
 	if err != nil {
@@ -32,18 +31,7 @@ func initializeSQLite(ctx context.Context, file, dir, id string) error {
 }
 
 func sqliteConfiguration(c *config.Config) (catalog.Contract, catalog.BlobLocator) {
-	a := c.Archive(c.CoverageStart, c.CoverageStart)
-	contract := catalog.Contract{
-		CoverageStart: c.CoverageStart, WindowMS: a.Window.Milliseconds(),
-		AgeMS: a.Age.Milliseconds(), LatenessMS: a.Lateness.Milliseconds(), DedupMS: 1,
-		Tenants: append([]string(nil), c.Tenants...),
-	}
-	for _, source := range c.Sources {
-		contract.Sources = append(contract.Sources, catalog.Source{
-			ID: source.ID, Fingerprint: pack.Sum([]byte(source.URL)),
-		})
-	}
-	return contract, catalog.BlobLocator{
+	return c.ArchiveContract(), catalog.BlobLocator{
 		Type: c.Store.Type, Path: c.Store.Path, Endpoint: c.Store.Endpoint,
 		Region: c.Store.Region, Bucket: c.Store.Bucket, Prefix: c.Store.Prefix,
 	}

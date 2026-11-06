@@ -1,14 +1,61 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func good() Config {
 	return Config{Store: Store{Type: "local", Path: "ignored"}, Catalog: Catalog{Type: "local", Path: "catalog-disk", ID: "test-catalog"}, Tenants: []string{"7"}, Sources: []Source{{ID: "hot", URL: "http://localhost:8481/"}}, ArchiveAge: "2h", HotRetention: "24h", Lateness: "1h", SafetyMargin: "2h", Window: "1h", CoverageStart: 3600000, LatenessEnforced: true}
+}
+
+func TestSQLiteServiceLimits(t *testing.T) {
+	c := good()
+	c.Catalog.Type = "sqlite"
+	c.Store = Store{Type: "s3", Bucket: "fixture"}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.Store.RequestsPerSecond != 80 || c.Store.MaxConcurrentRequests != 8 || c.Store.MaxQueuedRequests != 64 || c.ArchiveInterval() != 30*time.Second || c.ArchiveTimeout() != 2*time.Minute {
+		t.Fatal("service defaults do not enable the shared budget and bounded scheduler")
+	}
+	blob, err := c.BlobLocator()
+	if err != nil || blob.Region != "us-east-1" {
+		t.Fatalf("blob defaults: %+v %v", blob, err)
+	}
+	cases := map[string]func(*Config){
+		"partial budget":               func(c *Config) { c.Store.MaxQueuedRequests = 0 },
+		"negative rate":                func(c *Config) { c.Store.RequestsPerSecond = -1 },
+		"nonfinite rate":               func(c *Config) { c.Store.RequestsPerSecond = math.Inf(1) },
+		"NaN rate":                     func(c *Config) { c.Store.RequestsPerSecond = math.NaN() },
+		"too many concurrent requests": func(c *Config) { c.Store.MaxConcurrentRequests = 10001 },
+		"busy loop":                    func(c *Config) { c.Service.ArchiveInterval = "0s" },
+		"unbounded timeout":            func(c *Config) { c.Service.ArchiveTimeout = "0s" },
+		"submillisecond interval":      func(c *Config) { c.Service.ArchiveInterval = "10ms1ns" },
+		"unbounded queue":              func(c *Config) { c.Store.MaxQueuedRequests = 100001 },
+		"unsafe endpoint":              func(c *Config) { c.Store.Endpoint = "https://user:secret@example.test" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			bad := c
+			mutate(&bad)
+			if err := bad.Validate(); err == nil {
+				t.Fatal("invalid service configuration accepted")
+			}
+		})
+	}
+	c.Service = Service{ArchiveInterval: "100ms", ArchiveTimeout: "30s"}
+	c.Store.RequestsPerSecond, c.Store.MaxConcurrentRequests = 8, 1
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.ArchiveInterval() != 100*time.Millisecond || c.ArchiveTimeout() != 30*time.Second {
+		t.Fatal("custom scheduling limits ignored")
+	}
 }
 func TestValidateNormalizesIdentity(t *testing.T) {
 	c := good()

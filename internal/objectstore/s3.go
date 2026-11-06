@@ -29,6 +29,10 @@ type S3Config struct {
 	MaxObjectBytes int64
 	Timeout        time.Duration
 	MaxAttempts    int
+	// All three budget values must be set together; zero disables the budget.
+	RequestsPerSecond     float64
+	MaxConcurrentRequests int
+	MaxQueuedRequests     int
 }
 
 // S3 uses ordinary PutObject, GetObject and single-range GetObject only.
@@ -40,6 +44,7 @@ type S3 struct {
 	max            int64
 	timeout        time.Duration
 	stats          counters
+	budget         *requestBudget
 }
 
 // Count HTTP attempts, including SDK retries, and bytes actually consumed by
@@ -80,6 +85,10 @@ func (t countedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func NewS3(c S3Config) (*S3, error) {
+	budget, err := newRequestBudget(c.RequestsPerSecond, c.MaxConcurrentRequests, c.MaxQueuedRequests)
+	if err != nil {
+		return nil, err
+	}
 	if c.MaxObjectBytes == 0 {
 		c.MaxObjectBytes = DefaultMaxObjectBytes
 	}
@@ -121,11 +130,15 @@ func NewS3(c S3Config) (*S3, error) {
 	if access == "" || secret == "" {
 		return nil, fmt.Errorf("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set")
 	}
-	store := &S3{bucket: c.Bucket, prefix: c.Prefix, max: c.MaxObjectBytes, timeout: c.Timeout}
+	store := &S3{bucket: c.Bucket, prefix: c.Prefix, max: c.MaxObjectBytes, timeout: c.Timeout, budget: budget}
+	var transport http.RoundTripper = countedTransport{http.DefaultTransport, &store.stats}
+	if budget != nil {
+		transport = budgetTransport{base: transport, budget: budget}
+	}
 	opts := s3.Options{
 		Region:                     c.Region,
 		Credentials:                credentials.NewStaticCredentialsProvider(access, secret, os.Getenv("AWS_SESSION_TOKEN")),
-		HTTPClient:                 &http.Client{Timeout: c.Timeout, Transport: countedTransport{http.DefaultTransport, &store.stats}},
+		HTTPClient:                 &http.Client{Timeout: c.Timeout, Transport: transport},
 		RetryMaxAttempts:           c.MaxAttempts,
 		UsePathStyle:               true,
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
@@ -139,6 +152,8 @@ func NewS3(c S3Config) (*S3, error) {
 }
 
 func (s *S3) Stats() Snapshot { return s.stats.snapshot() }
+
+func (s *S3) BudgetStats() BudgetSnapshot { return s.budget.snapshot() }
 
 func s3Error(err error) error {
 	var api smithy.APIError

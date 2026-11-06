@@ -32,9 +32,11 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: vmtier archive|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-backup|catalog-restore; version")
+		return errors.New("usage: vmtier serve|archive|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-backup|catalog-restore; version")
 	}
 	switch args[0] {
+	case "serve":
+		return runServeCommand(args)
 	case "catalog-inspect", "catalog-import", "catalog-backup", "catalog-restore":
 		return runCatalogMaintenance(args)
 	}
@@ -42,7 +44,7 @@ func run(args []string) error {
 		return runCatalog(args)
 	}
 	if args[0] == "version" {
-		fmt.Printf("vmtier MVP; catalog v%d; SQLite schema %d (offline); VM %s %s\n", catalog.Version, catalog.SQLiteSchemaVersion, pack.VMVersion, pack.VMRevision)
+		fmt.Printf("vmtier; JSON catalog v%d; SQLite schema %d; VM %s %s\n", catalog.Version, catalog.SQLiteSchemaVersion, pack.VMVersion, pack.VMRevision)
 		return nil
 	}
 	switch args[0] {
@@ -66,6 +68,11 @@ func run(args []string) error {
 	if e != nil {
 		return e
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if c.Catalog.Type == "sqlite" {
+		return runSQLiteOffline(ctx, args[0], c)
+	}
 	cs, e := c.OpenCatalog()
 	if e != nil {
 		return e
@@ -73,8 +80,6 @@ func run(args []string) error {
 	if closer, ok := cs.(interface{ Close() error }); ok {
 		defer closer.Close()
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if args[0] == "inspect" {
 		m, _, err := catalog.Load(ctx, cs)
 		if err != nil {

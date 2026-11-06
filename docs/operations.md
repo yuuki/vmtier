@@ -1,6 +1,6 @@
-# Deployment, operation, and recovery
+# Legacy JSON v2 deployment, operation, and recovery
 
-This document describes the **current MVP**, which is intended for reproducible evaluation. The [first-release design](design.md) separates implemented groundwork from planned runtime changes. The new [SQLite catalog commands](sqlite-catalog.md) are offline tools; SQLite is not yet a query/archive backend. See the [README](../README.md) for setup, the [MVP design](mvp-design.md) for implemented behavior, and [compatibility](compatibility.md) for protocol coverage.
+The command procedures on this page describe the retained **JSON v2 MVP**, which uses separate archiver, catalog, and gateway processes. For the current SQLite runtime, use the [`serve` guide](serve.md) and [SQLite maintenance and migration guide](sqlite-catalog.md). The lateness, retention, immutable-object, and trusted-network requirements apply to both runtimes. See the [first-release design](design.md) for implemented stages and remaining work, and [compatibility](compatibility.md) for protocol coverage.
 
 ## Initial deployment
 
@@ -52,9 +52,9 @@ The deployment requirement assumes conditional PUT is unavailable on Sakura Obje
 
 The adapter sends Content-MD5 in line with the checksum scope in the [official API documentation](https://manual.sakura.ad.jp/cloud/objectstorage/api.html). It independently verifies stored content with read-back GET and SHA-256. The [April 9, 2026 announcement](https://cloud.sakura.ad.jp/news/2026/04/09/objectstorage-checksum/) reports removal of earlier SDK checksum compatibility restrictions; an older AWS SDK is not a deployment requirement.
 
-The documented bucket limits are 100 requests/second and 100 concurrent requests for the [standard plan](https://manual.sakura.ad.jp/cloud/objectstorage/about.html), and 10 requests/second with one concurrent request for the [archive plan](https://manual.sakura.ad.jp/cloud/objectstorage/archiveplan.html). The MVP's local concurrency controls do not enforce a bucket-wide request budget across gateways, metadata, archival, and retries. Operation within the archive-plan limits has not been validated. A deployment that depends on those limits needs aggregate rate and concurrency control followed by testing.
+The documented bucket limits are 100 requests/second and 100 concurrent requests for the [standard plan](https://manual.sakura.ad.jp/cloud/objectstorage/about.html), and 10 requests/second with one concurrent request for the [archive plan](https://manual.sakura.ad.jp/cloud/objectstorage/archiveplan.html). The legacy separate-process MVP cannot share a bucket request budget across gateways and archivers. The SQLite `serve` runtime now shares one paced budget across archival, reads, metadata, verification, and every SDK retry attempt, defaulting to 80 requests/second, eight in flight, and 64 queued requests. An archive-plan candidate is eight requests/second, one in flight, and 64 queued; it remains unqualified on the actual provider. All clients using the bucket must fit the aggregate provider limits; a dedicated prefix alone does not isolate them.
 
-No actual Sakura bucket or credentials have been used to validate connectivity, SigV4, visibility after PUT, Range GET, quotas, recovery, or performance. The local Moto backend and proxy that rejects conditional requests and removes ETags approximate these API constraints; they are not service certification. See the [configuration example](../examples/sakura.json).
+No actual Sakura bucket or credentials have been used to validate connectivity, SigV4, visibility after PUT, Range GET, quotas, recovery, or performance. The local Moto backend and proxy that rejects conditional requests and removes ETags approximate these API constraints; they are not service certification. See the [SQLite service example](../examples/serve-sakura.json), [service budget metrics](serve.md), and [legacy JSON v2 example](../examples/sakura.json).
 
 ## Monitoring
 
@@ -91,6 +91,12 @@ Retention headroom is the finite time until the oldest unarchived sample can no 
 Published object keys are never reused. A new attempt uses a fresh nonce and keys, so a lost PUT response or generation conflict can leave orphan objects. Queries read only catalog references. After a lost commit response, reload the authority before deciding what remains to publish. The MVP supports bounded, single-PUT objects; multipart abort and cleanup are out of scope.
 
 ## Catalog backup, restore, and older formats
+
+For SQLite, use the implemented offline `catalog-backup`, `catalog-restore`, and
+JSON v2 `catalog-import` commands described in [catalog maintenance](sqlite-catalog.md).
+Stop `serve` first; its lifetime state lock rejects concurrent maintenance. After
+restore to a new path and ID, `serve` can catch up from Hot while retention permits.
+The manual authority handling below applies to legacy JSON v2 state.
 
 The catalog is the authority for committed coverage, not a disposable index reconstructible from an S3 listing. Stop the writer and quiesce commits before copying its state. Record the catalog ID, generation, contract, and referenced objects. Do not race a raw file copy with a commit. The MVP has no online backup or automatic restore command.
 

@@ -1,15 +1,25 @@
 # First-release design
 
 This is the implementation design for the first supported vmtier release. The
-repository currently implements the **v2 MVP**, not all the features specified
-below. [MVP architecture](mvp-design.md), [compatibility](compatibility.md), and
-[validation](validation.md) describe executable code and measured behavior.
-[ADR 0003](adr/0003-first-release-scope.md) records the scope of this next step.
+[SQLite catalog](sqlite-catalog.md) and [`serve` runtime](serve.md) implement the
+first two delivery stages: transactional per-stream publication, offline migration
+and recovery commands, one owner for archival and queries, and a shared S3 request
+budget. The design also specifies work that remains unimplemented. See
+[service validation](serve-validation.md) for runtime evidence and
+[ADR 0003](adr/0003-first-release-scope.md) for the selected scope.
 
-The [SQLite foundation](sqlite-catalog.md) now implements the repository and offline
-initialization/inspection, v2 import, and backup/restore portions of step 1. The
-running archiver and gateway still use JSON v2; service integration, multi-pack
-archive production, and the other runtime changes below remain planned.
+| Area | Current implementation |
+| --- | --- |
+| Catalog | SQLite schema 1, bounded indexed selection, independent stream coverage, offline v2 import and backup/restore |
+| Service | Lifetime state lock, age-based scheduler, read RPC, health/metrics, shared S3 attempt budget |
+| Archive | Existing exact native/raw oracle checks; zero packs for verified empty windows, one pack for each nonempty window |
+| Reader | SQLite selection and multiple-pack reading; existing cache and sequential block GETs |
+| Remaining work | Streaming pack rotation, incremental oracle parsing, LRU/miss coalescing, adjacent-range reads, workload and provider qualification |
+
+The legacy [JSON v2 MVP architecture](mvp-design.md) and its
+[historical validation](validation.md) remain the regression baseline. Neither
+those results nor completion of the first two stages establishes release capacity
+or real-provider support.
 
 The goal remains age-based archival of existing VictoriaMetrics samples to S3,
 with queries through an unmodified stock vmselect after those samples leave Hot.
@@ -28,7 +38,7 @@ required no ETags.
 These establish compatibility for the fixture, not production capacity. No real
 Sakura service was used.
 
-| Current behavior | Practical consequence | First-release change |
+| JSON v2 MVP behavior | Practical consequence | First-release change |
 | --- | --- | --- |
 | Complete JSON catalog read, validation, and rewrite; at most 10,000 entries | With six-hour windows, ten tenants and one source reach the entry limit in 250 days; 100 tenants reach it in 25 days | Embedded SQLite, indexed selection, persisted coverage |
 | One bounded pack per tenant/source/window | A busy window exceeds the pack limit even when each native block is small | Multiple bounded packs in an atomic logical window |
@@ -61,7 +71,7 @@ flowchart LR
   Budget --> S3[S3: immutable packs and indexes]
 ```
 
-The planned `serve` command owns scheduling, catalog access, the read RPC listener,
+The implemented `serve` command owns scheduling, catalog access, the read RPC listener,
 and health/metrics endpoints. It uses one state directory on persistent local disk
 and one process lock for that directory. A second process using that directory
 fails at startup. This prevents accidental local double starts; it is not
@@ -72,15 +82,16 @@ initialized catalog and rejects missing, corrupt, or wrong-ID state. Disable
 SQLite's implicit create-on-open on this path so a missing volume or path typo
 cannot silently create an empty authority.
 
-Keep the existing Go package boundaries. `internal/catalog` becomes an in-process
-transactional repository, without a public network API in the supported deployment.
-The current HTTP catalog and local adapters remain MVP tools until the replacement
-is verified. Do not maintain two production architectures or add a generic database
-framework. Separate hosts or catalog services require a later demonstrated need.
+The existing Go package boundaries remain. `internal/catalog` exposes an in-process
+transactional repository, without a public network API in the selected deployment.
+The HTTP catalog and JSON local adapters remain legacy MVP and migration tools.
+Do not maintain two production architectures or add a generic database framework.
+Separate hosts or catalog services require a later demonstrated need.
 
 All S3 traffic for the bucket, including verification and maintenance, must pass
-through this instance. Maintenance uses the service's work queue or runs with
-`serve` stopped. Offline commands refuse to open a state directory owned by a live
+through this instance during service operation. Maintenance currently runs with
+`serve` stopped; there is no online maintenance work queue. Offline commands refuse
+to open a state directory owned by a live
 service. Other applications sharing the bucket invalidate the bucket-wide budget;
 a dedicated prefix alone does not isolate provider quotas. Operators must also
 prevent starting another instance with a different state directory for that bucket.
@@ -121,7 +132,9 @@ bucket, prefix, endpoint, and region; credentials are not part of it. Changing
 these locator fields must require an explicit migration rather than silently
 redirecting relative object keys. Endpoint aliases are not auto-detected.
 
-Volume can grow without changing `w` because a window can contain multiple packs.
+The catalog and reader can represent multiple packs without changing `w`; the
+current writer still fails a nonempty window that exceeds one pack's limits.
+Step 3 will allow pack rotation within a logical window.
 Increasing archive age or allowed lateness in place remains rejected. Adding tenants,
 resharding sources, or changing the fixed contract needs an explicit future migration.
 Cache budgets, S3 limits, and timeouts can change through a controlled restart.
@@ -136,9 +149,10 @@ interval may still happen to exist in Hot.
 ## Catalog and publication
 
 Use SQLite on a local filesystem, with foreign keys, WAL mode, and
-`synchronous=FULL`. Use one writer connection and a small bounded read pool. The
-initial driver choice is `github.com/mattn/go-sqlite3`, matching the existing C
-toolchain requirement; pin its exact version and record notices when adding it.
+`synchronous=FULL`. The implemented repository uses one connection for short
+metadata transactions; S3 work runs outside those transactions. The pinned driver
+is `github.com/mattn/go-sqlite3 v1.14.32`, matching the existing C toolchain
+requirement, with its license recorded in [third-party notices](../THIRD_PARTY_NOTICES.md).
 SQLite addresses ordinary catalog growth and atomic updates, not HA. Do not use
 NFS or copy a live database file as a backup.
 
@@ -187,11 +201,20 @@ Catalog failure remains a query error, including with a warm object cache.
 
 ## Archive pipeline and bounded verification
 
-One archive worker processes eligible windows oldest first, selecting streams
-fairly. A failing stream receives a bounded retry time while others can advance;
-its lag remains visible. A failed source is never an empty successful window.
-Scheduling resumes from persisted coverage, without a separate durable job queue.
-Keep a one-shot operation for tests and offline administration.
+One archive worker processes at most one oldest eligible window per tenant/source
+in each pass, ordering streams by coverage age. It starts immediately and continues
+catch-up immediately after progress. A failing stream receives a retry cooldown
+while other streams can advance. `service.archive_interval` controls that cooldown
+and idle polling, defaulting to 30 seconds; `service.archive_timeout` bounds each
+window, defaulting to two minutes. A failed source is never an empty successful
+window. Scheduling resumes from persisted coverage, without a separate durable job
+queue; retry cooldowns are process-local. An internal one-pass operation supports
+tests, while the standalone `archive` CLI remains a JSON v2 tool.
+
+The following pipeline is the step 3 target. The current SQLite writer reuses the
+MVP's bounded whole-window verifier and raw JSON response handling. It already
+publishes independent streams and zero-pack empty windows, but nonempty windows
+still produce exactly one pack.
 
 For one tenant/source/window:
 
@@ -233,6 +256,10 @@ fit the agreed envelope triggers that next design. Update misleading "choose a
 smaller window" diagnostics to explain preflight/migration for a bound catalog.
 
 ## Query planning and resource limits
+
+Indexed SQLite selection and multiple-pack reads are implemented. LRU eviction,
+concurrent-miss coalescing, adjacent-range reads, and combined memory qualification
+below remain planned; the current reader keeps the MVP's cache and sequential GETs.
 
 Use the actual storage RPC range, including VM lookbehind for range vectors,
 offset, subqueries, and `@`. Retrieve tenant/time catalog candidates, apply label
@@ -279,6 +306,14 @@ latency/quota tests pass. A valid profile is not a support claim. Operators may 
 lower values and must check current provider limits. Provider links are in
 [operations](operations.md).
 
+For SQLite S3 configurations, omitting all three budget values selects 80
+`requests_per_second`, eight `max_concurrent_requests`, and 64
+`max_queued_requests`. An explicit profile must supply all three positive values.
+Legacy JSON v2 configurations with all three omitted retain unlimited S3 admission.
+The implementation uses a bounded FIFO queue; cancellation removes queued work,
+overflow returns an error, and an in-flight slot lasts until the response body is
+closed. See [service configuration and metrics](serve.md) for operational details.
+
 Reduce request pressure through coalescing and caching before adding parallelism.
 Keep normal PUT, Content-MD5, application SHA-256, and TLS verification. Conditional
 PUT, ETag CAS, LIST-based discovery, multipart upload, and object locks are not
@@ -302,7 +337,8 @@ not required for the first release.
 
 Restore into a new state directory and explicit new catalog ID with the old writer
 stopped. Validate the backup checksum, schema, contract, and reference structure,
-then rearchive the missing suffix from Hot before declaring readiness. Each query
+then configure that path and ID and start `serve`. Its scheduler rearchives the
+missing suffix from Hot before declaring readiness. Each query
 continues to verify fetched objects. A full historical object scrub is bounded
 maintenance after catch-up, not a prerequisite that consumes urgent Hot headroom;
 suspected object-store data loss requires a separate recovery assessment.
@@ -331,7 +367,7 @@ are outside this design.
 Keep portable pack/index v1 and the pinned VM RPC implementation. SQLite introduces
 an explicit catalog schema; do not relabel a JSON v2 manifest as a database.
 
-Add an offline import for current bound v2 catalogs: stop writers, validate the
+The implemented offline import accepts bound v2 catalogs: stop writers, validate the
 manifest and referenced indexes, import each entry as a one-pack window, recompute
 coverage, assign a new catalog ID, and compare queries before switching.
 Pin the operator-supplied blob locator during import; v2 does not record it.
@@ -349,6 +385,12 @@ full differential tests; this release is not a universal version adapter.
 
 Each step is a separate reviewable implementation change. Do not combine SQLite,
 pack splitting, and query optimization into one rewrite.
+
+Steps 1 and 2 are implemented. Step 2 also connects the existing archive verifier
+and read RPC to SQLite, so the service is usable end to end without waiting for
+pack rotation. Bounded catalog selection from step 4 is already used; the remaining
+archive and reader changes and step 5 qualification are still pending. Executed
+checks and their limits are recorded in the stage-specific validation reports.
 
 | Step | Work | Required evidence |
 | --- | --- | --- |

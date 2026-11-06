@@ -1,0 +1,31 @@
+{
+  "store": {
+    "type": "s3",
+    "endpoint": "http://127.0.0.1:40903",
+    "region": "us-east-1",
+    "bucket": "vmtier-test",
+    "prefix": "e2e"
+  },
+  "catalog": {
+    "type": "http",
+    "url": "http://127.0.0.1:40591",
+    "id": "vmtier-e2e-authority"
+  },
+  "tenants": [
+    "1:2",
+    "7:9"
+  ],
+  "sources": [
+    {
+      "id": "hot",
+      "url": "http://127.0.0.1:40361"
+    }
+  ],
+  "archive_age": "3h",
+  "hot_retention": "240h",
+  "lateness": "30m",
+  "safety_margin": "30m",
+  "window": "1h",
+  "lateness_enforced": true,
+  "coverage_start_ms": 1793937600000
+}

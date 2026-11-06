@@ -295,13 +295,14 @@ class Cluster:
         self.procs.clear()
 
 
-def start_select(processes, name, port, nodes):
+def start_select(processes, name, port, nodes, labels_api_duration=None):
+    extra = [] if labels_api_duration is None else [f'-search.maxLabelsAPIDuration={labels_api_duration}']
     return processes.start(name, [ROOT / '.bin/vmselect',
         f'-httpListenAddr=127.0.0.1:{port}',
         '-storageNode=' + ','.join(f'127.0.0.1:{p}' for p in nodes),
         '-replicationFactor=1', '-globalReplicationFactor=1', '-search.skipSlowReplicas=false', '-search.denyPartialResponse=true',
         '-search.disableCache', '-dedup.minScrapeInterval=1ms', '-memory.allowedBytes=128MiB',
-        f'-cacheDataPath={processes.work / name}'], f'http://127.0.0.1:{port}/health')
+        f'-cacheDataPath={processes.work / name}', *extra], f'http://127.0.0.1:{port}/health')
 
 
 def normalize(value):
@@ -386,6 +387,7 @@ def run(work, args):
                'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                'vm_revision': '9a009c491da4c17531893ab4acb6a5f1b5e0eaf2',
                'dedup_interval': '1ms', 'vm_result_cache': 'disabled',
+               'tiered_vm_labels_api_max_duration': '30s',
                'comparison': 'exact timestamps, labels and numeric strings; no tolerance',
                'checks': [], 'query_timings_ms': {}}
     tenants = ['1:2', '7:9']
@@ -629,7 +631,9 @@ def run(work, args):
         procs.stop(gateway_process)
         gateway_process = start_gateway('gateway-restarted')
         top_select = free_port()
-        start_select(procs, 'tiered-select', top_select, hot.storage_read + [gateway_port])
+        # Cold metadata validates full blocks; the default five-second label
+        # deadline can expire on an uncached S3 scan without a result mismatch.
+        start_select(procs, 'tiered-select', top_select, hot.storage_read + [gateway_port], labels_api_duration='30s')
         expressions = [
             'requests_total', 'temperature', 'cold_only', 'hot_only', 'irregular', 'special', 'stale_series',
             'duplicates', 'churn', 'millisecond_boundary',

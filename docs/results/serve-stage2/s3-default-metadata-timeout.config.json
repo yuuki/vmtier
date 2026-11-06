@@ -1,0 +1,37 @@
+{
+  "store": {
+    "type": "s3",
+    "endpoint": "http://127.0.0.1:37267",
+    "region": "us-east-1",
+    "bucket": "vmtier-serve-test",
+    "prefix": "serve",
+    "requests_per_second": 80,
+    "max_concurrent_requests": 8,
+    "max_queued_requests": 64
+  },
+  "catalog": {
+    "type": "sqlite",
+    "path": "/workspace/vmtier/.cache/serve-stage2-s3-final/catalog",
+    "id": "serve-e2e"
+  },
+  "tenants": [
+    "1:2",
+    "7:9"
+  ],
+  "sources": [
+    {
+      "id": "hot",
+      "url": "http://127.0.0.1:40937"
+    }
+  ],
+  "archive_age": "11789389ms",
+  "hot_retention": "240h",
+  "lateness": "30m",
+  "safety_margin": "30m",
+  "window": "1h",
+  "lateness_enforced": true,
+  "coverage_start_ms": 1793934000000,
+  "service": {
+    "archive_interval": "100ms"
+  }
+}

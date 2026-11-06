@@ -2,9 +2,14 @@
 
 ## Status
 
-Selected for the next implementation phase. This ADR does not describe features
-already implemented in the v2 MVP. The specification and delivery gates are in
-[the first-release design](../design.md).
+Accepted; implementation is in progress. The SQLite repository, offline v2 import
+and backup/restore, and the single-owner `serve` runtime with a shared S3 request
+budget are implemented. The runtime uses per-stream archive publication and
+bounded SQLite selection for read RPC. Streaming pack rotation, incremental oracle
+parsing, LRU/miss coalescing, adjacent-range reads, and provider/workload qualification
+remain planned. The specification and delivery gates are in
+[the first-release design](../design.md); executed runtime checks are recorded in
+[service validation](../serve-validation.md).
 
 ## Context
 

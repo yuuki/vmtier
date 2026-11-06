@@ -1,6 +1,6 @@
 # VM compatibility and protocol boundaries
 
-The implemented MVP supports **VictoriaMetrics OSS v1.128.0-cluster**, commit **`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) describes planned changes separately.
+The SQLite [`serve` runtime](serve.md) and legacy JSON v2 MVP both target **VictoriaMetrics OSS v1.128.0-cluster**, commit **`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) distinguishes implemented stages from remaining work.
 
 ## Pinned primary sources
 
@@ -44,6 +44,13 @@ The top-level vmselect requires `-replicationFactor=1 -globalReplicationFactor=1
 
 Cold metadata is calculated from actual Cold data ranges. Upstream Hot metadata can return broader ranges because its index uses daily granularity; parity is evaluated per API in E2E tests. Support does not extend to Graphite, cross-tenant discovery, or administrative statistics.
 
+Metadata currently uses full validated block reads. An uncached S3 metadata scan
+can exceed stock vmselect's five-second `-search.maxLabelsAPIDuration` default,
+with or without request pacing. The current service and JSON v2 regression fixtures
+use 30 seconds on the combined frontend; see [service query configuration](serve.md).
+This setting does not establish a production latency guarantee. Reader optimizations
+and representative workload qualification remain pending.
+
 The public RPC deadline has second-level precision and is converted into an S3 context deadline. Immediate cancellation on client disconnect is not guaranteed because the public API does not expose the RPC request context. Limits on concurrency, queueing, response bytes, and series/blocks produce explicit errors when exceeded.
 
 ## Codec and upgrades
@@ -62,7 +69,7 @@ For an upgrade:
 
 Do not relabel old packs as a new codec. Single-node VM lacks the same `storageNode` interface and is outside this integration's scope.
 
-## S3 and catalog service
+## S3 and catalog backends
 
 | Area | Implemented requirement |
 | --- | --- |
@@ -70,11 +77,20 @@ Do not relabel old packs as a new codec. Single-node VM lacks the same `storageN
 | Reads | GetObject and single-range GET with correct lengths/Content-Range; verify content with SHA-256. |
 | Conditional PUT / ETag | Not required, requested, sent, or used for checksums/CAS. |
 | LIST / multipart / DELETE | Not used in the normal path. Object discovery and GC are not provided. |
-| Commit / CAS | Generation CAS in the independent catalog HTTP service or equivalent local authority. |
-| Catalog identity | Stable ID, fixed contract, append-only complete windows. Unexpected IDs, generation rollback, or changed content at the same generation are errors. |
+| Commit / CAS | SQLite transaction per tenant/source/window in `serve`; generation CAS in the legacy JSON v2 HTTP service or local adapter. |
+| Catalog identity | Stable ID, fixed contract, append-only complete windows. SQLite additionally pins the blob locator and locks its state directory for the owner's lifetime. |
+| S3 request budget | SQLite service uses a shared rate, in-flight, and queue budget across archive/query traffic and retries; it covers the bucket only when this process is its sole client. |
 | Old S3 catalog | No automatic compatibility or migration; initialize the independent authority explicitly. |
 
-The catalog format is v2; the pack/native format remains v1. Catalog HTTP is an internal API for trusted networks, not a public VM API.
+SQLite schema 1 is used by `serve`; the retained JSON catalog format is v2. Both use
+pack/native format v1. Offline v2 import checks referenced indexes and copies
+metadata without rewriting objects; see [migration and recovery](sqlite-catalog.md).
+SQLite `inspect` and `verify` are offline and cannot open a live service's state.
+The standalone `archive` and `gateway` commands reject SQLite configurations.
+
+The following HTTP API belongs only to the legacy JSON v2 catalog. `serve` has no
+catalog HTTP listener. Catalog HTTP is an internal API for trusted networks, not a
+public VM API.
 
 | HTTP API | Behavior and errors |
 | --- | --- |
@@ -86,11 +102,16 @@ The service sets `Cache-Control: no-store`; clients request no caching and rejec
 
 The target Sakura deployment assumes conditional PUT is unavailable; exhaustive conditional-header behavior has not been demonstrated from public documentation. The [API documentation](https://manual.sakura.ad.jp/cloud/objectstorage/api.html) describes MD5 validation. Following the [2026-04-09 announcement](https://cloud.sakura.ad.jp/news/2026/04/09/objectstorage-checksum/), an old SDK is not recommended as a workaround for superseded restrictions. vmtier independently uses SHA-256 for content verification.
 
-The catalog HTTP adapter remembers observed generations within its process. Rollback detection across complete restarts, consistency among multiple authorities, and HA are not guaranteed. See [operations](operations.md) for optional bearer authentication and TLS proxy deployment. The current MVP has no bucket-wide throttling for provider request quotas.
+The catalog HTTP adapter remembers observed generations within its process and
+rejects generation rollback or changed content at the same generation. Rollback
+detection across complete restarts, consistency among multiple authorities, and HA
+are not guaranteed by either deployment. SQLite restore requires a new catalog ID.
+See [legacy operations](operations.md) for optional HTTP bearer authentication and
+TLS proxy deployment, and [service operation](serve.md) for shared S3 request limits.
 
 ## Scope of executed validation
 
-The native pack-to-gateway-to-stock-vmselect spike and exact comparisons after rebuilding Hot with recent-only data succeeded in the original architecture. Historical all-S3 catalog results remain separate. The [validation report](validation.md) is the source of current results and measurements for the independent catalog and restricted S3 proxy.
+The native pack-to-gateway-to-stock-vmselect spike and exact comparisons after rebuilding Hot with recent-only data succeeded in the original architecture. Historical all-S3 catalog results remain separate. The [MVP validation report](validation.md) records the legacy independent catalog and restricted S3 proxy results. The [SQLite foundation report](sqlite-catalog-validation.md) covers the original repository and offline tools; [service validation](serve-validation.md) records runtime checks separately. Earlier results do not establish that later implementations passed the same scenarios.
 
 Differential tests normalize label/series ordering, compare timestamps and values without tolerance, disable result caches, and use 1ms deduplication on both sides. They provide evidence for the fixture, not every MetricsQL function, cardinality, or VM release. Local S3 test doubles and the restriction proxy do not establish real Sakura/AWS IAM, SigV4 authentication, consistency SLAs, durability, or performance.
 
