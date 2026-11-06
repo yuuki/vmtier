@@ -45,7 +45,7 @@ func sqliteFixtureFor(t *testing.T, age time.Duration, sources ...string) *sqlit
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	r := &Reader{Store: blobs, SQLiteCatalog: db, BlobLocator: locator, Tenants: map[string]bool{"1:2": true, "2:1": true},
+	r := &Reader{Store: blobs, Repository: db, BlobLocator: locator, Tenants: map[string]bool{"1:2": true, "2:1": true},
 		Sources: sources, SourceFingerprints: fingerprints, CoverageStart: 0, DedupMS: 1,
 		Age: age, Window: 100 * time.Millisecond, MaxQueryBytes: 1 << 20, CacheBytes: 1 << 20}
 	return &sqliteFixture{reader: r, blobs: blobs, db: db}

@@ -87,7 +87,7 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	if closer, ok := blobs.(interface{ Close() error }); ok {
 		defer closer.Close()
 	}
-	reader, err := c.SQLiteReader(blobs, db)
+	reader, err := c.RepositoryReader(blobs, db)
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}()
 	webDone := make(chan error, 1)
 	go func() { webDone <- web.Serve(ln) }()
-	archiver := &archive.SQLiteArchiver{Store: blobs, Catalog: db, Config: c.Archive(0, 0), RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout()}
+	archiver := &archive.Archiver{Store: blobs, Catalog: db, Config: c.Archive(0, 0), RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout()}
 	archiveDone := make(chan struct{})
 	go func() {
 		defer close(archiveDone)
@@ -211,7 +211,7 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		state, err := reader.SQLiteStatus(ctx)
+		state, err := reader.CatalogStatus(ctx)
 		ready := 0
 		if err == nil {
 			ready = 1

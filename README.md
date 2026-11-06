@@ -48,7 +48,7 @@ python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/demo-s3
 
 If Go is installed outside `PATH`, use `make GO=/path/to/go ...`. The test environment must permit local TCP listeners.
 
-Bootstrap downloads checksum-pinned VM sources and the SQLite driver, then generates `.deps/` and `vendor/`. It does not update unrelated modules or patch VM. The SQLite driver uses CGO and bundled SQLite. `go.mod` and `go.sum` record the pinned dependencies; generated vendor files are not tracked in Git.
+Bootstrap downloads checksum-pinned VM sources and the SQLite and PostgreSQL drivers, then generates `.deps/` and `vendor/`. It does not update unrelated modules or patch VM. The SQLite driver uses CGO and bundled SQLite; the PostgreSQL driver is pure Go. `go.mod` and `go.sum` record the pinned dependencies; generated vendor files are not tracked in Git.
 
 The legacy JSON v2 E2E harness:
 
@@ -114,6 +114,7 @@ Keep the RPC listener on a trusted network. `/health` reports process liveness; 
 
 ## Documentation
 
+- [PostgreSQL catalog foundation](docs/postgres-catalog.md) and [HA architecture decision](docs/adr/0004-postgresql-catalog.md) — repository implementation and staged work; not yet a PostgreSQL service deployment.
 - [SQLite service guide](docs/serve.md), [service validation](docs/serve-validation.md), and [SQLite catalog maintenance and migration](docs/sqlite-catalog.md).
 - [First-release design and implementation plan](docs/design.md) — implemented stages and remaining work.
 - [Legacy JSON v2 MVP design](docs/mvp-design.md), [native gateway decision](docs/adr/0001-native-gateway.md), and [independent catalog decision](docs/adr/0002-independent-catalog.md).

@@ -1,5 +1,10 @@
 # First-release design
 
+The [PostgreSQL catalog foundation](postgres-catalog.md) and
+[ADR 0004](adr/0004-postgresql-catalog.md) track the subsequent HA work. Its first
+stage adds a repository backend; the single-owner runtime described here remains
+the current deployment until service coordination and failover are qualified.
+
 This is the implementation design for the first supported vmtier release. The
 [SQLite catalog](sqlite-catalog.md) and [`serve` runtime](serve.md) implement the
 first two delivery stages: transactional per-stream publication, offline migration

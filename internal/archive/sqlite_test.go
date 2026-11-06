@@ -122,7 +122,7 @@ func (f *sqliteSource) exportCount(tenant string) int {
 	return f.exports[tenant]
 }
 
-func newSQLiteArchiver(t *testing.T, cfg Config) (*SQLiteArchiver, string) {
+func newSQLiteArchiver(t *testing.T, cfg Config) (*Archiver, string) {
 	t.Helper()
 	root := t.TempDir()
 	blobPath, catalogPath := filepath.Join(root, "blobs"), filepath.Join(root, "catalog")
@@ -136,7 +136,7 @@ func newSQLiteArchiver(t *testing.T, cfg Config) (*SQLiteArchiver, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return &SQLiteArchiver{Store: blobs, Catalog: db, Config: cfg, RetryInterval: 30 * time.Second}, catalogPath
+	return &Archiver{Store: blobs, Catalog: db, Config: cfg, RetryInterval: 30 * time.Second}, catalogPath
 }
 
 func TestSQLiteArchiverResumesOneWindowPerStream(t *testing.T) {
@@ -172,7 +172,7 @@ func TestSQLiteArchiverResumesOneWindowPerStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	restarted := &SQLiteArchiver{Store: a.Store, Catalog: db, Config: cfg}
+	restarted := &Archiver{Store: a.Store, Catalog: db, Config: cfg}
 	result, err = restarted.RunPass(ctx, testNow)
 	if err != nil || result.CommittedWindows != 0 || source.exportCount("7:3") != 2 {
 		t.Fatalf("restart ignored persisted coverage: %+v %v", result, err)

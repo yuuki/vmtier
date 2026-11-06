@@ -12,6 +12,7 @@ The repository's existing Apache-2.0 `LICENSE` is preserved. vmtier is an indepe
 | `github.com/aws/aws-sdk-go-v2/service/s3` | `v1.88.4` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
 | `github.com/aws/smithy-go` | `v1.23.0` | Generated `vendor/github.com/aws/smithy-go/LICENSE` and `NOTICE`, Apache-2.0. |
 | `github.com/klauspost/compress` | `v1.18.0` | Generated `vendor/github.com/klauspost/compress/LICENSE`, BSD-style three-clause terms; copyright notices include The Go Authors and Klaus Post. Subdirectories may contain additional licenses/notices, which are retained. |
+| `github.com/lib/pq` | `v1.10.9` | Generated `vendor/github.com/lib/pq/LICENSE.md`, MIT, Copyright (c) 2011-2013, 'pq' Contributors; Portions Copyright (C) 2011 Blake Mizerany. |
 | `github.com/mattn/go-sqlite3` | `v1.14.32`, commit `8bf7a8a844faf952aa0245b4c0ad0a47e84f4efd` | Generated `vendor/github.com/mattn/go-sqlite3/LICENSE`, MIT, Copyright (c) 2014 Yasuhiro Matsumoto. The bundled SQLite 3.50.4 amalgamation retains its upstream copyright-disclaimer/blessing notices in `sqlite3-binding.c` and related headers; see [SQLite's copyright statement](https://www.sqlite.org/copyright.html). |
 | Go runtime / standard library | See build toolchain version | Go distribution `LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors. |
 
@@ -41,6 +42,21 @@ the complete module source, MIT license, and SQLite notices in generated vendor.
 It does not resolve or update unrelated modules. The catalog builds the bundled
 SQLite amalgamation through CGO and requires a C compiler; it does not depend on a
 separately installed SQLite service or shared library in the default build.
+
+The PostgreSQL driver is another direct dependency outside the VM vendor tree:
+
+```text
+https://proxy.golang.org/github.com/lib/pq/@v/v1.10.9.zip
+SHA-256 6791a7af67f846a86335350012c4efadd0850096ebf22350b7b20e01e216e6f2
+Module sum h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
+go.mod sum h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+```
+
+The sums match the Go checksum database entry for this version and are recorded
+in `go.sum`. Bootstrap verifies the ZIP's SHA-256 and retains its complete source
+and MIT license in generated vendor. The driver is pure Go and requires no
+installed `libpq` client library. PostgreSQL server software is an external
+deployment/test prerequisite and is not bundled with vmtier.
 
 The gateway uses the public `vmselectapi.API`, `NewServer`, storage and encoding APIs. No copied/modified private vmselect server implementation is maintained. The bounded portable-format parser is vmtier implementation based on the documented pinned source layout, with upstream public codec calls. Compatibility tests are required when updating that layout.
 

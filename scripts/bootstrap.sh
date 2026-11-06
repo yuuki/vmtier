@@ -23,6 +23,19 @@ if [ ! -f "$sqlite_zip" ]; then
   trap - EXIT
 fi
 printf '%s  %s\n' "$sqlite_checksum" "$sqlite_zip" | sha256sum -c -
+# PostgreSQL uses a pure-Go driver outside the upstream vendor tree.
+pq_version=v1.10.9
+pq_checksum=6791a7af67f846a86335350012c4efadd0850096ebf22350b7b20e01e216e6f2
+pq_zip=".deps/pq-$pq_version.zip"
+if [ ! -f "$pq_zip" ]; then
+  pq_tmp=$(mktemp "${pq_zip}.download.XXXXXX")
+  trap 'rm -f -- "$pq_tmp"' EXIT
+  curl --fail --location --retry 3 "https://proxy.golang.org/github.com/lib/pq/@v/$pq_version.zip" -o "$pq_tmp"
+  printf '%s  %s\n' "$pq_checksum" "$pq_tmp" | sha256sum -c -
+  mv -- "$pq_tmp" "$pq_zip"
+  trap - EXIT
+fi
+printf '%s  %s\n' "$pq_checksum" "$pq_zip" | sha256sum -c -
 # Use pinned source archives without resolving or updating other modules.
 # Generated vendor is disposable; never modify the upstream sources.
 python3 scripts/vendor.py

@@ -300,13 +300,13 @@ func (c *Config) BlobLocator() (catalog.BlobLocator, error) {
 	return catalog.NormalizeBlobLocator(catalog.BlobLocator{Type: c.Store.Type, Path: c.Store.Path, Endpoint: c.Store.Endpoint, Region: c.Store.Region, Bucket: c.Store.Bucket, Prefix: c.Store.Prefix})
 }
 
-func (c *Config) SQLiteReader(s objectstore.BlobStore, db *catalog.SQLite) (*cold.Reader, error) {
+func (c *Config) RepositoryReader(s objectstore.BlobStore, db catalog.Repository) (*cold.Reader, error) {
 	blob, err := c.BlobLocator()
 	if err != nil {
 		return nil, err
 	}
 	r := c.Reader(s, nil)
-	r.SQLiteCatalog, r.BlobLocator = db, blob
+	r.Repository, r.BlobLocator = db, blob
 	return r, nil
 }
 
