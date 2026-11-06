@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +38,10 @@ func (s *recordingRanges) GetRange(ctx context.Context, key string, offset, leng
 
 // Interleaved series deliberately make directory order differ from byte order.
 func adjacentFixture(t *testing.T, count, rows int) (*Reader, *recordingRanges, *pack.Index, int64) {
+	return adjacentNamedFixture(t, count, rows, "")
+}
+
+func adjacentNamedFixture(t *testing.T, count, rows int, extraLabel string) (*Reader, *recordingRanges, *pack.Index, int64) {
 	t.Helper()
 	tenant := pack.Tenant{AccountID: 1, ProjectID: 2}
 	native := encoding.MarshalInt64(nil, 0)
@@ -47,7 +52,11 @@ func adjacentFixture(t *testing.T, count, rows int) (*Reader, *recordingRanges, 
 		if i%3 == 1 {
 			label = "skip"
 		}
-		name := pack.MetricName(tenant, map[string]string{"__name__": fmt.Sprintf("metric%d", i%3), "job": label}).MarshalNoAccountIDProjectID(nil)
+		labels := map[string]string{"__name__": fmt.Sprintf("metric%d", i%3), "job": label}
+		if extraLabel != "" {
+			labels["wide"] = extraLabel
+		}
+		name := pack.MetricName(tenant, labels).MarshalNoAccountIDProjectID(nil)
 		ts, vs := make([]int64, rows), make([]int64, rows)
 		for j := range ts {
 			ts[j], vs[j] = 10, int64(i+1)
@@ -197,7 +206,10 @@ func TestAdjacentRangesRejectInvalidResponsesAndCancellation(t *testing.T) {
 
 func TestAdjacentRangesChargeAllBytesBeforeRead(t *testing.T) {
 	r, store, idx, indexBytes := adjacentFixture(t, 4, 3)
-	cost := indexBytes + idx.Size + 4*3*16
+	cost := indexBytes + pack.IndexMemoryEstimate(idx) + idx.Size + 4*3*32
+	for _, series := range idx.Series {
+		cost += int64(len(series.Blocks)) * (int64(len(series.NativeName))*2 + 512)
+	}
 	r.MaxQueryBytes = cost - 1
 	if got, err := r.Search(ctx, query()); err == nil || got != nil || len(store.calls) != 0 {
 		t.Fatalf("over-budget combined range was read: %v %v %v", got, err, store.calls)
@@ -229,5 +241,22 @@ func TestAdjacentRangeReadSizeBound(t *testing.T) {
 	}
 	if end != idx.Size {
 		t.Fatalf("incomplete reads: %d != %d", end, idx.Size)
+	}
+}
+
+func TestRepeatedNamesCannotAmplifyTinyBlockMemoryPastBudget(t *testing.T) {
+	r, store, _, _ := adjacentNamedFixture(t, 2000, 1, strings.Repeat("x", 1024))
+	r.MaxQueryBytes = 2 << 20
+	if got, err := r.Search(ctx, query()); err == nil || got != nil || len(store.calls) != 0 {
+		t.Fatalf("repeated native names were not charged before payload I/O: result=%d err=%v reads=%d", len(got), err, len(store.calls))
+	}
+	r.MaxQueryBytes = 16 << 20
+	got, err := r.Search(ctx, query())
+	if err != nil || len(got) != 2000 {
+		t.Fatalf("larger bounded query did not recover: result=%d err=%v", len(got), err)
+	}
+	work := r.WorkStats()
+	if work.ResultEstimateBytes < 4<<20 || work.IndexEstimatePeakBytes == 0 || work.PeakBytes > uint64(r.MaxQueryBytes) {
+		t.Fatalf("component accounting missed repeated names: %+v", work)
 	}
 }

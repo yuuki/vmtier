@@ -40,6 +40,8 @@ type Config struct {
 	PackLimits                                     pack.Limits
 	// MaxSamples bounds verifier expansion independently from compressed pack size.
 	MaxSamples int
+	// Memory optionally observes retained components during SQLite archiving.
+	Memory *MemoryStats
 	// Hook is for failure-injection tests. It is never enabled by the CLI.
 	Hook func(stage string) error
 }

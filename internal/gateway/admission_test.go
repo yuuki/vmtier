@@ -172,3 +172,25 @@ func TestAdmissionConcurrencyIsSharedAcrossAPIs(t *testing.T) {
 		t.Fatal("parallel metadata leaked memory")
 	}
 }
+
+func TestAdmissionPrecedesMatcherWorkAndReleasesInvalidMatcher(t *testing.T) {
+	a := New(backendFunc(func(context.Context, *storage.SearchQuery) ([]storage.MetricBlock, error) {
+		return nil, nil
+	}), Limits{QueryWorkBytes: 100, QueryMemoryBytes: 100})
+	sq := storage.NewSearchQuery(3, 7, 0, 2000, nil, 100)
+	it, err := a.InitSearch(nil, sq, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := storage.NewSearchQuery(3, 7, 0, 2000, [][]storage.TagFilter{{{Key: []byte("job"), Value: []byte("["), IsRegexp: true}}}, 100)
+	if _, err := a.InitSearch(nil, invalid, 0); querylimit.Reason(err) != querylimit.MemoryAdmission {
+		t.Fatalf("matcher ran before memory admission: %v", err)
+	}
+	it.MustClose()
+	if _, err := a.InitSearch(nil, invalid, 0); err == nil || querylimit.Reason(err) != "" {
+		t.Fatalf("admitted invalid matcher was not rejected: %v", err)
+	}
+	if a.AdmissionStats().ReservedBytes != 0 {
+		t.Fatal("invalid matcher leaked reservation")
+	}
+}

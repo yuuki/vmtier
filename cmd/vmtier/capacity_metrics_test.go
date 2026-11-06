@@ -108,6 +108,9 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 		"vmtier_catalog_committed_object_bytes{kind=\"data\"} 0\n", "vmtier_cache_used_bytes 0\n",
 		"vmtier_query_memory_reserved_bytes 0\n", "vmtier_query_limit_refusals_total{reason=\"read_bytes\"} 1\n",
 		"vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"timeout\"} 1\n",
+		"vmtier_go_heap_objects_bytes ", "vmtier_go_heap_alloc_bytes_total ",
+		"vmtier_archive_verifier_bytes 0\n", "vmtier_archive_pack_bytes 0\n",
+		"vmtier_cache_evictions_total 0\n", "vmtier_query_work_peak_bytes 0\n",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing %q in %s", want, output)

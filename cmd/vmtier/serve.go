@@ -119,6 +119,7 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	webDone := make(chan error, 1)
 	go func() { webDone <- web.Serve(ln) }()
 	archiver := &archive.SQLiteArchiver{Store: blobs, Catalog: db, Config: c.Archive(0, 0), RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
+	archiver.Config.Memory = &stats.archiveMemory
 	archiveDone := make(chan struct{})
 	go func() {
 		defer close(archiveDone)
@@ -152,6 +153,7 @@ func (b serviceBackend) Search(ctx context.Context, q *storage.SearchQuery) ([]s
 
 type serviceStats struct {
 	windowFailures                            windowFailureMetrics
+	archiveMemory                             archive.MemoryStats
 	passes, failures, windows, samples, bytes atomic.Uint64
 	lastCommit                                atomic.Int64
 }

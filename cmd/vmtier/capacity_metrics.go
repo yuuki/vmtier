@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime/metrics"
 	"sort"
 	"sync"
 
@@ -78,11 +79,17 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 	fmt.Fprintf(w, "vmtier_query_memory_limit_bytes %d\nvmtier_query_work_bytes %d\nvmtier_query_memory_reserved_bytes %d\n", admission.LimitBytes, admission.WorkBytes, admission.ReservedBytes)
 	cache := reader.CacheStats()
 	fmt.Fprintf(w, "vmtier_cache_used_bytes %d\nvmtier_cache_limit_bytes %d\nvmtier_cache_entries %d\nvmtier_cache_inflight_reads %d\n", cache.UsedBytes, cache.LimitBytes, cache.Entries, cache.Inflight)
+	fmt.Fprintf(w, "vmtier_cache_evictions_total %d\n", cache.Evictions)
+	work := reader.WorkStats()
+	fmt.Fprintf(w, "vmtier_query_read_bytes_total %d\nvmtier_query_decoded_bytes_total %d\nvmtier_query_result_estimate_bytes_total %d\nvmtier_query_index_estimate_peak_bytes %d\nvmtier_query_work_peak_bytes %d\n", work.ReadBytes, work.DecodedBytes, work.ResultEstimateBytes, work.IndexEstimatePeakBytes, work.PeakBytes)
+	writeGoMemoryMetrics(w)
 	for reason, count := range api.LimitRefusals() {
 		fmt.Fprintf(w, "vmtier_query_limit_refusals_total{reason=%q} %d\n", reason, count)
 	}
 	if stats != nil {
 		stats.windowFailures.write(w)
+		memory := stats.archiveMemory.Snapshot()
+		fmt.Fprintf(w, "vmtier_archive_verifier_bytes %d\nvmtier_archive_verifier_peak_bytes %d\nvmtier_archive_pack_bytes %d\nvmtier_archive_pack_peak_bytes %d\n", memory.VerifierBytes, memory.VerifierPeakBytes, memory.PackBytes, memory.PackPeakBytes)
 	}
 	if reader.SQLiteCatalog == nil {
 		return
@@ -96,4 +103,25 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 	fmt.Fprintln(w, "vmtier_catalog_capacity_available 1")
 	fmt.Fprintf(w, "vmtier_catalog_file_bytes{file=\"database\"} %d\nvmtier_catalog_file_bytes{file=\"wal\"} %d\nvmtier_catalog_file_bytes{file=\"shared_memory\"} %d\n", capacity.DatabaseBytes, capacity.WALBytes, capacity.SharedMemoryBytes)
 	fmt.Fprintf(w, "vmtier_catalog_committed_object_bytes{kind=\"data\"} %d\nvmtier_catalog_committed_object_bytes{kind=\"index\"} %d\nvmtier_catalog_windows %d\nvmtier_catalog_packs %d\n", capacity.CommittedDataBytes, capacity.CommittedIndexBytes, capacity.Windows, capacity.Packs)
+}
+
+// Runtime counters complement component accounting. Go runtime memory excludes
+// SQLite's C allocations and other resident mappings; RSS is measured externally.
+func writeGoMemoryMetrics(w io.Writer) {
+	names := []struct{ runtime, prometheus string }{
+		{"/memory/classes/heap/objects:bytes", "vmtier_go_heap_objects_bytes"},
+		{"/gc/heap/allocs:bytes", "vmtier_go_heap_alloc_bytes_total"},
+		{"/memory/classes/total:bytes", "vmtier_go_memory_total_bytes"},
+		{"/memory/classes/heap/released:bytes", "vmtier_go_heap_released_bytes"},
+	}
+	samples := make([]metrics.Sample, len(names))
+	for i, name := range names {
+		samples[i].Name = name.runtime
+	}
+	metrics.Read(samples)
+	for i, sample := range samples {
+		if sample.Value.Kind() == metrics.KindUint64 {
+			fmt.Fprintf(w, "%s %d\n", names[i].prometheus, sample.Value.Uint64())
+		}
+	}
 }
