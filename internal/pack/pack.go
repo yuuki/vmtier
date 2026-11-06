@@ -22,8 +22,8 @@ import (
 
 const (
 	FormatVersion        = 1
-	VMVersion            = "v1.128.0-cluster"
-	VMRevision           = "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+	VMVersion            = "v1.155.0-cluster"
+	VMRevision           = "cab3d5fbeeedd5d0374c1dabde93939af4c2499c"
 	maxRows              = 16384 // pinned VM blockHeader.validate bound
 	maxDecodedBlockBytes = 1 << 20
 )

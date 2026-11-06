@@ -18,11 +18,14 @@ CI runs. Historical local result files remain unchanged.
 
 ## Pinned environment
 
-The target is **VictoriaMetrics OSS v1.128.0-cluster**, commit
-`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. No VM patches are applied.
+The target is **VictoriaMetrics OSS v1.155.0-cluster**, commit
+`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. No VM patches are applied.
 `build-vm.sh` verifies the SHA-256 of a pinned source archive and builds
 vmstorage, vminsert, and vmselect using upstream vendored dependencies.
-Use Go 1.25.3 or newer and Python 3.10 or newer.
+The pinned toolchains are Go 1.27.3 and Python 3.15.2. Bootstrap verifies the
+committed Go modules and regenerates vmtier's vendor tree independently of the
+stock VM vendor tree. Historical result files retain their original toolchains
+and VM revisions; they do not establish validation of an upgraded dependency set.
 The retained JSON v2 suite tests an independent persistent HTTP catalog authority and
 a blob store using ordinary PUT/GET/Range requests. The SQLite service has a separate
 harness described below. Evidence from the previous
@@ -74,15 +77,16 @@ MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e.py \
   --backend s3 --replicas 2 --workdir .cache/v2-s3-fresh
 ```
 
-`GO_BIN` selects the Go binary, and `VM_SOURCE_DIR` selects an existing unmodified
-VM source tree. To validate only fixture ingestion into VM, use
+`GO_BIN` selects the Go binary. `VM_SOURCE_DIR` selects where the verified pinned
+VM source is extracted; use a new directory or one already prepared by these
+scripts. An arbitrary existing source tree is rejected. To validate only fixture ingestion into VM, use
 `python3 scripts/e2e.py --vm-only`.
 
 Each run creates an isolated directory and starts dedicated processes on available
 loopback ports. Pass an **unused directory** to `--workdir PATH`; the suite does not
 reuse existing data. At exit it stops only the processes it started and leaves
 logs, configurations, `results.json`, and isolated VM data. It has no option to
-connect to an external VM or a real S3 service. S3 tests use Moto 5.1.15 and public,
+connect to an external VM or a real S3 service. S3 tests use Moto 5.2.5 and public,
 test-only credentials.
 
 `scripts/s3_compat_proxy.py` sits in front of Moto. It rejects requests containing

@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -11,6 +10,8 @@ import (
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/querytracer"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage/metricnamestats"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage/metricsmetadata"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/vmselectapi"
 	"github.com/yuuki/vmtier/internal/querylimit"
 )
@@ -24,6 +25,8 @@ type Backend interface {
 }
 
 type Limits struct {
+	MaxLabelNames      int
+	MaxLabelValues     int
 	MaxSeries          int
 	MaxBlocks          int
 	MaxResponseBytes   int64
@@ -56,6 +59,12 @@ func New(backend Backend, limits Limits) *API {
 func NewWithContext(ctx context.Context, backend Backend, limits Limits) *API {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if limits.MaxLabelNames <= 0 {
+		limits.MaxLabelNames = 10000
+	}
+	if limits.MaxLabelValues <= 0 {
+		limits.MaxLabelValues = 100000
 	}
 	if limits.MaxSeries <= 0 {
 		limits.MaxSeries = 100000
@@ -93,7 +102,7 @@ func Tenant(sq *storage.SearchQuery) (uint32, uint32, error) {
 	return sq.AccountID, sq.ProjectID, nil
 }
 
-func (a *API) search(sq *storage.SearchQuery, deadline uint64) (blocks []storage.MetricBlock, lease *queryLease, err error) {
+func (a *API) search(requestCtx context.Context, sq *storage.SearchQuery) (blocks []storage.MetricBlock, lease *queryLease, err error) {
 	var reserved *queryLease
 	a.Requests.Add(1)
 	defer func() {
@@ -116,17 +125,21 @@ func (a *API) search(sq *storage.SearchQuery, deadline uint64) (blocks []storage
 	if sq.MinTimestamp > sq.MaxTimestamp {
 		return nil, nil, fmt.Errorf("invalid query interval")
 	}
+	// Both the RPC and service lifetime bound admitted work and held results.
+	// Keep the combined context alive until the lease releases its memory.
 	dl := time.Now().Add(a.limits.MaxRequestDuration)
-	if deadline != 0 {
-		if deadline > math.MaxInt64 {
-			return nil, nil, fmt.Errorf("invalid RPC deadline")
-		}
-		requested := time.Unix(int64(deadline), 0)
-		if requested.Before(dl) {
-			dl = requested
-		}
+	if serviceDeadline, ok := a.ctx.Deadline(); ok && serviceDeadline.Before(dl) {
+		dl = serviceDeadline
 	}
-	ctx, cancel := context.WithDeadline(a.ctx, dl)
+	ctx, cancelRequest := context.WithDeadline(requestCtx, dl)
+	stopService := context.AfterFunc(a.ctx, cancelRequest)
+	cancel := func() {
+		stopService()
+		cancelRequest()
+	}
+	if a.ctx.Err() != nil {
+		cancelRequest()
+	}
 	lease, err = a.memory.reserve(ctx, cancel, a.limits.QueryWorkBytes)
 	if err != nil {
 		cancel()
@@ -205,8 +218,8 @@ func (a *API) search(sq *storage.SearchQuery, deadline uint64) (blocks []storage
 	return result, lease, nil
 }
 
-func (a *API) InitSearch(_ *querytracer.Tracer, sq *storage.SearchQuery, deadline uint64) (vmselectapi.BlockIterator, error) {
-	blocks, lease, err := a.search(sq, deadline)
+func (a *API) InitSearch(ctx context.Context, _ *querytracer.Tracer, sq *storage.SearchQuery) (vmselectapi.BlockIterator, error) {
+	blocks, lease, err := a.search(ctx, sq)
 	if err != nil {
 		return nil, err
 	}
@@ -224,20 +237,29 @@ type iterator struct {
 	err    error
 }
 
-func (it *iterator) NextBlock(dst *storage.MetricBlock) bool {
+func (it *iterator) NextBlock(ctx context.Context, dst []byte) ([]byte, bool) {
 	it.mu.Lock()
 	defer it.mu.Unlock()
-	if it.lease == nil || it.next == len(it.blocks) {
-		return false
+	if it.err != nil || it.lease == nil {
+		return dst, false
+	}
+	if err := ctx.Err(); err != nil {
+		it.err = err
+		it.lease.cancel()
+		return dst, false
 	}
 	if err := it.lease.ctx.Err(); err != nil {
 		it.err = err
-		return false
+		return dst, false
 	}
-	dst.CopyFrom(&it.blocks[it.next])
+	if it.next == len(it.blocks) {
+		return dst, false
+	}
+	dst = it.blocks[it.next].Marshal(dst)
 	it.next++
-	return true
+	return dst, true
 }
+
 func (it *iterator) close(err error) {
 	it.mu.Lock()
 	defer it.mu.Unlock()
@@ -246,7 +268,12 @@ func (it *iterator) close(err error) {
 	}
 	it.blocks = nil
 	it.next = 0
-	it.err = err
+	if it.err == nil {
+		if err == nil {
+			err = it.lease.ctx.Err()
+		}
+		it.err = err
+	}
 	it.lease.close()
 	it.lease = nil
 }
@@ -262,8 +289,8 @@ func (it *iterator) Error() error {
 	return it.err
 }
 
-func (a *API) metricNames(sq *storage.SearchQuery, deadline uint64) ([]string, *queryLease, error) {
-	blocks, lease, err := a.search(sq, deadline)
+func (a *API) metricNames(ctx context.Context, sq *storage.SearchQuery) ([]string, *queryLease, error) {
+	blocks, lease, err := a.search(ctx, sq)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -278,8 +305,8 @@ func (a *API) metricNames(sq *storage.SearchQuery, deadline uint64) ([]string, *
 	return sortedKeys(names), lease, nil
 }
 
-func (a *API) SearchMetricNames(_ *querytracer.Tracer, sq *storage.SearchQuery, deadline uint64) ([]string, error) {
-	names, lease, err := a.metricNames(sq, deadline)
+func (a *API) SearchMetricNames(ctx context.Context, _ *querytracer.Tracer, sq *storage.SearchQuery) ([]string, error) {
+	names, lease, err := a.metricNames(ctx, sq)
 	if err != nil {
 		return nil, err
 	}
@@ -290,8 +317,8 @@ func (a *API) SearchMetricNames(_ *querytracer.Tracer, sq *storage.SearchQuery, 
 	return names, nil
 }
 
-func (a *API) LabelNames(_ *querytracer.Tracer, sq *storage.SearchQuery, max int, deadline uint64) ([]string, error) {
-	names, lease, err := a.metricNames(sq, deadline)
+func (a *API) LabelNames(ctx context.Context, _ *querytracer.Tracer, sq *storage.SearchQuery, max int) ([]string, error) {
+	names, lease, err := a.metricNames(ctx, sq)
 	if err != nil {
 		return nil, err
 	}
@@ -314,6 +341,9 @@ func (a *API) LabelNames(_ *querytracer.Tracer, sq *storage.SearchQuery, max int
 			}
 		}
 	}
+	if max <= 0 || max > a.limits.MaxLabelNames {
+		max = a.limits.MaxLabelNames
+	}
 	result := limitKeys(labels, max)
 	if err := lease.ctx.Err(); err != nil {
 		return nil, err
@@ -321,8 +351,8 @@ func (a *API) LabelNames(_ *querytracer.Tracer, sq *storage.SearchQuery, max int
 	return result, nil
 }
 
-func (a *API) LabelValues(_ *querytracer.Tracer, sq *storage.SearchQuery, label string, max int, deadline uint64) ([]string, error) {
-	names, lease, err := a.metricNames(sq, deadline)
+func (a *API) LabelValues(ctx context.Context, _ *querytracer.Tracer, sq *storage.SearchQuery, label string, max int) ([]string, error) {
+	names, lease, err := a.metricNames(ctx, sq)
 	if err != nil {
 		return nil, err
 	}
@@ -345,6 +375,9 @@ func (a *API) LabelValues(_ *querytracer.Tracer, sq *storage.SearchQuery, label 
 		if len(value) > 0 {
 			values[string(value)] = struct{}{}
 		}
+	}
+	if max <= 0 || max > a.limits.MaxLabelValues {
+		max = a.limits.MaxLabelValues
 	}
 	result := limitKeys(values, max)
 	if err := lease.ctx.Err(); err != nil {
@@ -372,27 +405,31 @@ func limitKeys(set map[string]struct{}, max int) []string {
 func unsupported(operation string) error {
 	return fmt.Errorf("vmtier read-only gateway: unsupported RPC %s", operation)
 }
-func (a *API) TagValueSuffixes(_ *querytracer.Tracer, _, _ uint32, _ storage.TimeRange, _, _ string, _ byte, _ int, _ uint64) ([]string, error) {
+func (a *API) TagValueSuffixes(_ context.Context, _ *querytracer.Tracer, _, _ uint32, _ storage.TimeRange, _, _ string, _ byte, _ int) ([]string, error) {
 	return nil, unsupported("tagValueSuffixes")
 }
-func (a *API) SeriesCount(_ *querytracer.Tracer, _, _ uint32, _ uint64) (uint64, error) {
+func (a *API) SeriesCount(_ context.Context, _ *querytracer.Tracer, _, _ uint32) (uint64, error) {
 	return 0, unsupported("seriesCount")
 }
-func (a *API) TSDBStatus(_ *querytracer.Tracer, _ *storage.SearchQuery, _ string, _ int, _ uint64) (*storage.TSDBStatus, error) {
+func (a *API) TSDBStatus(_ context.Context, _ *querytracer.Tracer, _ *storage.SearchQuery, _ string, _ int) (*storage.TSDBStatus, error) {
 	return nil, unsupported("tsdbStatus")
 }
-func (a *API) DeleteSeries(_ *querytracer.Tracer, _ *storage.SearchQuery, _ uint64) (int, error) {
+func (a *API) DeleteSeries(_ context.Context, _ *querytracer.Tracer, _ *storage.SearchQuery) (int, error) {
 	return 0, unsupported("deleteSeries")
 }
-func (a *API) RegisterMetricNames(_ *querytracer.Tracer, _ []storage.MetricRow, _ uint64) error {
+func (a *API) RegisterMetricNames(_ context.Context, _ *querytracer.Tracer, _ []storage.MetricRow) error {
 	return unsupported("registerMetricNames")
 }
-func (a *API) Tenants(_ *querytracer.Tracer, _ storage.TimeRange, _ uint64) ([]string, error) {
+func (a *API) Tenants(_ context.Context, _ *querytracer.Tracer, _ storage.TimeRange) ([]string, error) {
 	return nil, unsupported("tenants")
 }
-func (a *API) GetMetricNamesUsageStats(_ *querytracer.Tracer, _ *storage.TenantToken, _, _ int, _ string, _ uint64) (storage.MetricNamesStatsResponse, error) {
-	return storage.MetricNamesStatsResponse{}, unsupported("metricNamesUsageStats")
+func (a *API) GetMetricNamesUsageStats(_ context.Context, _ *querytracer.Tracer, _ *storage.TenantToken, _, _ int, _ string) (metricnamestats.StatsResult, error) {
+	return metricnamestats.StatsResult{}, unsupported("metricNamesUsageStats")
 }
-func (a *API) ResetMetricNamesUsageStats(_ *querytracer.Tracer, _ uint64) error {
+func (a *API) ResetMetricNamesUsageStats(_ context.Context, _ *querytracer.Tracer) error {
 	return unsupported("resetMetricNamesUsageStats")
+}
+
+func (a *API) GetMetadataRecords(_ context.Context, _ *querytracer.Tracer, _ *storage.TenantToken, _ int, _ string) ([]*metricsmetadata.Row, error) {
+	return nil, unsupported("searchMetadata")
 }

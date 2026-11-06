@@ -112,7 +112,7 @@ def run(work, args):
     source = None
     report = {'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'status': 'running', 'backend': 'local', 'replicas': args.replicas,
-              'vm_revision': '9a009c491da4c17531893ab4acb6a5f1b5e0eaf2',
+              'vm_revision': 'cab3d5fbeeedd5d0374c1dabde93939af4c2499c',
               'comparison': 'exact labels, timestamps and numeric strings; no tolerance',
               'checks': [], 'runtime': procs.runtime, 'differential_checks': {},
               'limitations': ['loopback local filesystem; no real provider',
