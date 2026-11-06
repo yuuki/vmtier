@@ -42,7 +42,9 @@ def assert_running_blob_failure(query, process, read_metrics, error_marker):
         query()
     except urllib.error.HTTPError as error:
         body = error.read().decode()
-        assert 500 <= error.code < 600, f'Unexpected blob outage HTTP status: {error.code}'
+        # Stock vmselect may wrap a storage failure as query evaluation HTTP
+        # 422. The injected error marker and backend counters establish cause.
+        assert error.code == 422 or 500 <= error.code < 600, f'Unexpected blob outage HTTP status: {error.code}'
         assert error_marker in body, f'Query did not report the injected blob error: {body}'
         evidence = {'http_status': error.code, 'error_body': body}
     else:

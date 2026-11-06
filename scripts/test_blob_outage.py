@@ -28,6 +28,13 @@ class BlobOutageTest(unittest.TestCase):
         self.assertEqual(evidence['http_status'], 503)
         self.assertEqual(evidence['vmtier_object_get_requests_total_delta'], 1)
 
+    def test_stock_vmselect_422_storage_error_is_recorded(self):
+        error = urllib.error.HTTPError('http://localhost/query', 422, 'evaluation failed', {},
+                                       io.BytesIO(b'cannot fetch data from vmstorage: object not found'))
+        evidence = self.check_failure(error)
+        self.assertEqual(evidence['http_status'], 422)
+        self.assertEqual(evidence['vmtier_query_errors_total_delta'], 1)
+
     def test_connection_and_timeout_failures_are_not_accepted(self):
         for error in (urllib.error.URLError('connection refused'), TimeoutError(),
                       self.http_error(b'connection refused'), self.http_error(b'query timed out')):
