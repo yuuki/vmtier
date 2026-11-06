@@ -1,9 +1,23 @@
 import unittest
 
-from qualify_workload import HOUR, INTERVAL, batches, workload_horizon
+from qualify_workload import ADMISSION_KEY, HOUR, INTERVAL, batches, pending_pressure, workload_horizon
 
 
 class WorkloadFixtureTests(unittest.TestCase):
+    def test_pressure_after_archive_completion_cannot_qualify_concurrency(self):
+        before = {'vmtier_cache_evictions_total': 2, ADMISSION_KEY: 1}
+        observations = [
+            {'vmtier_catalog_generation': 9, 'vmtier_cache_evictions_total': 3,
+             ADMISSION_KEY: 4, 'vmtier_query_memory_reserved_bytes': 256},
+            {'vmtier_catalog_generation': 10, 'vmtier_cache_evictions_total': 100,
+             ADMISSION_KEY: 50, 'vmtier_query_memory_reserved_bytes': 1024},
+            {'vmtier_cache_evictions_total': 1000, ADMISSION_KEY: 1000}]
+        actual = pending_pressure(observations, before, 10)
+        self.assertEqual(actual['cache_evictions'], 1)
+        self.assertEqual(actual['memory_admission_refusals'], 3)
+        self.assertEqual(actual['peak_reserved_bytes'], 256)
+        self.assertEqual(len(actual['observations']), 1)
+
     def test_sparse_history_and_dense_cohort_have_no_extra_series(self):
         horizon = workload_horizon(100 * HOUR + 123456, 24, 2)
         fixture = list(batches(3, 13, horizon, 5))

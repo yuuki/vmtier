@@ -30,6 +30,24 @@ HOUR = 3600000
 INTERVAL = 30000
 IO_KEYS = ('vmtier_object_get_requests_total', 'vmtier_object_range_requests_total',
            'vmtier_object_download_bytes_total')
+ADMISSION_KEY = 'vmtier_query_limit_refusals_total{reason="memory_admission"}'
+
+
+def pending_pressure(observations, before, final_generation):
+    """Only count pressure observed while publication still had missing work."""
+    points = []
+    for current in observations:
+        generation = current.get('vmtier_catalog_generation')
+        if generation is None or generation >= final_generation:
+            continue
+        points.append({'generation': generation,
+                       'cache_evictions_delta': current.get('vmtier_cache_evictions_total', 0) - before.get('vmtier_cache_evictions_total', 0),
+                       'memory_admission_refusals_delta': current.get(ADMISSION_KEY, 0) - before.get(ADMISSION_KEY, 0),
+                       'reserved_bytes': current.get('vmtier_query_memory_reserved_bytes', 0)})
+    return {'observations': points,
+            'cache_evictions': max((p['cache_evictions_delta'] for p in points), default=0),
+            'memory_admission_refusals': max((p['memory_admission_refusals_delta'] for p in points), default=0),
+            'peak_reserved_bytes': max((p['reserved_bytes'] for p in points), default=0)}
 
 
 def workload_horizon(clock_ms, history_hours, dense_hours):
@@ -324,15 +342,37 @@ def run(work, args):
         broad = {'query': 'sum(qualify_load)', 'start': (dense + 300000) / 1000,
                  'end': (first_end - INTERVAL) / 1000, 'step': '60s', 'timeout': '30s'}
         narrow = dict(broad, query='qualify_load{instance="00000"}')
-        expected_broad = api(ref.select, tenants[0], 'query_range', broad)
-        expected_narrow = api(ref.select, tenants[0], 'query_range', narrow)
-        assert expected_broad['result'] and expected_narrow['result']
+        # Reference query CPU is outside the timed archive/query phase.
+        sampler.phase = 'prepare-reference-queries'
+        expected_by_tenant = {tenant: api(ref.select, tenant, 'query_range', broad) for tenant in tenants}
+        assert all(expected['result'] for expected in expected_by_tenant.values())
+        expected_broad = expected_by_tenant[tenants[0]]
         report['concurrent_archive_queries'] = {'successes': 0, 'admission_refusals': 0,
                                                  'started_generation': None,
                                                  'finished_generation': None,
-                                                 'latencies_ms': []}
+                                                 'parallel_requests': 4,
+                                                 'latencies_ms': [], 'requests': []}
+        pressure_observations = []
+        pressure_before = metrics(http_port)
+
+        def concurrent_query(tenant, barrier):
+            barrier.wait(timeout=30)
+            began = time.monotonic()
+            try:
+                result = api(cold_port, tenant, 'query_range', broad)
+                compare(expected_by_tenant[tenant], result, 'concurrent archive query ' + tenant)
+                return {'tenant': tenant, 'outcome': 'exact_success',
+                        'latency_ms': (time.monotonic() - began) * 1000}
+            except urllib.error.HTTPError as error:
+                body = error.read().decode()
+                if 'Cold query memory admission limit exceeded' not in body:
+                    raise AssertionError(body) from error
+                return {'tenant': tenant, 'outcome': 'memory_admission_refusal',
+                        'latency_ms': (time.monotonic() - began) * 1000,
+                        'http_status': error.code, 'message': body[:2000]}
 
         def background_queries():
+            observation = report['concurrent_archive_queries']
             try:
                 while not background_stop.is_set():
                     state = snapshot(database)
@@ -342,29 +382,39 @@ def run(work, args):
                     background_stop.wait(.01)
                 if background_stop.is_set():
                     return
-                observation = report['concurrent_archive_queries']
                 observation['started_generation'] = state['state']['generation']
-                while not background_stop.is_set():
-                    for params, expected in ((broad, expected_broad), (narrow, expected_narrow)):
-                        try:
-                            result, elapsed = timed(lambda: api(cold_port, tenants[0], 'query_range', params))
-                            compare(expected, result, 'concurrent archive query')
-                            observation['successes'] += 1
-                            observation['latencies_ms'].append(elapsed)
-                        except urllib.error.HTTPError as error:
-                            body = error.read().decode()
-                            if 'Cold query memory admission limit exceeded' not in body:
-                                raise AssertionError(body) from error
-                            observation['admission_refusals'] += 1
-                    background_stop.wait(.02)
-                observation['finished_generation'] = snapshot(database)['state']['generation']
+                cursor = 0
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    while not background_stop.is_set():
+                        state = snapshot(database)
+                        coverage = {row['tenant']: row['end_ms'] for row in state['coverage']}
+                        eligible = [tenant for tenant in tenants if coverage[tenant] >= first_end]
+                        selected = [eligible[(cursor + index) % len(eligible)] for index in range(4)]
+                        cursor += 4
+                        barrier = threading.Barrier(4)
+                        futures = [executor.submit(concurrent_query, tenant, barrier) for tenant in selected]
+                        pressure_observations.append(metrics(http_port))
+                        for future in concurrent.futures.as_completed(futures):
+                            result = future.result()
+                            observation['requests'].append(result)
+                            if result['outcome'] == 'exact_success':
+                                observation['successes'] += 1
+                                observation['latencies_ms'].append(result['latency_ms'])
+                            else:
+                                observation['admission_refusals'] += 1
+                        pressure_observations.append(metrics(http_port))
+                        background_stop.wait(.02)
             except Exception as error:
                 background_errors.append(str(error))
+            finally:
+                observation['finished_generation'] = snapshot(database)['state']['generation']
 
         sampler.phase = 'archive-catchup-with-queries'
         background_thread = threading.Thread(target=background_queries, daemon=True)
         background_thread.start()
         began = time.monotonic()
+        report['source_outage']['seconds'] = began - outage_started
+        report['source_outage']['failed_http_requests'] = source.failures
         source.unavailable = False
         wait_ready(process, http_port, work, timeout=args.archive_timeout_seconds)
         catchup_seconds = time.monotonic() - began
@@ -404,12 +454,21 @@ def run(work, args):
         concurrency['commits_after_queries_started'] = (
             concurrency['finished_generation'] - concurrency['started_generation']
             if concurrency['started_generation'] is not None and concurrency['finished_generation'] is not None else 0)
+        pressure_observations.extend(sample['metrics'] for sample in list(sampler.samples)
+                                     if sample['phase'] == 'archive-catchup-with-queries' and 'metrics' in sample)
+        concurrency['pressure_while_archive_pending'] = pending_pressure(
+            pressure_observations, pressure_before, args.tenants * args.history_hours)
         assert not background_errors, background_errors
         assert len(stable['windows']) == args.tenants * args.history_hours
         assert all(row['end_ms'] == horizon['boundary_ms'] for row in stable['coverage'])
         assert report['archive']['metrics']['vmtier_archive_samples_total'] == samples, (
             'Committed sample count differs from generated logical input', report['archive'], samples)
         assert concurrency['successes'] > 0 and concurrency['commits_after_queries_started'] > 0, concurrency
+        if args.require_concurrent_pressure:
+            pressure = concurrency['pressure_while_archive_pending']
+            assert pressure['cache_evictions'] > 0, 'no cache evictions observed before archive completion'
+            assert pressure['memory_admission_refusals'] > 0, 'no memory admission refusals observed before archive completion'
+            assert pressure['peak_reserved_bytes'] >= 2 * (args.query_mib << 20), 'two query reservations were not observed before archive completion'
         report['checks'].append('Source outage publishes nothing; subsequent archive catch-up makes commits while exact Cold queries run')
 
         # Restart clears raw cache without changing the authority or stored packs.
@@ -574,6 +633,8 @@ def main():
     parser.add_argument('--cache-mib', type=positive_int, default=16)
     parser.add_argument('--require-cache-pressure', action='store_true',
                         help='require measured evictions and blob I/O on the first tenant revisit')
+    parser.add_argument('--require-concurrent-pressure', action='store_true',
+                        help='require evictions, memory admission refusals and two reserved queries before archive completion')
     parser.add_argument('--query-mib', type=positive_int, default=128)
     parser.add_argument('--shared-query-mib', type=positive_int, default=256)
     parser.add_argument('--burst-queries', type=positive_int, default=6)
