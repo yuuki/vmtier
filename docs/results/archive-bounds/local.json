@@ -1,0 +1,779 @@
+{
+  "architecture": "SQLite catalog with one serve process, scheduled archive and read gateway",
+  "archive_metrics": {
+    "vmtier_archive_bytes_total": 72873.0,
+    "vmtier_archive_committed_windows_total": 6.0,
+    "vmtier_archive_failed_passes_total": 3.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 1793965815.0,
+    "vmtier_archive_passes_total": 9.0,
+    "vmtier_archive_samples_total": 9038.0,
+    "vmtier_blocks_total": 1.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_misses_total": 5.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793952000000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793952000000.0,
+    "vmtier_object_download_bytes_total": 78672.0,
+    "vmtier_object_get_requests_total": 52.0,
+    "vmtier_object_put_requests_total": 48.0,
+    "vmtier_object_range_requests_total": 1.0,
+    "vmtier_query_errors_total": 1.0,
+    "vmtier_query_requests_total": 2.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 850184.174,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 850184.174,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 850184.174,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 850184.174
+  },
+  "backend": "local",
+  "blob_outage": {
+    "cache_bytes": 0,
+    "coverage_unchanged": true,
+    "error_body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:35735: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:35735\\\": Cold search: object not found\"}",
+    "exact_baseline_and_recovery": true,
+    "healthy_and_ready_during_outage": true,
+    "http_status": 422,
+    "process_pid": 35718,
+    "vmtier_object_get_requests_total_delta": 1.0,
+    "vmtier_query_errors_total_delta": 1.0,
+    "vmtier_query_requests_total_delta": 1.0
+  },
+  "cache_measurement": {
+    "cache_limit_bytes": 33554432,
+    "cold_latency_ms": 10.877007000090089,
+    "cold_range_gets": 2.0,
+    "vm_result_cache": "disabled",
+    "warm_blob_bytes": 0.0,
+    "warm_latency_ms": 2.8148399999281537,
+    "warm_range_gets": 0.0
+  },
+  "catalog": {
+    "coverage": [
+      {
+        "end_ms": 1793952000000,
+        "source_id": "hot",
+        "tenant": "1:2"
+      },
+      {
+        "end_ms": 1793952000000,
+        "source_id": "hot",
+        "tenant": "7:9"
+      }
+    ],
+    "generation": 6,
+    "packs": 24,
+    "schema": 1,
+    "windows": 6
+  },
+  "checks": [
+    "reference and pre-archive Hot contain the same old data",
+    "serve refuses missing state; SQLite initialization is explicit",
+    "source outage leaves zero coverage and fails readiness and required Cold queries",
+    "healthy tenant reaches coverage and remains queryable while another source stream fails",
+    "SIGTERM during native export publishes nothing; restart automatically archives six stream windows",
+    "live owner excludes offline inspect/verify/backup and a second serve process without changing catalog",
+    "stock vmselect reads committed SQLite native packs through independent Cold RPC and Range GET",
+    "Cold raw export excludes young samples at and after the exact boundary millisecond",
+    "fresh Hot contains recent data only; both tenants have empty old-range raw exports",
+    "restart preserves coverage and avoids reexport; changed policy/source/blob locator/identity are rejected",
+    "360 exact instant/range comparisons passed across Cold, Hot and the boundary",
+    "Cold label names/values and series discovery match the reference for both tenants",
+    "warm immutable cache returns equal data with no additional Range GETs",
+    "service outage propagates as query failure; restart restores reads from persistent SQLite state",
+    "missing/truncated/checksum-invalid payloads fail queries; restored bytes recover without catalog mutation",
+    "running service attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes",
+    "Cold delete remains explicitly unsupported",
+    "clean shutdown releases ownership for offline backup/verify and leaves completed windows unchanged"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "dedup_interval": "1ms",
+  "differential_checks": 360,
+  "environment": {
+    "go": "go version go1.27.3 linux/amd64",
+    "linux_kernel": "6.18.57",
+    "logical_cpus_available": 5,
+    "machine": "x86_64",
+    "measurement_scope": "single development container, loopback; no real Sakura/AWS/MinIO service",
+    "moto": null,
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "python": "3.12.14"
+  },
+  "final_metrics": {
+    "vmtier_archive_bytes_total": 0.0,
+    "vmtier_archive_committed_windows_total": 0.0,
+    "vmtier_archive_failed_passes_total": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+    "vmtier_archive_passes_total": 25.0,
+    "vmtier_archive_samples_total": 0.0,
+    "vmtier_blocks_total": 762.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_misses_total": 2178.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793952000000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793952000000.0,
+    "vmtier_object_download_bytes_total": 2555069.0,
+    "vmtier_object_get_requests_total": 1416.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 762.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_requests_total": 380.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 850179.902,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 850179.902,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 850179.902,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 850179.902
+  },
+  "fixture": {
+    "archive_age_ms": 12012298,
+    "boundary_ms": 1793952000000,
+    "created_at_ms": 1793965812298,
+    "end_ms": 1793959200000,
+    "finished_at_ms": 1793965821293,
+    "input_samples": 17654,
+    "max_pack_blocks": 4,
+    "next_eligible_at_ms": 1793967612298,
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate/conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1793941200000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "window_ms": 3600000
+  },
+  "frontend_reconnect": {
+    "cached_dial_error_retries": 4,
+    "cached_dial_error_retry_budget_seconds": 5,
+    "seconds": 0.41659820699987904
+  },
+  "interrupted_shutdown_seconds": 0.012767393999865817,
+  "object_bytes": {
+    "index": 33556,
+    "pack": 39317
+  },
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "f7d52efaae90c90585832893f926422b457a643722e55c4e13cffbc22a739685",
+      "vmselect": "a1f8fc3b7efd708c734f1817a1eea777319bfb4baae50292994336ded1f9998c",
+      "vmstorage": "4fd7f1fe6fa9e32af350ecbec5517c5a0d7633637b031e4b61fbaad862544131",
+      "vmtier": "1a8fcc38ed1d92eee4ea30974043cf36408715289fd694bb4edea253beb45c1e"
+    },
+    "executor_hostname": "36765b6c3f29",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "6e55ff5ec90a902b7bbf28e77e79eaac807d5d1af01b611cb96d07335738c1d6",
+    "harness_sha256": {
+      "e2e.py": "a2c2ecb432a254f60f00e3a3dd8a93372f7bfac6afa88db5d27b5e65b64cc237",
+      "e2e_serve.py": "c8432182d58fe21d9a27372add6a80d65ca0bb10829353238b16cd5ec7febcc9",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    }
+  },
+  "query_timings_ms": {
+    "boundary_reference": {
+      "count": 60,
+      "median": 1.3949404999493709,
+      "p95": 5.038681000087308
+    },
+    "boundary_tiered": {
+      "count": 60,
+      "median": 3.503898999952071,
+      "p95": 8.29770100017413
+    },
+    "cold_reference": {
+      "count": 60,
+      "median": 1.7028649999701884,
+      "p95": 5.450902999882601
+    },
+    "cold_tiered": {
+      "count": 60,
+      "median": 4.954398999984733,
+      "p95": 11.450438000110807
+    },
+    "hot_reference": {
+      "count": 60,
+      "median": 1.8603255000471108,
+      "p95": 5.400789000077566
+    },
+    "hot_tiered": {
+      "count": 60,
+      "median": 2.578154499815355,
+      "p95": 8.753941000122722
+    }
+  },
+  "recorded_at_utc": "2026-11-06T11:50:21.293304+00:00",
+  "replicas": 1,
+  "restart_shutdown_seconds": 0.007533104000003732,
+  "runtime": {
+    "outer_GOMAXPROCS": "3",
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:38159",
+          "-vminsertAddr=127.0.0.1:56459",
+          "-vmselectAddr=127.0.0.1:46821",
+          "-storageDataPath=/workspace/vmtier-archive/.cache/archive-split-local/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 34170
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:32853",
+          "-storageNode=127.0.0.1:56459",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 34206
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:41623",
+          "-storageNode=127.0.0.1:46821",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-archive/.cache/archive-split-local/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 34263
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:42521",
+          "-vminsertAddr=127.0.0.1:45153",
+          "-vmselectAddr=127.0.0.1:47411",
+          "-storageDataPath=/workspace/vmtier-archive/.cache/archive-split-local/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 34277
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:46019",
+          "-storageNode=127.0.0.1:45153",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 34291
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:33749",
+          "-storageNode=127.0.0.1:47411",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-archive/.cache/archive-split-local/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 34309
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "serve-missing"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "catalog-init",
+          "-backend",
+          "sqlite",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-path",
+          "/workspace/vmtier-archive/.cache/archive-split-local/catalog",
+          "-id",
+          "serve-e2e"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-init"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-source-outage",
+        "pid": 34680
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:45597",
+          "-storageNode=127.0.0.1:35735",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-archive/.cache/archive-split-local/cold-only-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-only-select",
+        "pid": 34701
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-resumed-independent-streams",
+        "pid": 34721
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "/workspace/vmtier-archive/.cache/archive-split-local/catalog",
+          "-id",
+          "serve-e2e",
+          "-out",
+          "/workspace/vmtier-archive/.cache/archive-split-local/forbidden-live-backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "backup-owned"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-listen",
+          "127.0.0.1:43223",
+          "-http",
+          "127.0.0.1:40743"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "serve-second-owner"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "verify-owned"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "inspect",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "inspect-owned"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:42521",
+          "-vminsertAddr=127.0.0.1:45153",
+          "-vmselectAddr=127.0.0.1:47411",
+          "-storageDataPath=/workspace/vmtier-archive/.cache/archive-split-local/hot-storage-0-recent-only",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-recent-only",
+        "pid": 34862
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:46019",
+          "-storageNode=127.0.0.1:45153",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-recent-only",
+        "pid": 34875
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:33749",
+          "-storageNode=127.0.0.1:47411",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-archive/.cache/archive-split-local/hot-select-recent-only"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-recent-only",
+        "pid": 34889
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/changed-archive_age.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-archive_age"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/changed-lateness.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-lateness"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/changed-source.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-source"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/changed-blob-locator.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-blob-locator"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/changed-identity.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-identity"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-restarted-after-hot-removal",
+        "pid": 35202
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:36163",
+          "-storageNode=127.0.0.1:47411,127.0.0.1:35735",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-search.maxLabelsAPIDuration=30s",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-archive/.cache/archive-split-local/tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "tiered-select",
+        "pid": 35231
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-cache-enabled",
+        "pid": 35673
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json",
+          "-listen",
+          "127.0.0.1:35735",
+          "-http",
+          "127.0.0.1:43847"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-fault-tests",
+        "pid": 35718
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "/workspace/vmtier-archive/.cache/archive-split-local/catalog",
+          "-id",
+          "serve-e2e",
+          "-out",
+          "/workspace/vmtier-archive/.cache/archive-split-local/final-backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "backup-after-stop"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-archive/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier-archive/.cache/archive-split-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "verify-after-stop"
+      }
+    ],
+    "selected_GOMAXPROCS": "3",
+    "selection": "environment"
+  },
+  "started_at_utc": "2026-11-06T11:50:11.563722+00:00",
+  "status": "passed",
+  "tiered_vm_labels_api_max_duration": "30s",
+  "vm_result_cache": "disabled",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}
