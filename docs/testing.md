@@ -48,9 +48,10 @@ It uses the same strict S3 proxy and disposable VM fixture as the JSON v2 suite.
 The archive-age boundary is held between complete windows by a fixture-specific H;
 there is no runtime clock override or scheduler pause mode.
 
-The combined stock vmselect uses `-search.maxLabelsAPIDuration=30s`. The default
-five-second label API deadline was exceeded by an uncached S3 metadata scan; the
-reader still validates full payload blocks and is not optimized for metadata.
+The combined stock vmselect defaults to `-search.maxLabelsAPIDuration=30s` in
+the harness. The earlier uncached S3 metadata scan exceeded the stock five-second
+deadline. After the reader changes, [measured JSON and SQLite runs](metadata-validation.md)
+passed with `--labels-api-duration 5s`, while still validating full payload blocks.
 See [service validation](serve-validation.md) for results, preserved failure evidence,
 provenance, and unexecuted checks. Loopback timings do not qualify provider performance.
 

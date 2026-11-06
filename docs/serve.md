@@ -67,9 +67,10 @@ Label/series metadata uses the same validated block search as sample queries.
 [LRU caching, shared misses, and adjacent-range reads](reader-validation.md) reduce
 repeated object I/O while retaining payload validation and actual sample-time
 filtering. The earlier uncached S3 fixture exceeded stock vmselect's default
-five-second labels API deadline. The service E2E harness retains 30 seconds by
-default; its cold/warm metadata measurements and explicit five-second rerun must
-establish whether that workaround is still needed for the retained fixture.
+five-second labels API deadline. The [before/after measurements](metadata-validation.md)
+now pass that deadline on the retained JSON and SQLite fixtures after the reader
+changes. The service E2E harness retains its configurable 30-second default; no
+30-second override was needed for these measured final runs.
 No metadata-specific index-only shortcut is implemented.
 
 Size the deadline for the deployment's workload and S3 budget; a longer deadline

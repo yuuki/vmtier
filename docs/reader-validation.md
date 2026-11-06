@@ -63,8 +63,9 @@ cleanup, the finite pending map, checksum identity and catalog failure despite a
 warm cache. A failed combined read returns no partial result. Existing SQLite
 multiple-pack, tenant, coverage and authority checks remain in the same suite.
 
-Stock-vmselect differential E2Es remain required for integration qualification;
-these focused measurements alone do not establish provider compatibility,
-metadata latency at the default five-second deadline, sustained workload capacity
+The [stock-vmselect metadata comparison](metadata-validation.md) records separate
+integration evidence, including the retained fixture passing the five-second
+deadline. These focused measurements and small E2Es do not establish provider
+compatibility, arbitrary-workload metadata latency, sustained workload capacity,
 or a combined RSS bound. See [testing](testing.md) and the
 [first-release design](design.md).

@@ -418,8 +418,9 @@ pack splitting, and query optimization into one rewrite.
 
 Steps 1 and 2 are implemented, along with the archive mechanisms in step 3 and
 reader mechanisms in step 4. Implementation completion does not complete every
-acceptance criterion: new stock-VM comparisons must be recorded separately, metadata
-deadline measurements are pending, and logical admission is not combined-memory
+acceptance criterion: stock-VM comparisons are recorded separately, and the
+[metadata measurements](metadata-validation.md) establish five-second deadline
+success only for the retained small fixture. Logical admission is not combined-memory
 qualification. Step 5 remains unqualified, including workload/catalog scale (#14),
 real Sakura (#15), natural retention (#16), enforced ingress lateness (#17),
 end-to-end recovery/cutover (#18), and reproducible release artifacts (#19).
