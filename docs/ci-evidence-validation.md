@@ -41,6 +41,9 @@ issues #3–#5. Their newer runs must be assessed separately. Packaging regressi
 tests cover partial/empty/missing work directories; this successful hosted run
 does not itself exercise a failed E2E run's artifact collection.
 
+The newer runtime, timing, and outage results are recorded in
+[issue foundations validation](foundation-validation.md).
+
 To inspect a downloaded artifact, unzip its safe outer member, then run
 `tar -xzf e2e-evidence.tar.gz` in an empty directory. The four suite directories
 contain their original reports, logs, configuration, and fixture files.
