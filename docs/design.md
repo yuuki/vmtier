@@ -16,7 +16,7 @@ measurement and release-qualification work. See
 | Service | Lifetime state lock, age-based scheduler, read RPC, capacity/failure metrics, shared S3 attempt budget |
 | Archive | SQLite pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
 | Reader | SQLite selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |
-| Remaining work | Metadata deadline measurements; combined RSS/workload and catalog capacity; provider, retention, ingress, and release qualification |
+| Remaining work | Broader workload and provider, retention, ingress, and release qualification; see the scoped reports below |
 
 The legacy [JSON v2 MVP architecture](mvp-design.md) and its
 [historical validation](validation.md) remain the regression baseline. Neither
