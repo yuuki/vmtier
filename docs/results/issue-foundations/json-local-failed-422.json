@@ -1,0 +1,1178 @@
+{
+  "architecture": "v2: independent persistent catalog authority; ordinary PUT/GET/Range blobs",
+  "archive": {
+    "bytes": 67755,
+    "committed_windows": 3,
+    "cpu_seconds": 0.08907199999999998,
+    "entries": 6,
+    "exit_code": 0,
+    "max_rss_kib_children": 43744,
+    "samples": 9038,
+    "samples_per_second": 32685.681277855212,
+    "skipped_windows": 0,
+    "wall_seconds": 0.27651251700001467
+  },
+  "archive_repeat": {
+    "cpu_seconds": 0.008021999999999987,
+    "exit_code": 0,
+    "max_rss_kib_children": 43872,
+    "wall_seconds": 0.009752261000016915
+  },
+  "backend": "local",
+  "cache_measurement": {
+    "blob_read_amplification_including_index": 10.021875,
+    "cache_limit_bytes": 33554432,
+    "cold_blob_download_bytes_including_index": 9621.0,
+    "cold_latency_ms": 3.9639430000306675,
+    "cold_range_gets": 2.0,
+    "query": "cold_only[30m]",
+    "read_amplification_denominator": "returned raw timestamp+float64 pairs, 16 bytes/sample",
+    "returned_raw_samples": 60,
+    "vm_result_cache": "disabled",
+    "warm_blob_download_bytes": 0.0,
+    "warm_latency_ms": 5.16543300000194,
+    "warm_range_gets": 0.0
+  },
+  "catalog_authority": {
+    "id": "vmtier-e2e-authority",
+    "s3_conditional_writes": false,
+    "s3_etag_required": false,
+    "type": "independent-http-service"
+  },
+  "checks": [
+    "reference and pre-archive Hot both contain identical old data",
+    "unenforced late-write contract rejected",
+    "unreachable export source rejected before coverage commit",
+    "SIGKILL during native stream leaves no committed coverage; fresh archive resumes",
+    "age-selected native export uploaded, verified and committed",
+    "same archive windows replay safely and verify succeeds",
+    "committed catalog rejects a changed coverage origin instead of masking holes",
+    "committed catalog rejects changes to archive age and allowed lateness",
+    "native portable pack independently served to unmodified stock vmselect (query + Range GET)",
+    "Cold-only raw export excludes all young samples, including the exact boundary millisecond",
+    "fresh Hot storage contains recent samples only; raw old-range export is empty for both tenants",
+    "360 exact differential instant/range queries passed across Cold, Hot and boundary",
+    "label names/values and series discovery include Cold; tenant-separated values match reference",
+    "immutable block cache reuses data with zero additional Range GETs; values unchanged",
+    "warm-cache queries and readiness fail on catalog outage; durable authority restart restores reads",
+    "missing/truncated/checksum-invalid objects fail query and verify; restored objects recover",
+    "Cold delete API explicitly rejects unsupported mutation",
+    "catalog startup refuses missing authority state; no implicit empty genesis"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "dedicated_latency_ms": {
+    "cold_only": {
+      "gateway_cache_bytes": 0,
+      "query": "cold_only",
+      "reference_median": 1.1469600000282298,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 4.35604099993725,
+      "vm_result_cache": "disabled"
+    },
+    "cross_boundary": {
+      "gateway_cache_bytes": 0,
+      "query": "rate(requests_total[10m])",
+      "reference_median": 0.9895430000597116,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 1.951203000089663,
+      "vm_result_cache": "disabled"
+    },
+    "hot_only": {
+      "gateway_cache_bytes": 0,
+      "query": "hot_only",
+      "reference_median": 1.1569790000294233,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 2.1647649999749774,
+      "vm_result_cache": "disabled"
+    }
+  },
+  "dedup_interval": "1ms",
+  "differential_checks": 360,
+  "environment": {
+    "go": "go version go1.27.3 linux/amd64",
+    "linux_kernel": "6.18.57",
+    "logical_cpus_available": 5,
+    "machine": "x86_64",
+    "measurement_scope": "single managed development container, loopback; no real Sakura/AWS/MinIO service",
+    "memory_total_gib": 17.58584976196289,
+    "moto": null,
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "python": "3.12.14"
+  },
+  "failure": "Unexpected blob outage HTTP status: 422",
+  "final_metrics": {
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_blocks_total": 787.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_misses_total": 1161.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793952000000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793952000000.0,
+    "vmtier_object_download_bytes_total": 2349978.0,
+    "vmtier_object_get_requests_total": 374.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 787.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_requests_total": 395.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 850580.348,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 850580.348
+  },
+  "fixture": {
+    "archive_age_ms": 11612109,
+    "boundary_ms": 1793952000000,
+    "created_at_ms": 1793965412109,
+    "end_ms": 1793959200000,
+    "finished_at_ms": 1793965420782,
+    "input_samples": 17654,
+    "labels": "fixed 2 instances, 2 zones; churn old/new",
+    "next_eligible_at_ms": 1793967212109,
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate and conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1793941200000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "window_ms": 3600000
+  },
+  "object_bytes": {
+    "catalog_authority_manifest": 3526,
+    "index": 28438,
+    "pack": 39317,
+    "packs": 6
+  },
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "f7d52efaae90c90585832893f926422b457a643722e55c4e13cffbc22a739685",
+      "vmselect": "a1f8fc3b7efd708c734f1817a1eea777319bfb4baae50292994336ded1f9998c",
+      "vmstorage": "4fd7f1fe6fa9e32af350ecbec5517c5a0d7633637b031e4b61fbaad862544131",
+      "vmtier": "44bf5973c9e3eb4e2083b4e2ccaf05c5de5c2c3e8ba14869a67decc7addd64a7"
+    },
+    "executor_hostname": "36765b6c3f29",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "e43295863e6fcc702bebe2a3b67702799cb9c515f31e6b8a5a4a757c74a99cdf",
+    "harness_sha256": {
+      "e2e.py": "a2c2ecb432a254f60f00e3a3dd8a93372f7bfac6afa88db5d27b5e65b64cc237",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    }
+  },
+  "query_timings_ms": {
+    "boundary_reference": [
+      2.179783999963547,
+      1.3768720000371104,
+      2.593192999938765,
+      1.4416090000395343,
+      1.2914309999132456,
+      1.1815340000111973,
+      1.3709810000364087,
+      0.8869689999073671,
+      1.794613000015488,
+      0.9323059999815086,
+      1.1009829999011345,
+      1.7700670000522223,
+      1.3511959999732426,
+      1.5109649999658359,
+      1.160224999921411,
+      1.519822999966891,
+      1.1620679999850836,
+      1.0764829999061476,
+      1.0455789999923581,
+      1.62837599998511,
+      1.3241229999039206,
+      1.08080399991195,
+      1.032694999935302,
+      1.7888929999116954,
+      1.139405000003535,
+      1.0497069999928499,
+      1.669854000056148,
+      1.0471219999317327,
+      1.0286670000141385,
+      1.0419720000527377,
+      1.1758429999417785,
+      1.00791800002753,
+      0.8959269999877506,
+      0.6960059999983059,
+      0.8044450000852521,
+      0.792962999980773,
+      0.7675499999777458,
+      1.0753820000672931,
+      0.8321470000964837,
+      0.893111999971552,
+      1.0395069999731277,
+      1.088890000005449,
+      1.3960990000896345,
+      0.8902150000267284,
+      0.9975489999760612,
+      1.5538390000529034,
+      1.29714199999853,
+      2.0687699999371034,
+      1.1555449999605116,
+      0.913501000013639,
+      0.8871039999576169,
+      0.9385880000536417,
+      0.9143219999714347,
+      0.8238819999633051,
+      1.2556240000094476,
+      1.1393749999797365,
+      0.9139819999290921,
+      0.7532590000209893,
+      0.9697069999674568,
+      0.7958080000207701
+    ],
+    "boundary_tiered": [
+      3.048861000024772,
+      3.2613299999866285,
+      2.2571419999621867,
+      2.06454700003178,
+      1.9906889999674604,
+      2.017770000065866,
+      2.8829080000605245,
+      8.49423299996488,
+      2.5192839999590433,
+      3.4989680000308,
+      2.9918529999122256,
+      7.845878000011908,
+      4.281031000004987,
+      3.760613999929774,
+      3.7384690000408227,
+      4.871243000025061,
+      3.2077939999908267,
+      4.170887999976003,
+      5.115666000051533,
+      2.803123999910895,
+      2.4340630000097008,
+      2.124239999943711,
+      3.491923000069619,
+      3.6786259998962123,
+      2.237473000036516,
+      2.4636050000026444,
+      2.197447999947144,
+      3.257403000020531,
+      3.033385000094313,
+      4.16831900008674,
+      2.952158999960375,
+      2.9269919999705962,
+      2.1780240000452977,
+      1.6787110000677785,
+      2.2611370000049646,
+      2.3729230000526513,
+      2.1539550000397867,
+      1.995105999981206,
+      2.300581999975293,
+      2.137995999987652,
+      1.9147450000218669,
+      1.9539390000318235,
+      2.517189000059261,
+      1.8769640000755317,
+      2.2694430000456123,
+      4.141965999906461,
+      4.9108069999874715,
+      3.300219000038851,
+      2.5609130000248115,
+      2.052614999911384,
+      2.1478200000046854,
+      2.050830000030146,
+      2.0164469999599532,
+      1.9532279999339153,
+      2.85488899999109,
+      2.5497149999864632,
+      2.1760669999366655,
+      1.7357079999555936,
+      2.0161760000974027,
+      1.7580100000031962
+    ],
+    "cold_reference": [
+      5.002339000043321,
+      1.8101089999618125,
+      1.393894999978329,
+      1.1186169999746198,
+      1.1062229999652118,
+      1.136831000053462,
+      1.14852299998347,
+      1.2007299999368115,
+      1.123025000083544,
+      1.4017490000242105,
+      1.6530530000409271,
+      1.319053999964126,
+      1.8212999999605017,
+      1.4074309999614343,
+      1.3761220000105823,
+      2.287396999918201,
+      1.5738429999601067,
+      2.2924510000166265,
+      1.0184679999838409,
+      1.6011950000347497,
+      1.6254299999900468,
+      1.0273100000404156,
+      1.4657499999657375,
+      1.4075599999614496,
+      1.5123879999237033,
+      1.673795999977301,
+      1.1778179999737404,
+      1.5774700000292796,
+      1.0431949999656354,
+      1.3128010000400536,
+      1.2907799999766212,
+      1.4207750000423403,
+      1.2230529999897044,
+      1.5584810000746074,
+      1.3340919999791367,
+      1.2332519999063152,
+      1.9186020000461212,
+      4.161661000011918,
+      5.525763000036932,
+      1.4259440000614632,
+      1.2249459999793544,
+      1.1409219999904963,
+      1.5971980000131225,
+      0.9567820000029315,
+      1.249982999979693,
+      1.8230629999607117,
+      1.034748999927615,
+      1.8970080000144662,
+      1.8838119999600167,
+      1.360883000074864,
+      1.7947499999309002,
+      1.1594929999318992,
+      1.159211999947729,
+      1.1176850000538252,
+      0.8891950000133875,
+      1.2204170000131853,
+      1.2888770000927252,
+      1.2675560000161568,
+      1.4003180000372595,
+      1.0904530000743762
+    ],
+    "cold_tiered": [
+      6.834819999994579,
+      4.250923999961742,
+      2.9727070000262756,
+      2.6529449999088683,
+      6.166681000081553,
+      4.681224000023576,
+      3.1184309999616744,
+      3.579059000003326,
+      3.0257070000061503,
+      2.9926349999414015,
+      3.4431829999448382,
+      3.9062150000290785,
+      3.7865599999804544,
+      3.1600800000433082,
+      4.511464999950476,
+      5.670756999961668,
+      2.9790140000613974,
+      3.470995000043331,
+      2.3689299999887226,
+      3.9345779999848673,
+      2.9463480000231357,
+      2.976955999997699,
+      2.649387999895225,
+      3.2706289999850924,
+      2.8926570000749052,
+      4.0176950000159195,
+      3.170640000007552,
+      3.9562389999900915,
+      2.7418899999247515,
+      3.5186140000860178,
+      3.079693000017869,
+      3.9403700000093522,
+      3.0923029999030405,
+      2.8712810000115496,
+      2.7414009999802147,
+      3.5460369999782415,
+      3.5636500000464366,
+      3.6728720000382964,
+      4.2604959999152925,
+      4.256524000084028,
+      3.540203000056863,
+      3.4251499999982116,
+      3.752945999963231,
+      2.9407969999510897,
+      3.404509999995753,
+      6.55673599999318,
+      2.5716119999970033,
+      4.424545000006219,
+      2.7260179999757383,
+      4.007990999980393,
+      4.550930999926095,
+      2.669477000040388,
+      2.464260000010654,
+      2.3540120000689058,
+      2.683302000036747,
+      3.580832000011469,
+      2.614062000020567,
+      2.7555479999819,
+      3.052096000033089,
+      2.8614410000500357
+    ],
+    "hot_reference": [
+      1.4054260000193608,
+      1.2972279999985403,
+      1.1226039999883142,
+      0.8446499999763546,
+      0.8071390000168321,
+      1.215207999962331,
+      0.9306219999416498,
+      1.030200000059267,
+      1.1509370000339914,
+      1.0936290000245208,
+      1.3138430000481094,
+      1.0184180000578635,
+      0.8998550000569594,
+      0.8944339999743534,
+      0.9198930000593464,
+      1.6842449999785458,
+      1.526644000023225,
+      1.6619809999838253,
+      1.3670539999566245,
+      1.041420999968068,
+      1.292052999929183,
+      1.750946000015574,
+      1.0627000000340558,
+      1.6966780000302606,
+      1.1421499999642037,
+      0.861612999983663,
+      0.8543079999299152,
+      0.9877200000119046,
+      0.7719630000337929,
+      0.7715340000231663,
+      0.9802860000718283,
+      1.5241700000387937,
+      1.2865119999787566,
+      0.9738539999943896,
+      1.051390000043284,
+      1.29409700002725,
+      1.2125829999831694,
+      2.0316860000093584,
+      1.3229820000333348,
+      1.1107810000794416,
+      1.0765580000224872,
+      0.8996139999908337,
+      2.5925420000021404,
+      1.0994289999644025,
+      1.2786130000677076,
+      2.7572520000376244,
+      1.381423999987419,
+      1.3474840000071708,
+      2.186314000027778,
+      1.136549999955605,
+      1.0345279999910417,
+      1.2514759999930902,
+      0.8185009999124304,
+      0.8658499999683045,
+      0.9109260000741415,
+      1.0808650000626585,
+      0.9199520000038319,
+      0.8656400000290887,
+      0.8400419999361475,
+      0.8070400000406153
+    ],
+    "hot_tiered": [
+      2.2686419999899954,
+      1.860153000052378,
+      1.8936239999902682,
+      1.939663000030123,
+      2.4604230000022653,
+      2.032868000014787,
+      1.871618999985003,
+      1.6319670000939368,
+      2.405148999969242,
+      2.1294800000077885,
+      2.3978310000529746,
+      2.609572000096705,
+      2.137882000056379,
+      1.8027240000719758,
+      2.315350000003491,
+      3.2668279999370498,
+      4.968654999970568,
+      3.7928320000446547,
+      2.876449000041248,
+      2.2393020000208708,
+      1.919074000056753,
+      1.9950920000155747,
+      1.7884019999883094,
+      2.3395169999957943,
+      1.8633170000157406,
+      2.197777999981554,
+      1.6860750000660119,
+      1.7281750000393004,
+      2.1214519999830372,
+      1.9976330000872622,
+      1.5399190000380258,
+      2.025234000029741,
+      1.8664039999976012,
+      1.6179859999283508,
+      2.1865370000568873,
+      2.162642000030246,
+      1.9229060000043319,
+      3.5191399999803252,
+      1.9046769999704338,
+      1.9383699999480086,
+      2.1916869999358823,
+      2.1478940000179136,
+      3.245401999947717,
+      2.3029020001104072,
+      4.496324999990975,
+      4.141525000022739,
+      3.030534999993506,
+      2.9745309999498204,
+      2.61400700003378,
+      2.5702890000047773,
+      1.9140840000773096,
+      1.980789999947774,
+      1.709989999994832,
+      2.0558009999831484,
+      2.5759210000160238,
+      2.0005569999739237,
+      1.664172999994662,
+      1.8404249999548483,
+      1.748831999975664,
+      1.9300339999972493
+    ]
+  },
+  "recorded_at_utc": "2026-11-06T11:43:40.782375+00:00",
+  "replicas": 1,
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "catalog-init",
+          "-path",
+          "/workspace/vmtier-foundations/.cache/foundation-local/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-init"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/workspace/vmtier-foundations/.cache/foundation-local/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority",
+          "-http",
+          "127.0.0.1:52081"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "catalog-service",
+        "pid": 14071
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:60507",
+          "-vminsertAddr=127.0.0.1:50821",
+          "-vmselectAddr=127.0.0.1:42811",
+          "-storageDataPath=/workspace/vmtier-foundations/.cache/foundation-local/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 14090
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:36467",
+          "-storageNode=127.0.0.1:50821",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 14120
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:40007",
+          "-storageNode=127.0.0.1:42811",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-foundations/.cache/foundation-local/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 14139
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:57031",
+          "-vminsertAddr=127.0.0.1:53759",
+          "-vmselectAddr=127.0.0.1:53943",
+          "-storageDataPath=/workspace/vmtier-foundations/.cache/foundation-local/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 14158
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:34475",
+          "-storageNode=127.0.0.1:53759",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 14166
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:42497",
+          "-storageNode=127.0.0.1:53943",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-foundations/.cache/foundation-local/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 14190
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/invalid.json",
+          "-start",
+          "1793941200000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "invalid-lateness"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/missing-source.json",
+          "-start",
+          "1793941200000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "missing-source"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json",
+          "-start",
+          "1793941200000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": -9,
+        "kind": "managed",
+        "name": "archive-interrupted",
+        "pid": 14295
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json",
+          "-start",
+          "1793941200000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "archive"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "verify"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json",
+          "-start",
+          "1793941200000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "archive-repeat"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "archive-automatic"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "inspect",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "inspect"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/shifted-origin.json",
+          "-start",
+          "1793944800000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "shifted-origin"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/changed-archive_age.json",
+          "-start",
+          "1793941200000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "changed-archive_age"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/changed-lateness.json",
+          "-start",
+          "1793941200000",
+          "-end",
+          "1793952000000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "changed-lateness"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "gateway",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json",
+          "-listen",
+          "127.0.0.1:50955",
+          "-http",
+          "127.0.0.1:34041"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "gateway",
+        "pid": 14404
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:47573",
+          "-storageNode=127.0.0.1:50955",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-foundations/.cache/foundation-local/cold-only-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-only-select",
+        "pid": 14414
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:57031",
+          "-vminsertAddr=127.0.0.1:53759",
+          "-vmselectAddr=127.0.0.1:53943",
+          "-storageDataPath=/workspace/vmtier-foundations/.cache/foundation-local/hot-storage-0-recent-only",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-recent-only",
+        "pid": 14434
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:34475",
+          "-storageNode=127.0.0.1:53759",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-recent-only",
+        "pid": 14443
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:42497",
+          "-storageNode=127.0.0.1:53943",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-foundations/.cache/foundation-local/hot-select-recent-only"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-recent-only",
+        "pid": 14451
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "gateway",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json",
+          "-listen",
+          "127.0.0.1:50955",
+          "-http",
+          "127.0.0.1:34041"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "gateway-restarted",
+        "pid": 14467
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:45555",
+          "-storageNode=127.0.0.1:53943,127.0.0.1:50955",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier-foundations/.cache/foundation-local/tiered-select",
+          "-search.maxLabelsAPIDuration=30s"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "tiered-select",
+        "pid": 14475
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "gateway",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json",
+          "-listen",
+          "127.0.0.1:50955",
+          "-http",
+          "127.0.0.1:34041"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "gateway-cache-enabled",
+        "pid": 14486
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/workspace/vmtier-foundations/.cache/foundation-local/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority",
+          "-http",
+          "127.0.0.1:52081"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "catalog-service-restarted",
+        "pid": 14494
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "gateway",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json",
+          "-listen",
+          "127.0.0.1:50955",
+          "-http",
+          "127.0.0.1:34041"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "gateway-fault-tests",
+        "pid": 14502
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "verify-missing"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "verify-truncated"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier-foundations/.cache/foundation-local/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "verify-checksum"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/workspace/vmtier-foundations/.cache/foundation-local/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority",
+          "-http",
+          "127.0.0.1:52081"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "catalog-missing"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-foundations/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/workspace/vmtier-foundations/.cache/foundation-local/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority",
+          "-http",
+          "127.0.0.1:52081"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "catalog-service-restored",
+        "pid": 14540
+      }
+    ],
+    "selected_GOMAXPROCS": "3",
+    "selection": "argument"
+  },
+  "started_at_utc": "2026-11-06T11:43:32.020030+00:00",
+  "status": "failed",
+  "tiered_vm_labels_api_max_duration": "30s",
+  "vm_result_cache": "disabled",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}

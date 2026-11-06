@@ -17,10 +17,12 @@ class S3CompatibilityProxy:
     def __init__(self, upstream):
         self.upstream = upstream.rstrip('/')
         self.lock = threading.Lock()
+        self.unavailable = threading.Event()
         self.counts = {'requests': 0, 'conditional_requests_rejected': 0,
                        'etag_headers_removed': 0, 'put_requests': 0,
                        'put_content_md5': 0, 'bad_content_md5': 0,
-                       'range_requests': 0}
+                       'range_requests': 0, 'unavailable_requests': 0,
+                       'unavailable_get_requests': 0}
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -72,6 +74,12 @@ class S3CompatibilityProxy:
                     self._count('range_requests')
                 try:
                     body = self._body()
+                    if owner.unavailable.is_set():
+                        self._count('unavailable_requests')
+                        if self.command == 'GET':
+                            self._count('unavailable_get_requests')
+                        self._error(503, 'VMTierInjectedBlobOutage')
+                        return
                     if self.command == 'PUT':
                         self._count('put_requests')
                         content_md5 = self.headers.get('Content-MD5')

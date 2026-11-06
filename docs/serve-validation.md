@@ -19,8 +19,13 @@ The raw [local report](results/serve-stage2/local.json) and
 unchanged. Final runs were sequential: local ran from `10:14:08` to `10:14:17`
 UTC and S3 from `10:14:17` to `10:16:06` UTC on 2026-11-06. The executor was
 `05fa190d414f`, Debian 13 / Linux amd64, Go 1.27.3, Python 3.12.14, with five
-available CPUs. All four final suites used `GOMAXPROCS=3`. The S3 fixture used
-Moto 5.1.15. All traffic stayed on loopback.
+available CPUs. The outer invocation for all four final suites set `GOMAXPROCS=3`.
+The historical `Processes.start` implementation overrode this with `GOMAXPROCS=2`
+for managed children, including stock VM, gateway, `serve`, and interrupted archive
+processes. One-shot CLI commands launched by `command_stats` inherited the outer
+value of `3`. This corrects runtime provenance; the unchanged raw results still
+establish the exact comparisons below. The S3 fixture used Moto 5.1.15. All traffic
+stayed on loopback.
 
 ## Executed checks
 
@@ -156,10 +161,12 @@ were running. The legacy harness archives a fixed interval with fixed archive
 age; it correctly received a required-Cold-coverage error when the eligible
 interval advanced. Its [report](results/serve-stage2/json-s3-hour-boundary.json)
 and [log excerpt](results/serve-stage2/json-s3-hour-boundary.log) are retained.
-The final retry started in a fresh hour. This existing harness timing limitation
-is distinct from the metadata deadline failure above. The service harness uses
-a fixed age chosen at startup to keep its next eligible window about 30 minutes
-away during the suite.
+The historical final retry started in a fresh hour. This timing failure is distinct
+from the metadata deadline failure above. Both current harnesses now choose a fixed
+age at fixture creation that places the next eligible window 30 minutes away,
+independent of the UTC-hour phase. They record that deadline and reject a run that
+outlives it; no production clock or coverage behavior is changed. The retained
+reports and logs above are historical evidence, not reruns of the updated harness.
 
 ## Reproduction and scope
 
@@ -173,7 +180,11 @@ hashes and each harness hash. Full logs and disposable data remain in
 `.cache/serve-stage2-local-final4` and `.cache/serve-stage2-s3-final4`.
 
 After building the stock binaries and installing `scripts/requirements-e2e.txt`,
-run the suites sequentially with fresh directories:
+run the suites sequentially with fresh directories. Current harnesses apply the
+selected `GOMAXPROCS` to both managed children and one-shot workload commands and
+record each launch in `results.json` (see [runtime provenance](testing.md#runtime-provenance)).
+These commands therefore describe current reproduction settings, not the mixed
+child settings in the historical reports:
 
 ```sh
 export GOMAXPROCS=3

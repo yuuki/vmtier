@@ -32,6 +32,7 @@ import urllib.parse
 import urllib.request
 
 from s3_compat_proxy import S3CompatibilityProxy
+from blob_outage import assert_running_blob_failure, unavailable_blobs
 
 ROOT = Path(__file__).resolve().parents[1]
 HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # loopback tests only
@@ -176,14 +177,59 @@ def fixture(start, boundary, end, tenant_index):
     return series
 
 
+def fixture_horizon(clock_ms):
+    """Keep a fixed complete-window boundary for 30 minutes of real wall time."""
+    hour = 3600000
+    floor = clock_ms // hour * hour
+    boundary = floor - 3 * hour
+    return {'start_ms': floor - 6 * hour, 'boundary_ms': boundary,
+            'end_ms': floor - hour, 'window_ms': hour,
+            'created_at_ms': clock_ms, 'archive_age_ms': clock_ms - boundary - hour // 2,
+            'next_eligible_at_ms': clock_ms + hour // 2}
+
+
+def positive_int(value):
+    value = int(value)
+    if value <= 0:
+        raise argparse.ArgumentTypeError('must be a positive integer')
+    return value
+
+
 class Processes:
-    def __init__(self, work):
+    def __init__(self, work, gomaxprocs=None):
         self.work, self.items = work, []
+        outer = os.environ.get('GOMAXPROCS')
+        self.gomaxprocs = str(positive_int(gomaxprocs if gomaxprocs is not None else outer or 2))
+        self.runtime = {'outer_GOMAXPROCS': outer, 'selected_GOMAXPROCS': self.gomaxprocs,
+                        'selection': 'argument' if gomaxprocs is not None else 'environment' if outer else 'default',
+                        'policy': 'CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children',
+                        'processes': []}
+
+    def child_environment(self, env):
+        # Test credentials may be supplied separately; runtime selection is explicit.
+        return {**os.environ, **(env or {}), 'GOMAXPROCS': self.gomaxprocs}
+
+    def record(self, name, command, kind):
+        record = {'name': name, 'kind': kind, 'command': [str(x) for x in command],
+                  'environment': {'GOMAXPROCS': self.gomaxprocs}}
+        self.runtime['processes'].append(record)
+        return record
+
+    def command_stats(self, command, log_path, env=None, expect_success=True):
+        record = self.record(log_path.stem, command, 'one-shot')
+        return command_stats(command, log_path, self.child_environment(env), expect_success, record)
 
     def start(self, name, command, ready_url=None, env=None):
         log = open(self.work / f'{name}.log', 'wb')
-        p = subprocess.Popen([str(x) for x in command], stdout=log, stderr=subprocess.STDOUT,
-                             env=dict(os.environ, GOMAXPROCS='2', **(env or {})), cwd=ROOT)
+        record = self.record(name, command, 'managed')
+        try:
+            p = subprocess.Popen([str(x) for x in command], stdout=log, stderr=subprocess.STDOUT,
+                                 env=self.child_environment(env), cwd=ROOT)
+        except Exception as error:
+            log.close()
+            record['launch_error'] = str(error)
+            raise
+        record['pid'] = p.pid
         self.items.append((name, p, log))
         if ready_url:
             deadline = time.monotonic() + 30
@@ -212,6 +258,9 @@ class Processes:
         for name, p, log in reversed(self.items):
             self.stop(p)
             log.close()
+            for record in self.runtime['processes']:
+                if record.get('pid') == p.pid:
+                    record['exit_code'] = p.returncode
 
 
 class SourceProxy:
@@ -329,10 +378,22 @@ def timed(fn):
     return result, (time.perf_counter() - start) * 1000
 
 
-def command_stats(command, log_path, env=None, expect_success=True):
+def command_stats(command, log_path, env=None, expect_success=True, runtime_record=None):
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
     start = time.perf_counter()
-    p = subprocess.run([str(x) for x in command], capture_output=True, env=dict(os.environ, **(env or {})), timeout=60)
+    try:
+        p = subprocess.run([str(x) for x in command], capture_output=True, env=dict(os.environ, **(env or {})), timeout=60)
+    except subprocess.TimeoutExpired as error:
+        log_path.write_bytes((error.stdout or b'') + (error.stderr or b''))
+        if runtime_record is not None:
+            runtime_record['timed_out'] = True
+        raise
+    except OSError as error:
+        if runtime_record is not None:
+            runtime_record['launch_error'] = str(error)
+        raise
+    if runtime_record is not None:
+        runtime_record['exit_code'] = p.returncode
     wall = time.perf_counter() - start
     after = resource.getrusage(resource.RUSAGE_CHILDREN)
     log_path.write_bytes(p.stdout + p.stderr)
@@ -344,8 +405,8 @@ def command_stats(command, log_path, env=None, expect_success=True):
             'max_rss_kib_children': after.ru_maxrss, 'exit_code': p.returncode}
 
 
-def check_vm_only(work, replicas):
-    procs = Processes(work)
+def check_vm_only(work, replicas, gomaxprocs=None):
+    procs = Processes(work, gomaxprocs)
     try:
         cluster = Cluster(procs, 'fixture-validation', replicas)
         cluster.start('full')
@@ -365,6 +426,7 @@ def check_vm_only(work, replicas):
                           'boundary_ms': boundary, 'data_end_ms': end, 'cold_query': result}, indent=2))
     finally:
         procs.close()
+        (work / 'runtime.json').write_text(json.dumps(procs.runtime, indent=2) + '\n')
 
 
 def metrics(port):
@@ -381,7 +443,7 @@ def metrics(port):
 
 def run(work, args):
     work = work.resolve()
-    procs = Processes(work)
+    procs = Processes(work, args.gomaxprocs)
     reports = {'backend': args.backend, 'replicas': args.replicas,
                'architecture': 'v2: independent persistent catalog authority; ordinary PUT/GET/Range blobs',
                'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -389,7 +451,7 @@ def run(work, args):
                'dedup_interval': '1ms', 'vm_result_cache': 'disabled',
                'tiered_vm_labels_api_max_duration': '30s',
                'comparison': 'exact timestamps, labels and numeric strings; no tolerance',
-               'checks': [], 'query_timings_ms': {}}
+               'checks': [], 'query_timings_ms': {}, 'runtime': procs.runtime}
     tenants = ['1:2', '7:9']
     source_proxy = None
     s3_proxy = None
@@ -426,9 +488,9 @@ def run(work, args):
         go_bin = os.environ.get('GO_BIN') or shutil.which('go')
         if go_bin:
             reports['environment']['go'] = subprocess.check_output([go_bin, 'version'], text=True).strip()
-        now = int(time.time()) // 3600 * 3600000
-        start, boundary, end = now - 6 * 3600000, now - 3 * 3600000, now - 3600000
-        reports['fixture'] = {'start_ms': start, 'boundary_ms': boundary, 'end_ms': end,
+        horizon = fixture_horizon(int(time.time() * 1000))
+        start, boundary, end = (horizon[key] for key in ('start_ms', 'boundary_ms', 'end_ms'))
+        reports['fixture'] = {**horizon,
                               'scrape_interval_ms': 30000, 'tenants': tenants,
                               'series_per_tenant': 16, 'labels': 'fixed 2 instances, 2 zones; churn old/new',
                               'special_cases': ['irregular gaps', 'counter reset', 'stale marker', 'NaN',
@@ -461,7 +523,7 @@ def run(work, args):
         catalog_port = free_port()
         catalog_url = f'http://127.0.0.1:{catalog_port}'
         catalog_id = 'vmtier-e2e-authority'
-        command_stats([bin_path, 'catalog-init', '-path', catalog_path, '-id', catalog_id],
+        procs.command_stats([bin_path, 'catalog-init', '-path', catalog_path, '-id', catalog_id],
                       work / 'catalog-init.log', test_env)
 
         def start_catalog(label):
@@ -496,7 +558,7 @@ def run(work, args):
         source_proxy = SourceProxy(hot.select)
         cfg = {'store': store, 'catalog': {'type': 'http', 'url': catalog_url, 'id': catalog_id}, 'tenants': tenants,
                'sources': [{'id': 'hot', 'url': source_proxy.url}],
-               'archive_age': '3h', 'hot_retention': '240h', 'lateness': '30m',
+               'archive_age': f"{horizon['archive_age_ms']}ms", 'hot_retention': '240h', 'lateness': '30m',
                'safety_margin': '30m', 'window': '1h', 'lateness_enforced': True,
                'coverage_start_ms': start}
         def object_url(key):
@@ -523,7 +585,7 @@ def run(work, args):
         bin_path = ROOT / '.bin/vmtier'
 
         def archive(config=cfg_path, first=start, last=boundary, label='archive', success=True):
-            return command_stats([bin_path, 'archive', '-config', config, '-start', str(first), '-end', str(last)],
+            return procs.command_stats([bin_path, 'archive', '-config', config, '-start', str(first), '-end', str(last)],
                                  work / f'{label}.log', test_env, success)
 
         invalid_cfg = dict(cfg, lateness_enforced=False)
@@ -559,13 +621,13 @@ def run(work, args):
         reports['object_bytes'] = {'pack': total_pack, 'index': total_index, 'catalog_authority_manifest': len(manifest_bytes),
                                    'packs': len(manifest['entries'])}
 
-        command_stats([bin_path, 'verify', '-config', cfg_path], work / 'verify.log', test_env)
+        procs.command_stats([bin_path, 'verify', '-config', cfg_path], work / 'verify.log', test_env)
         reports['checks'].append('age-selected native export uploaded, verified and committed')
         reports['archive_repeat'] = archive(label='archive-repeat')
         assert catalog_get() == manifest_bytes, 'Replay changed committed catalog'
-        command_stats([bin_path, 'archive', '-config', cfg_path], work / 'archive-automatic.log', test_env)
+        procs.command_stats([bin_path, 'archive', '-config', cfg_path], work / 'archive-automatic.log', test_env)
         assert catalog_get() == manifest_bytes, 'Automatic scheduler re-exported committed coverage'
-        command_stats([bin_path, 'inspect', '-config', cfg_path], work / 'inspect.log', test_env)
+        procs.command_stats([bin_path, 'inspect', '-config', cfg_path], work / 'inspect.log', test_env)
         reports['checks'].append('same archive windows replay safely and verify succeeds')
         shifted_cfg = dict(cfg, coverage_start_ms=start + 3600000)
         (work / 'shifted-origin.json').write_text(json.dumps(shifted_cfg))
@@ -770,7 +832,7 @@ def run(work, args):
                     assert error.code >= 400
                 else:
                     raise AssertionError(f'{label} payload produced successful query')
-                command_stats([bin_path, 'verify', '-config', cfg_path], work / f'verify-{label}.log',
+                procs.command_stats([bin_path, 'verify', '-config', cfg_path], work / f'verify-{label}.log',
                               test_env, expect_success=False)
             finally:
                 object_set(damaged_key, original)
@@ -789,30 +851,41 @@ def run(work, args):
         procs.stop(catalog_process)
         unavailable_catalog_path = work / 'catalog-authority-held'
         catalog_path.rename(unavailable_catalog_path)
-        command_stats([bin_path, 'catalog', '-path', catalog_path, '-id', catalog_id,
+        procs.command_stats([bin_path, 'catalog', '-path', catalog_path, '-id', catalog_id,
                        '-http', f'127.0.0.1:{catalog_port}'], work / 'catalog-missing.log', test_env, expect_success=False)
         assert not catalog_path.exists(), 'Missing authority was silently initialized'
         unavailable_catalog_path.rename(catalog_path)
         catalog_process = start_catalog('catalog-service-restored')
         assert catalog_get() == manifest_bytes
         reports['checks'].append('catalog startup refuses missing authority state; no implicit empty genesis')
-        # Kill the backend for an explicit fail-closed query after clearing process caches.
-        procs.stop(gateway_process)
-        if args.backend == 's3':
-            procs.stop(s3_process)
-        else:
-            Path(store['path']).rename(work / 'objects-offline')
-        # Start without readiness wait: unhealthy storage must stay unready and query must fail.
-        procs.start('gateway-backend-offline', [bin_path, 'gateway', '-config', cfg_path,
-            '-listen', f'127.0.0.1:{gateway_port}', '-http', f'127.0.0.1:{gateway_http}'], env=test_env)
-        time.sleep(.5)
-        try:
-            api(top_select, tenants[0], 'query', {'query': 'cold_only', 'time': (boundary - 600000) / 1000,
-                                                'timeout': '3s'})
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
-            reports['checks'].append('Cold backend failure propagates as stock vmselect HTTP failure, never empty success')
-        else:
-            raise AssertionError('Cold outage returned success')
+        # Establish a successful frontend connection, then interrupt only blob
+        # access. No gateway restart, cached dial failure, or arbitrary sleep can
+        # satisfy this assertion. Allow the bounded SDK retries to finish.
+        assert cfg['cache_bytes'] == 0
+        outage_params = dict(fail_params, timeout='15s')
+        expected = api(ref.select, tenants[0], 'query', outage_params)
+        compare(expected, api(top_select, tenants[0], 'query', outage_params), 'blob outage baseline')
+        before_catalog = catalog_get()
+        request(f'http://127.0.0.1:{gateway_http}/health')
+        request(f'http://127.0.0.1:{gateway_http}/ready')
+        before_proxy = s3_proxy.snapshot() if s3_proxy else None
+        with unavailable_blobs(store, work, s3_proxy) as marker:
+            evidence = assert_running_blob_failure(
+                lambda: api(top_select, tenants[0], 'query', outage_params),
+                gateway_process, lambda: metrics(gateway_http), marker)
+            request(f'http://127.0.0.1:{gateway_http}/health')
+            request(f'http://127.0.0.1:{gateway_http}/ready')
+            assert catalog_get() == before_catalog
+        compare(expected, api(top_select, tenants[0], 'query', outage_params), 'blob outage recovery')
+        assert catalog_get() == before_catalog == manifest_bytes
+        if s3_proxy:
+            evidence['proxy_failed_gets'] = s3_proxy.snapshot()['unavailable_get_requests'] - before_proxy['unavailable_get_requests']
+            assert evidence['proxy_failed_gets'] > 0
+        evidence.update(cache_bytes=0, process_pid=gateway_process.pid,
+                        coverage_unchanged=True, healthy_and_ready_during_outage=True,
+                        exact_baseline_and_recovery=True)
+        reports['blob_outage'] = evidence
+        reports['checks'].append('running Cold gateway attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes')
         for key, values in list(reports['query_timings_ms'].items()):
             ordered = sorted(values)
             reports['query_timings_ms'][key] = {'count': len(values), 'median': statistics.median(values),
@@ -826,6 +899,7 @@ def run(work, args):
             assert proxy_counts['bad_content_md5'] == 0, proxy_counts
             reports['s3_compatibility_proxy'] = proxy_counts
             reports['checks'].append('all S3 traffic passed a conditional-request-rejecting, ETag-stripping proxy with valid Content-MD5 PUTs')
+        assert int(time.time() * 1000) < horizon['next_eligible_at_ms'], 'Fixture exceeded its 30-minute eligibility horizon'
         reports['status'] = 'passed'
     except Exception as exc:
         reports['status'], reports['failure'] = 'failed', str(exc)
@@ -836,6 +910,8 @@ def run(work, args):
             source_proxy.close()
         if s3_proxy:
             s3_proxy.close()
+        if 'fixture' in reports:
+            reports['fixture']['finished_at_ms'] = int(time.time() * 1000)
         reports['recorded_at_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         (work / 'results.json').write_text(json.dumps(reports, indent=2, sort_keys=True))
         print(json.dumps({k: v for k, v in reports.items() if k not in ['final_metrics']}, indent=2), flush=True)
@@ -844,6 +920,7 @@ def run(work, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workdir', type=Path)
+    parser.add_argument('--gomaxprocs', type=positive_int, help='GOMAXPROCS for workload children (default: outer GOMAXPROCS, else 2)')
     parser.add_argument('--backend', choices=['local', 's3'], default='local')
     parser.add_argument('--replicas', type=int, choices=[1, 2], default=1)
     parser.add_argument('--vm-only', action='store_true', help='Validate stock fixture ingestion/export before vmtier integration')
@@ -854,7 +931,7 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     print(f'Artifacts: {work}', flush=True)
     if args.vm_only:
-        check_vm_only(work, args.replicas)
+        check_vm_only(work, args.replicas, args.gomaxprocs)
     else:
         run(work, args)
 

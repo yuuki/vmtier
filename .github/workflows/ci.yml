@@ -15,15 +15,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: python -m unittest discover -s scripts -p 'test_*.py'
       - run: make bootstrap build test race vet stock
       - run: python -m pip install -r scripts/requirements-e2e.txt
       - run: python scripts/e2e.py --backend local --workdir .cache/ci-local
       - run: python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/ci-s3
       - run: python scripts/e2e_serve.py --backend local --workdir .cache/ci-serve-local
       - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --workdir .cache/ci-serve-s3
+      - name: Package E2E evidence
+        if: always()
+        run: python scripts/package_evidence.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: e2e-evidence
-          path: .cache/ci-*/
+          path: .cache/e2e-evidence.tar.gz
           include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
