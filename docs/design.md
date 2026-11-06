@@ -16,7 +16,7 @@ measurement and release-qualification work. See
 | Service | Lifetime state lock, age-based scheduler, read RPC, capacity/failure metrics, shared S3 attempt budget |
 | Archive | SQLite pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
 | Reader | SQLite selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |
-| Remaining work | Metadata deadline measurements; combined RSS/workload and catalog capacity; provider, retention, ingress, recovery, and release qualification |
+| Remaining work | Metadata deadline measurements; combined RSS/workload and catalog capacity; provider, retention, ingress, and release qualification |
 
 The legacy [JSON v2 MVP architecture](mvp-design.md) and its
 [historical validation](validation.md) remain the regression baseline. Neither
@@ -423,7 +423,11 @@ acceptance criterion: stock-VM comparisons are recorded separately, and the
 success only for the retained small fixture. Logical admission is not combined-memory
 qualification. Step 5 remains unqualified, including workload/catalog scale (#14),
 real Sakura (#15), natural retention (#16), enforced ingress lateness (#17),
-end-to-end recovery/cutover (#18), and reproducible release artifacts (#19).
+and reproducible release artifacts (#19). The scoped [offline recovery/cutover
+suite](recovery-validation.md) exercises #18 against stock VM and local objects,
+including older-backup catch-up and process crashes. Its expired-source refusal
+fixture reconstructs absent history; it does not establish natural retention
+expiry or physical power-loss durability.
 Executed checks and their limitations belong in stage-specific validation reports;
 historical results remain evidence only for their recorded revision.
 
