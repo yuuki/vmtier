@@ -371,10 +371,7 @@ def run(work, args):
         background_stop.set()
         background_thread.join(timeout=35)
         assert not background_thread.is_alive(), 'background query did not drain'
-        assert not background_errors, background_errors
         stable = snapshot(database)
-        assert len(stable['windows']) == args.tenants * args.history_hours
-        assert all(row['end_ms'] == horizon['boundary_ms'] for row in stable['coverage'])
         report['archive'] = {'catchup_seconds': catchup_seconds,
                              'logical_samples_per_second': samples / catchup_seconds,
                              'dense_payload_hours_per_wall_hour': args.dense_hours * 3600 / catchup_seconds,
@@ -382,25 +379,36 @@ def run(work, args):
                              'windows': len(stable['windows']), 'packs': len(stable['packs']),
                              'generation': stable['state']['generation'], 'coverage': stable['coverage'],
                              'metrics': metrics(http_port)}
-        assert report['archive']['metrics']['vmtier_archive_samples_total'] == samples, (
-            'Committed sample count differs from generated logical input', report['archive'], samples)
+        # Preserve completed publication evidence before failing a concurrent
+        # query qualification. An oversized query does not imply archive failure.
+        report['concurrent_archive_queries']['failures'] = background_errors
         physical_rows = 0
         object_sizes = {'data_bytes': 0, 'index_bytes': 0}
-        for pack in stable['packs']:
-            path = Path(cfg['store']['path']) / pack['index_key']
-            index_bytes = path.read_bytes()
-            index = json.loads(index_bytes)
-            physical_rows += sum(block['rows'] for series in index['series'] for block in series['blocks'])
-            object_sizes['index_bytes'] += len(index_bytes)
-            object_sizes['data_bytes'] += (Path(cfg['store']['path']) / pack['data_key']).stat().st_size
-        report['archive']['physical_rows_in_committed_indexes'] = physical_rows
-        report['archive']['object_sizes'] = object_sizes
+        try:
+            for pack in stable['packs']:
+                path = Path(cfg['store']['path']) / pack['index_key']
+                index_bytes = path.read_bytes()
+                index = json.loads(index_bytes)
+                physical_rows += sum(block['rows'] for series in index['series'] for block in series['blocks'])
+                object_sizes['index_bytes'] += len(index_bytes)
+                object_sizes['data_bytes'] += (Path(cfg['store']['path']) / pack['data_key']).stat().st_size
+            report['archive']['physical_rows_in_committed_indexes'] = physical_rows
+            report['archive']['object_sizes'] = object_sizes
+        except Exception as error:
+            report['archive']['object_observation_error'] = str(error)
+            if not background_errors:
+                raise
         report['archive']['initial_retention_safety_headroom_seconds'] = (
             horizon['start_ms'] + 240 * HOUR - 30 * 60000 - horizon['created_at_ms']) / 1000
         concurrency = report['concurrent_archive_queries']
         concurrency['commits_after_queries_started'] = (
             concurrency['finished_generation'] - concurrency['started_generation']
             if concurrency['started_generation'] is not None and concurrency['finished_generation'] is not None else 0)
+        assert not background_errors, background_errors
+        assert len(stable['windows']) == args.tenants * args.history_hours
+        assert all(row['end_ms'] == horizon['boundary_ms'] for row in stable['coverage'])
+        assert report['archive']['metrics']['vmtier_archive_samples_total'] == samples, (
+            'Committed sample count differs from generated logical input', report['archive'], samples)
         assert concurrency['successes'] > 0 and concurrency['commits_after_queries_started'] > 0, concurrency
         report['checks'].append('Source outage publishes nothing; subsequent archive catch-up makes commits while exact Cold queries run')
 
