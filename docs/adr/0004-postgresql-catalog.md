@@ -4,9 +4,10 @@
 
 Accepted for staged implementation in [issue #25](https://github.com/yuuki/vmtier/issues/25).
 Stage 1 adds the repository implementation and extracts its domain interface.
-The CLI and `serve` still use SQLite; a PostgreSQL backend alone does not establish
-an HA runtime. [ADR 0003](0003-first-release-scope.md) continues to describe the
-supported single-owner deployment until the later stages are qualified.
+Stage 2 enables PostgreSQL service/maintenance access with DB-time leases and
+transaction-enforced fencing. [ADR 0003](0003-first-release-scope.md) continues to
+describe the retained SQLite deployment. Database topology, gateway endpoint,
+request budgets, migration, and failure qualification are explicit further work.
 
 ## Context
 
@@ -57,8 +58,9 @@ of this design.
    promotion eligibility, and old-primary fencing for the stated failure model.
    Async replication and backups do not establish that guarantee.
 
-The first stage intentionally does not expose PostgreSQL through `serve`, where
-the single-owner and shared-request-budget assumptions would otherwise be lost.
+The first stage did not expose PostgreSQL through `serve`; stage 2 replaces its
+archive ownership assumption with renewable leases and fencing. Shared bucket
+request limits still require explicit multi-instance allocation.
 Per-stream concurrent archiving and removal of the global generation bottleneck
 can follow measured need. Multi-region writes, GC, and format changes are excluded.
 

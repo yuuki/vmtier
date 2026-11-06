@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/yuuki/vmtier/internal/catalog"
 	"github.com/yuuki/vmtier/internal/config"
@@ -21,8 +24,31 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 	}
 	defer db.Close()
 	if operation == "inspect" {
-		return printSQLiteStatus(ctx, db)
+		return printCatalogStatus(ctx, db)
 	}
+	return verifyRepository(ctx, c, db)
+}
+
+// PostgreSQL metadata inspection is online. A verification pass fixes its
+// coverage prefix at the initial snapshot; later publications are not included.
+func runPostgresMaintenance(ctx context.Context, operation string, c *config.Config) error {
+	if operation != "inspect" && operation != "verify" {
+		return errors.New("PostgreSQL archiving requires fenced ownership; use vmtier serve -config FILE")
+	}
+	db, err := openConfiguredRepository(ctx, c)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if operation == "inspect" {
+		readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return printCatalogStatus(readCtx, db)
+	}
+	return verifyRepository(ctx, c, db)
+}
+
+func verifyRepository(ctx context.Context, c *config.Config, db catalog.Repository) error {
 	blobs, err := c.OpenBlobs()
 	if err != nil {
 		return err
@@ -30,15 +56,17 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 	if closer, ok := blobs.(interface{ Close() error }); ok {
 		defer closer.Close()
 	}
-	state, err := db.Status(ctx)
+	readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	state, err := db.Status(readCtx)
+	cancel()
 	if err != nil {
 		return err
 	}
 	if state.Generation == 0 {
-		return errors.New("no committed SQLite windows to verify")
+		return errors.New("no committed catalog windows to verify")
 	}
 	// Include source windows ahead of the minimum tenant coverage. Each plan
-	// remains bounded to one logical time window during the offline scrub.
+	// remains bounded to one logical time window during the scrub.
 	ends := make(map[string]int64)
 	for _, stream := range state.Coverage {
 		if stream.End > ends[stream.Tenant] {
@@ -51,13 +79,18 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 			if end <= start {
 				return errors.New("verification interval overflows")
 			}
-			plan, err := db.Select(ctx, catalog.Selection{Tenant: tenant, Start: start, End: end})
+			readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			plan, err := db.Select(readCtx, catalog.Selection{Tenant: tenant, Start: start, End: end})
+			cancel()
 			if err != nil {
 				return err
 			}
 			for _, window := range plan.Windows {
+				if window.Generation > state.Generation {
+					continue
+				}
 				for _, ref := range window.Packs {
-					if err := verifySQLitePack(ctx, blobs, window, ref); err != nil {
+					if err := verifyCatalogPack(ctx, blobs, window, ref); err != nil {
 						return fmt.Errorf("verify tenant %s source %s window %d: %w", tenant, window.SourceID, start, err)
 					}
 				}
@@ -65,10 +98,10 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 			start = end
 		}
 	}
-	return printSQLiteStatus(ctx, db)
+	return json.NewEncoder(os.Stdout).Encode(state)
 }
 
-func verifySQLitePack(ctx context.Context, blobs objectstore.BlobStore, window catalog.Window, ref catalog.PackRef) error {
+func verifyCatalogPack(ctx context.Context, blobs objectstore.BlobStore, window catalog.Window, ref catalog.PackRef) error {
 	b, err := blobs.Get(ctx, ref.IndexKey)
 	if err != nil {
 		return err
@@ -81,7 +114,7 @@ func verifySQLitePack(ctx context.Context, blobs objectstore.BlobStore, window c
 		return err
 	}
 	if idx.Tenant.String() != window.Tenant || idx.Start != window.Start || idx.End != window.End || idx.Size != ref.DataBytes || idx.SHA256 != ref.DataSHA256 {
-		return errors.New("index disagrees with SQLite descriptor")
+		return errors.New("index disagrees with catalog descriptor")
 	}
 	data, err := blobs.Get(ctx, ref.DataKey)
 	if err != nil {

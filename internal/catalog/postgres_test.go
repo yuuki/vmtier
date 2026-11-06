@@ -93,6 +93,16 @@ func postgresStatus(t *testing.T, ctx context.Context, s *Postgres) Status {
 	return state
 }
 
+// The repository contract tests share one logical writer identity across
+// independent connections. Ownership races are tested separately below.
+func publishPostgresTest(ctx context.Context, p *Postgres, expected uint64, publication Publication) (uint64, error) {
+	lease, err := p.AcquireLease(ctx, "repository-test", time.Minute)
+	if err != nil {
+		return 0, err
+	}
+	return p.Fenced(lease).PublishWindow(ctx, expected, publication)
+}
+
 func TestPostgresExplicitInitialization(t *testing.T) {
 	ctx, dsn, db := postgresTestDatabase(t)
 	if s, err := OpenPostgres(ctx, dsn, "test"); !errors.Is(err, ErrNotInitialized) {
@@ -171,17 +181,17 @@ func TestPostgresPublicationReplayAndRestart(t *testing.T) {
 	c.Sources = append(c.Sources, Source{ID: "b", Fingerprint: strings.Repeat("b", 64)})
 	ctx, dsn, _, s := postgresTestStore(t, c)
 	first := sqlitePublication("1:2", "a", 100, 2)
-	if g, err := s.PublishWindow(ctx, 0, first); err != nil || g != 1 {
+	if g, err := publishPostgresTest(ctx, s, 0, first); err != nil || g != 1 {
 		t.Fatalf("publish: generation=%d err=%v", g, err)
 	}
-	if g, err := s.PublishWindow(ctx, 1, sqlitePublication("3:4", "a", 100, 0)); err != nil || g != 2 {
+	if g, err := publishPostgresTest(ctx, s, 1, sqlitePublication("3:4", "a", 100, 0)); err != nil || g != 2 {
 		t.Fatalf("independent tenant: generation=%d err=%v", g, err)
 	}
 	plan, err := s.Select(ctx, Selection{Tenant: "1:2", Start: 100, End: 200})
 	if err != nil || plan.CoverageEnd != 100 || len(plan.Windows) != 1 || len(plan.Windows[0].Packs) != 2 {
 		t.Fatalf("incomplete source coverage: %+v err=%v", plan, err)
 	}
-	if g, err := s.PublishWindow(ctx, 2, sqlitePublication("1:2", "b", 100, 0)); err != nil || g != 3 {
+	if g, err := publishPostgresTest(ctx, s, 2, sqlitePublication("1:2", "b", 100, 0)); err != nil || g != 3 {
 		t.Fatalf("empty window: generation=%d err=%v", g, err)
 	}
 	plan, err = s.Select(ctx, Selection{Tenant: "1:2", Start: 199, End: 200})
@@ -190,13 +200,13 @@ func TestPostgresPublicationReplayAndRestart(t *testing.T) {
 	}
 	// A lost response is retried with the original publication, even when
 	// another stream has since advanced the catalog's generation.
-	if g, err := s.PublishWindow(ctx, 0, first); err != nil || g != 3 {
+	if g, err := publishPostgresTest(ctx, s, 0, first); err != nil || g != 3 {
 		t.Fatalf("replay after a later commit: generation=%d err=%v", g, err)
 	}
 	changed := first
 	changed.Packs = append([]PackRef(nil), first.Packs...)
 	changed.Packs[0].DataSHA256 = strings.Repeat("c", 64)
-	if _, err := s.PublishWindow(ctx, 0, changed); !errors.Is(err, ErrInvalidPublication) {
+	if _, err := publishPostgresTest(ctx, s, 0, changed); !errors.Is(err, ErrInvalidPublication) {
 		t.Fatalf("different committed publication accepted: %v", err)
 	}
 	before := postgresStatus(t, ctx, s)
@@ -230,7 +240,7 @@ func TestPostgresPublicationFailureIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := sqlitePublication("1:2", "a", 100, 2)
-	if _, err := s.PublishWindow(ctx, 0, p); err == nil {
+	if _, err := publishPostgresTest(ctx, s, 0, p); err == nil {
 		t.Fatal("injected storage failure succeeded")
 	}
 	state := postgresStatus(t, ctx, s)
@@ -246,7 +256,7 @@ func TestPostgresPublicationFailureIsAtomic(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `ALTER TABLE packs DROP CONSTRAINT injected_storage_failure`); err != nil {
 		t.Fatal(err)
 	}
-	if g, err := s.PublishWindow(ctx, 0, p); err != nil || g != 1 {
+	if g, err := publishPostgresTest(ctx, s, 0, p); err != nil || g != 1 {
 		t.Fatalf("retry after rollback: generation=%d err=%v", g, err)
 	}
 }
@@ -254,10 +264,10 @@ func TestPostgresPublicationFailureIsAtomic(t *testing.T) {
 func TestPostgresRejectsInvalidTransitions(t *testing.T) {
 	ctx, _, _, s := postgresTestStore(t, contract())
 	first := sqlitePublication("1:2", "a", 100, 1)
-	if _, err := s.PublishWindow(ctx, 1, first); !errors.Is(err, ErrConflict) {
+	if _, err := publishPostgresTest(ctx, s, 1, first); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale generation accepted: %v", err)
 	}
-	if _, err := s.PublishWindow(ctx, 0, first); err != nil {
+	if _, err := publishPostgresTest(ctx, s, 0, first); err != nil {
 		t.Fatal(err)
 	}
 	before := postgresStatus(t, ctx, s)
@@ -279,7 +289,7 @@ func TestPostgresRejectsInvalidTransitions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := sqlitePublication("1:2", "a", 200, 1)
 			tc.edit(&p)
-			if _, err := s.PublishWindow(ctx, 1, p); !errors.Is(err, ErrInvalidPublication) {
+			if _, err := publishPostgresTest(ctx, s, 1, p); !errors.Is(err, ErrInvalidPublication) {
 				t.Fatalf("invalid transition accepted: %v", err)
 			}
 			if after := postgresStatus(t, ctx, s); !reflect.DeepEqual(before, after) {
@@ -312,7 +322,7 @@ func TestPostgresIndependentWriters(t *testing.T) {
 				go func(s *Postgres, p Publication) {
 					defer wg.Done()
 					<-start
-					_, err := s.PublishWindow(ctx, 0, p)
+					_, err := publishPostgresTest(ctx, s, 0, p)
 					errs <- err
 				}(s, p)
 			}
@@ -343,7 +353,7 @@ func TestPostgresIndependentWriters(t *testing.T) {
 func TestPostgresSelectionBoundsAndSnapshots(t *testing.T) {
 	ctx, _, _, s := postgresTestStore(t, contract())
 	for i := 0; i < 2; i++ {
-		if _, err := s.PublishWindow(ctx, uint64(i), sqlitePublication("1:2", "a", 100+int64(i)*100, 2)); err != nil {
+		if _, err := publishPostgresTest(ctx, s, uint64(i), sqlitePublication("1:2", "a", 100+int64(i)*100, 2)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -362,7 +372,7 @@ func TestPostgresSelectionBoundsAndSnapshots(t *testing.T) {
 	if err != nil || len(plan.Windows) != 1 || plan.Windows[0].Start != 200 {
 		t.Fatalf("bounded narrow query failed: %+v err=%v", plan, err)
 	}
-	if _, err := s.PublishWindow(ctx, 2, sqlitePublication("1:2", "a", 300, 0)); err != nil {
+	if _, err := publishPostgresTest(ctx, s, 2, sqlitePublication("1:2", "a", 300, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if plan.Generation != 2 || plan.CoverageEnd != 300 || len(plan.Windows) != 1 {

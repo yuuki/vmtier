@@ -131,6 +131,9 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 		}
 		if err != nil {
 			fail(err)
+			if errors.Is(err, catalog.ErrLeaseLost) {
+				return out, errors.Join(failures...)
+			}
 		}
 	}
 	return out, errors.Join(failures...)

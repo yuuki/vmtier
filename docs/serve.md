@@ -1,5 +1,9 @@
 # Run the SQLite service
 
+For an external catalog with renewable archiver ownership, see the
+[PostgreSQL service guide](postgres-catalog.md). This guide remains specific to
+the SQLite single-owner deployment.
+
 `vmtier serve` runs the archiver, SQLite catalog, and Cold read gateway in one
 process. They share one blob-store client and its S3 request budget. The catalog
 is independent of S3: no conditional PUT, ETag CAS, or LIST-based discovery is used.

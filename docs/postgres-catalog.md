@@ -1,15 +1,62 @@
-# PostgreSQL catalog foundation
+# PostgreSQL catalog and service
 
-The PostgreSQL repository is stage 1 of [issue #25](https://github.com/yuuki/vmtier/issues/25).
+The PostgreSQL implementation follows [issue #25](https://github.com/yuuki/vmtier/issues/25).
 It implements the same domain operations used by the SQLite reader and archiver:
 `Status`, `PublishWindow`, and bounded `Select`. The
 [architecture decision](adr/0004-postgresql-catalog.md) records the staged HA design.
 
-**The CLI and `serve` do not yet accept PostgreSQL configuration.** Continue to use
-the [SQLite service guide](serve.md) for the existing deployment. Archiver fencing,
-multiple gateways, cluster-wide S3 budgets, SQLite migration, and database failover
-qualification are later stages. Do not deploy multiple archivers merely because
-the database accepts multiple connections.
+`serve` supports PostgreSQL with an active-standby archiver and independently
+available read gateways. All candidates share one catalog and S3 blob locator.
+The database selects one archive owner using a renewable lease. The
+[SQLite service guide](serve.md) describes the retained single-host alternative.
+
+## Configuration and lifecycle
+
+Start with [the PostgreSQL example](../examples/serve-postgres.json). Supply the
+DSN through the environment variable named by `catalog.dsn_env`; configuration
+files contain no database password. Provision a dedicated database/schema and
+least-privilege credentials. Select the writable primary through a stable HA
+endpoint and use verified TLS for remote connections. PostgreSQL `serve` requires
+shared S3 storage and explicit request limits.
+
+```sh
+export VMTIER_POSTGRES_DSN='postgres://USER@DB-ENDPOINT/DATABASE?sslmode=verify-full'
+.bin/vmtier catalog-init -backend postgres -config postgres.json -id CATALOG-ID
+.bin/vmtier serve -config postgres.json -listen 127.0.0.1:8489 -http 127.0.0.1:8490
+.bin/vmtier inspect -config postgres.json
+.bin/vmtier verify -config postgres.json
+```
+
+Replace the example source, bucket, identity, coverage origin, and lateness
+assertion before initialization. Normal startup never initializes missing state.
+Contract, identity, and blob-locator checks precede object-store access. The
+service's read readiness does not require owning the archive lease; a standby can
+serve all covered queries. S3 or catalog failures still fail required reads.
+
+`service.archive_lease_ttl` defaults to 30 seconds (whole milliseconds, 3 seconds
+through 24 hours). Each process uses a fresh owner ID, renews while archiving, and
+cancels archive work on renewal failure. Shutdown drains that work before releasing
+ownership. Expiration is checked against database time. A monotonically increasing
+token is checked under the same transaction lock used for publication, so an old
+owner cannot publish after takeover. Raw unfenced PostgreSQL publication is rejected.
+Already uploaded objects from a losing attempt can remain unreferenced; no GC runs.
+
+Schema 2 introduces leases. Stop schema-1 writers before an explicit upgrade:
+
+```sh
+.bin/vmtier catalog-upgrade -backend postgres -config postgres.json
+```
+
+The upgrade preserves published metadata and identity, and initializes an unowned
+lease. Older binaries reject the new schema. Back up before upgrading; no automatic
+schema downgrade is provided.
+
+PostgreSQL inspection and payload verification can run online. Verification checks
+a bounded prefix of the initially observed coverage and shares the operator's S3
+request budget allocation; later publications are checked by a subsequent run.
+SQLite `catalog-backup`/`catalog-restore` do not back up PostgreSQL. Use PostgreSQL
+native backups and WAL/PITR, test restoration, and fence the old authority before
+cutover. A backup alone cannot recover expired Hot history or missing S3 objects.
 
 ## Repository behavior
 
@@ -31,6 +78,13 @@ Read-only repeatable-read transactions provide a consistent status or query plan
 Selection uses the existing window, pack, and descriptor-byte caps. Object I/O takes
 place after the transaction ends. Published objects remain immutable and GC is not
 implemented. Database failure is an error, even if object data is cached.
+
+Blocked PostgreSQL transport reads/writes have a five-second idle timeout,
+including the driver's separate cancellation connection. A timed-out socket is
+closed and discarded. Progressing multi-statement operations can take longer;
+this is not a whole-operation latency guarantee. A timeout during commit is an
+ambiguous outcome and must be reconciled like a lost response. This bound also
+means a prolonged synchronous-replication wait can return an error to the caller.
 
 ## Build and integration tests
 

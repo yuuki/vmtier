@@ -13,12 +13,12 @@ import (
 	"github.com/yuuki/vmtier/internal/pack"
 )
 
-const PostgreSQLSchemaVersion = 1
+const PostgreSQLSchemaVersion = 2
 
 // Postgres stores catalog metadata in an explicitly initialized PostgreSQL
 // schema. It permits independent clients; publication is serialized by a row
-// lock, not by process-local ownership. Archiver scheduling and fencing are
-// separate concerns and are not supplied by this repository.
+// lock, not by process-local ownership. Publications additionally require a
+// live database lease and fencing token; readers do not acquire ownership.
 type Postgres struct {
 	db     *sql.DB
 	id     string
@@ -74,7 +74,7 @@ CREATE TABLE %[1]s.packs (
  FOREIGN KEY (data_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id),
  FOREIGN KEY (index_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id)
 );
-`
+` + postgresLeaseSchema
 
 // CreatePostgres initializes new tables and binds the immutable archive
 // contract in one transaction. Provision a dedicated database or schema first;
@@ -158,10 +158,13 @@ func connectPostgres(ctx context.Context, dsn, id string) (_ *Postgres, err erro
 	if strings.TrimSpace(dsn) == "" {
 		return nil, errors.New("PostgreSQL catalog requires an explicit DSN")
 	}
-	db, err := sql.Open("postgres", dsn)
+	connector, err := pq.NewConnector(dsn)
 	if err != nil {
-		return nil, err
+		// Driver parse errors may contain the supplied DSN or credential.
+		return nil, errors.New("cannot configure PostgreSQL catalog connection")
 	}
+	connector.Dialer(postgresDialer{timeout: PostgreSQLIdleTimeout})
+	db := sql.OpenDB(connector)
 	defer func() {
 		if err != nil {
 			_ = db.Close()
@@ -173,7 +176,10 @@ func connectPostgres(ctx context.Context, dsn, id string) (_ *Postgres, err erro
 	db.SetMaxIdleConns(4)
 	var schema sql.NullString
 	if err = db.QueryRowContext(ctx, `SELECT pg_catalog.current_schema()`).Scan(&schema); err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("cannot connect to PostgreSQL catalog; verify connection settings and server availability")
 	}
 	if !schema.Valid || schema.String == "" {
 		return nil, errors.New("PostgreSQL catalog requires an existing schema in search_path")
@@ -188,7 +194,22 @@ func (p *Postgres) table(name string) string { return p.schema + "." + name }
 func (p *Postgres) Close() error { return p.db.Close() }
 
 func (p *Postgres) readStatus(ctx context.Context, tx *sql.Tx, lock bool) (Status, error) {
+	out, err := p.readStatusVersion(ctx, tx, lock, PostgreSQLSchemaVersion)
+	if err == nil {
+		_, _, err = p.readLease(ctx, tx)
+	}
+	return out, err
+}
+
+func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool, version int) (Status, error) {
 	var out Status
+	var standby bool
+	if err := tx.QueryRowContext(ctx, `SELECT pg_catalog.pg_is_in_recovery()`).Scan(&standby); err != nil {
+		return out, err
+	}
+	if standby {
+		return out, errors.New("PostgreSQL catalog requires the primary; standby reads are not supported")
+	}
 	var generation int64
 	var cb, bb []byte
 	query := `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json FROM ` + p.table("catalog_state") + ` WHERE singleton=1 AND octet_length(contract_json)<=1048576 AND octet_length(blob_json)<=16384`
@@ -203,7 +224,7 @@ func (p *Postgres) readStatus(ctx context.Context, tx *sql.Tx, lock bool) (Statu
 		}
 		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
 	}
-	if out.SchemaVersion != PostgreSQLSchemaVersion || out.VMVersion != pack.VMVersion {
+	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
 		return out, errors.New("unsupported catalog schema or VM version; explicit migration required")
 	}
 	if out.ID != p.id || !validID(out.ID) || generation < 0 {
@@ -268,10 +289,17 @@ func (p *Postgres) Status(ctx context.Context) (Status, error) {
 	return out, tx.Commit()
 }
 
-// PublishWindow publishes a verified window atomically. The state row lock is
-// acquired before reading generation or coverage and retained through commit.
-// An identical committed publication can be replayed with an old generation.
+// PublishWindow refuses unfenced writes. Use Fenced with a live archiver lease;
+// keeping this method explicit prevents generic Repository callers from
+// accidentally bypassing ownership when given the raw PostgreSQL handle.
 func (p *Postgres) PublishWindow(ctx context.Context, expected uint64, publication Publication) (uint64, error) {
+	return 0, ErrLeaseRequired
+}
+
+// publishWindow holds the state row lock from ownership validation through
+// commit. All lease mutations take this lock first, so a successor cannot
+// acquire ownership while this transaction publishes.
+func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publication Publication, lease Lease) (uint64, error) {
 	if expected > math.MaxInt64 {
 		return 0, errors.New("expected generation exceeds PostgreSQL integer range")
 	}
@@ -288,6 +316,9 @@ func (p *Postgres) PublishWindow(ctx context.Context, expected uint64, publicati
 	if err != nil {
 		return 0, err
 	}
+	if err = p.validateLease(ctx, tx, lease); err != nil {
+		return 0, err
+	}
 	digest, err := validatePublication(state.Contract, publication)
 	if err != nil {
 		return 0, err
@@ -297,6 +328,9 @@ func (p *Postgres) PublishWindow(ctx context.Context, expected uint64, publicati
 	if err == nil {
 		if oldDigest != digest {
 			return 0, fmt.Errorf("%w: committed window differs", ErrInvalidPublication)
+		}
+		if err = p.validateLease(ctx, tx, lease); err != nil {
+			return 0, err
 		}
 		return state.Generation, tx.Commit()
 	}
@@ -341,6 +375,12 @@ func (p *Postgres) PublishWindow(ctx context.Context, expected uint64, publicati
 		return 0, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET generation=$1 WHERE singleton=1`, next); err != nil {
+		return 0, err
+	}
+	// Even a transaction delayed by a database lock must still have a live
+	// lease at the final publication boundary. Use database wall time, not
+	// transaction_timestamp(), which is fixed when the transaction starts.
+	if err = p.validateLease(ctx, tx, lease); err != nil {
 		return 0, err
 	}
 	if err = tx.Commit(); err != nil {
