@@ -100,7 +100,11 @@ Existing tests retain cancellation/deadline/iterator reservation checks and
 complete-result failure behavior. Stock-VM differential and combined workload
 measurements are required alongside these tests.
 
-No default has been raised to make a workload fit. Keep the 128/256 MiB work
-defaults until combined measurements justify a change; configure cache separately
-and retain margin above observed RSS. The implementation supplies bounded logical
-work and component evidence, not a universal process-memory guarantee.
+The [combined workload measurements](workload-validation.md) retain the 128/256 MiB
+work defaults with a 16 MiB cache. The larger 10,000-series target was refused;
+the scoped 5,000-series fixture passed concurrent archive/query/cache pressure
+with 255.117 MiB sampled vmtier peak RSS. No default was raised to make it fit.
+That figure depends on physical block sizes and the measured workload, and is
+not a recommended container limit. Configure cache separately and retain margin
+above observed RSS for workload variation. The implementation supplies bounded
+logical work and component evidence, not a universal process-memory guarantee.

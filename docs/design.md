@@ -16,7 +16,7 @@ measurement and release-qualification work. See
 | Service | Lifetime state lock, age-based scheduler, read RPC, capacity/failure metrics, shared S3 attempt budget |
 | Archive | SQLite pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
 | Reader | SQLite selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |
-| Remaining work | Metadata deadline measurements; combined RSS/workload and catalog capacity; provider, retention, ingress, recovery, and release qualification |
+| Remaining work | Broader workload and provider, retention, ingress, and release qualification; see the scoped reports below |
 
 The legacy [JSON v2 MVP architecture](mvp-design.md) and its
 [historical validation](validation.md) remain the regression baseline. Neither
@@ -270,8 +270,9 @@ the window has been bound; preflight performs neither initialization nor migrati
 Indexed SQLite selection, multiple-pack reads, LRU eviction, concurrent-miss
 coalescing, adjacent-range reads, and logical query work admission are implemented.
 [Reader validation](reader-validation.md) records focused GET-count and cache
-accounting measurements. Metadata deadline reevaluation and combined process-memory
-qualification remain separate unfinished evidence.
+accounting measurements. [Metadata measurements](metadata-validation.md) cover the
+retained small fixture; [workload and memory qualification](workload-validation.md)
+records a separately measured local envelope and the larger workload it refused.
 
 The reader uses the actual storage RPC range, including VM lookbehind for range
 vectors, offsets, subqueries, and `@`. It retrieves tenant/time catalog candidates,
@@ -420,8 +421,8 @@ Steps 1 and 2 are implemented, along with the archive mechanisms in step 3 and
 reader mechanisms in step 4. Implementation completion does not complete every
 acceptance criterion: stock-VM comparisons are recorded separately, and the
 [metadata measurements](metadata-validation.md) establish five-second deadline
-success only for the retained small fixture. Logical admission is not combined-memory
-qualification. Step 5 remains unqualified, including workload/catalog scale (#14),
+success only for the retained small fixture. The [workload/memory](workload-validation.md)
+and [catalog](catalog-capacity-validation.md) reports qualify a scoped local envelope for #11/#14. Remaining evidence includes
 real Sakura (#15), natural retention (#16), enforced ingress lateness (#17),
 end-to-end recovery/cutover (#18), and reproducible release artifacts (#19).
 Executed checks and their limitations belong in stage-specific validation reports;
@@ -441,12 +442,16 @@ Run build, unit tests, race tests, vet, and both stock-VM E2E suites after runti
 changes. Documentation-only work does not require rerunning benchmarks or replacing
 historical JSON results.
 
-The initial capacity fixture is **a target to test**, not a supported limit yet:
-ten tenants, one Hot cluster source, 10,000 active series per tenant, 30-second
-samples, one-hour windows, and replication up to two. This is approximately 1.2
-million logical / 2.4 million physical samples per tenant window before unusual
-overlap. Exercise at least 87,600 logical window rows in a separate one-year catalog
-fixture. Synthetic catalog scale does not prove equivalent payload/query scale.
+The initial 10,000-series-per-tenant target exceeded the unchanged 128 MiB query
+work allowance: two-hour native blocks and two replicas produced about 4.8 million
+physical rows per one-hour pack. The measured local envelope is ten tenants with
+5,000 series each, 30-second samples, two dense hours, one-hour windows and two
+replicas. One series per tenant carries 24-hour history. This is conditional on
+the measured native block sizes and physical rows; it is not a series-only limit
+or a sustained full-cohort 24-hour production qualification. Larger/longer native
+blocks require representative preflight and new measurements. Separately, 87,600
+logical catalog windows passed bounded exact selection. Synthetic catalog scale
+does not prove equivalent payload/query scale.
 
 Measure steady archive progress under concurrent queries, cold/warm cache, outage
 catch-up, and peak combined RSS. Include narrow 1-hour/24-hour selectors, a broad
