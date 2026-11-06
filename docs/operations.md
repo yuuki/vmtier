@@ -1,6 +1,6 @@
 # Deployment, operation, and recovery
 
-This document describes the **current MVP**, which is intended for reproducible evaluation. The [first-release design](design.md) describes planned changes, not commands available today. See the [README](../README.md) for setup, the [MVP design](mvp-design.md) for implemented behavior, and [compatibility](compatibility.md) for protocol coverage.
+This document describes the **current MVP**, which is intended for reproducible evaluation. The [first-release design](design.md) separates implemented groundwork from planned runtime changes. The new [SQLite catalog commands](sqlite-catalog.md) are offline tools; SQLite is not yet a query/archive backend. See the [README](../README.md) for setup, the [MVP design](mvp-design.md) for implemented behavior, and [compatibility](compatibility.md) for protocol coverage.
 
 ## Initial deployment
 

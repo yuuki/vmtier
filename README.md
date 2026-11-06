@@ -39,7 +39,7 @@ python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/demo-s3
 
 If Go is installed outside `PATH`, use `make GO=/path/to/go ...`. The test environment must permit local TCP listeners.
 
-Bootstrap downloads checksum-pinned VM sources and extracts their bundled dependencies into `.deps/` and `vendor/`. It does not update external modules or patch VM. `go.mod` and `go.sum` record this pinned dependency set; generated vendor files are not tracked in Git.
+Bootstrap downloads checksum-pinned VM sources and the SQLite driver, then generates `.deps/` and `vendor/`. It does not update unrelated modules or patch VM. The SQLite driver uses CGO and bundled SQLite. `go.mod` and `go.sum` record the pinned dependencies; generated vendor files are not tracked in Git.
 
 The E2E harness:
 
@@ -101,6 +101,7 @@ Keep the RPC listener on a trusted network. `/health` reports process liveness; 
 
 ## Documentation
 
+- [SQLite catalog foundation and offline commands](docs/sqlite-catalog.md) — implemented groundwork; runtime integration is pending.
 - [First-release design and implementation plan](docs/design.md) — planned work beyond the MVP.
 - [Current MVP design](docs/mvp-design.md), [native gateway decision](docs/adr/0001-native-gateway.md), and [independent catalog decision](docs/adr/0002-independent-catalog.md).
 - [Compatibility](docs/compatibility.md), [operations](docs/operations.md), and [test instructions](docs/testing.md).

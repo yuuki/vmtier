@@ -6,6 +6,11 @@ below. [MVP architecture](mvp-design.md), [compatibility](compatibility.md), and
 [validation](validation.md) describe executable code and measured behavior.
 [ADR 0003](adr/0003-first-release-scope.md) records the scope of this next step.
 
+The [SQLite foundation](sqlite-catalog.md) now implements the repository and offline
+initialization/inspection, v2 import, and backup/restore portions of step 1. The
+running archiver and gateway still use JSON v2; service integration, multi-pack
+archive production, and the other runtime changes below remain planned.
+
 The goal remains age-based archival of existing VictoriaMetrics samples to S3,
 with queries through an unmodified stock vmselect after those samples leave Hot.
 The initial deployment target is one operator-managed Linux host and a dedicated

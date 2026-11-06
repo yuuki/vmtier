@@ -1,0 +1,103 @@
+{
+  "status": "passed",
+  "recorded_at_utc": "2026-11-06T09:20:27.497636+00:00",
+  "scope": "offline SQLite CLI import/selection/backup/restore against actual local MVP archive; not SQLite gateway integration",
+  "fixture_note": "E2E final backend-failure test moves blobs to objects-offline; smoke config points to that preserved directory. Original E2E config/results are unchanged.",
+  "source_manifest_sha256": "6160634160a5b5b1f3f3e0a0cf7a26c7dc4f5e9da9680525b4bb0ed3d6888816",
+  "binary_sha256": "9a0c1c5551ad9d82a31661603e095aaaccef195667e0186359bcb6d4d9ada626",
+  "legacy_generation": 3,
+  "sqlite_generation": 6,
+  "tenants": 2,
+  "windows": 6,
+  "verified_objects": 12,
+  "commands": [
+    [
+      ".bin/vmtier",
+      "catalog-import",
+      "-from",
+      ".cache/sqlite-stage1-local/catalog-authority",
+      "-config",
+      ".cache/sqlite-stage1-cli-verified/config.json",
+      "-path",
+      ".cache/sqlite-stage1-cli-verified/imported",
+      "-id",
+      "stage1-imported"
+    ],
+    [
+      ".bin/vmtier",
+      "catalog-inspect",
+      "-path",
+      ".cache/sqlite-stage1-cli-verified/imported",
+      "-id",
+      "stage1-imported",
+      "-tenant",
+      "1:2",
+      "-start",
+      "1793934000000",
+      "-end",
+      "1793944800000"
+    ],
+    [
+      ".bin/vmtier",
+      "catalog-inspect",
+      "-path",
+      ".cache/sqlite-stage1-cli-verified/imported",
+      "-id",
+      "stage1-imported",
+      "-tenant",
+      "7:9",
+      "-start",
+      "1793934000000",
+      "-end",
+      "1793944800000"
+    ],
+    [
+      ".bin/vmtier",
+      "catalog-backup",
+      "-path",
+      ".cache/sqlite-stage1-cli-verified/imported",
+      "-id",
+      "stage1-imported",
+      "-out",
+      ".cache/sqlite-stage1-cli-verified/backup"
+    ],
+    [
+      ".bin/vmtier",
+      "catalog-restore",
+      "-backup",
+      ".cache/sqlite-stage1-cli-verified/backup",
+      "-path",
+      ".cache/sqlite-stage1-cli-verified/restored",
+      "-id",
+      "stage1-restored"
+    ],
+    [
+      ".bin/vmtier",
+      "catalog-inspect",
+      "-path",
+      ".cache/sqlite-stage1-cli-verified/restored",
+      "-id",
+      "stage1-restored",
+      "-tenant",
+      "1:2",
+      "-start",
+      "1793934000000",
+      "-end",
+      "1793944800000"
+    ],
+    [
+      ".bin/vmtier",
+      "catalog-inspect",
+      "-path",
+      ".cache/sqlite-stage1-cli-verified/restored",
+      "-id",
+      "stage1-restored",
+      "-tenant",
+      "7:9",
+      "-start",
+      "1793934000000",
+      "-end",
+      "1793944800000"
+    ]
+  ]
+}

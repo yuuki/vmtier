@@ -32,13 +32,17 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: vmtier archive|gateway|inspect|verify -config FILE; catalog-init|catalog -path DIR -id ID; version")
+		return errors.New("usage: vmtier archive|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-backup|catalog-restore; version")
+	}
+	switch args[0] {
+	case "catalog-inspect", "catalog-import", "catalog-backup", "catalog-restore":
+		return runCatalogMaintenance(args)
 	}
 	if args[0] == "catalog" || args[0] == "catalog-init" {
 		return runCatalog(args)
 	}
 	if args[0] == "version" {
-		fmt.Printf("vmtier MVP; catalog v%d; VM %s %s\n", catalog.Version, pack.VMVersion, pack.VMRevision)
+		fmt.Printf("vmtier MVP; catalog v%d; SQLite schema %d (offline); VM %s %s\n", catalog.Version, catalog.SQLiteSchemaVersion, pack.VMVersion, pack.VMRevision)
 		return nil
 	}
 	switch args[0] {
@@ -223,12 +227,22 @@ func runCatalog(args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	path := fs.String("path", "", "persistent local catalog directory")
 	id := fs.String("id", "", "pinned catalog identity")
+	backend := fs.String("backend", "json", "catalog-init backend: json or sqlite")
+	configuration := fs.String("config", "", "validated policy/blob configuration for SQLite initialization")
 	addr := fs.String("http", "127.0.0.1:8491", "catalog API listener (trusted network)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 || *path == "" || *id == "" {
 		return errors.New("catalog requires -path and -id, with no positional arguments")
+	}
+	if args[0] == "catalog-init" && *backend == "sqlite" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return initializeSQLite(ctx, *configuration, *path, *id)
+	}
+	if *backend != "json" || *configuration != "" {
+		return errors.New("only catalog-init supports -backend sqlite -config FILE; the catalog HTTP service uses JSON v2")
 	}
 	local, err := catalog.NewLocal(*path, *id, args[0] == "catalog-init")
 	if err != nil {
