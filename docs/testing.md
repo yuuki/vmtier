@@ -1,5 +1,23 @@
 # Reproducing validation
 
+## CI evidence
+
+The workflow always packages available `.cache/ci-*` work directories into
+`e2e-evidence.tar.gz`, then uploads that file as the `e2e-evidence` artifact.
+After downloading and unzipping the artifact, run `tar -xzf e2e-evidence.tar.gz`.
+The archive preserves original tenant paths (including colons), hidden files,
+logs, and result bytes. Failed suites may leave partial directories; an empty
+archive means setup failed before any work directory was created. Packaging and
+upload also run after test failure and do not turn a failed test into success.
+
+The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
+and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
+their build, test, race, vet, and four E2E steps, but failed artifact upload because
+the action rejected colons in nested fixture paths. Those runs were not successful
+CI runs. Historical local result files remain unchanged.
+
+## Pinned environment
+
 The target is **VictoriaMetrics OSS v1.128.0-cluster**, commit
 `9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. No VM patches are applied.
 `build-vm.sh` verifies the SHA-256 of a pinned source archive and builds
@@ -92,7 +110,9 @@ Set `GO_BIN` or put Go on `PATH` to record its version.
   counter resets, label churn, empty/missing labels, duplicate/conflicting values
   at the same timestamp, staleness, NaN, ±Inf, and archive-boundary ±1 ms. Values
   differ between tenants.
-- Archive the oldest three hours with sample age H=3h and one-hour windows.
+- Archive the oldest three hours with one-hour windows. Choose H at fixture
+  creation so the next eligible window remains 30 minutes away, regardless of
+  the UTC-hour phase; record the exact H and eligibility deadline.
   The test contract uses Hot retention=240h, lateness=30m, and safety margin=30m.
   Fixture ingestion is the only write activity during the experiment.
 - Send SIGKILL to the archiver during native export and confirm the explicitly
@@ -126,8 +146,18 @@ Set `GO_BIN` or put Go on `PATH` to record its version.
   valid Content-MD5 on every PUT in the S3 proxy counters. Validate each MD5 against
   its request body.
 - Call delete through the Cold-only vmselect and require an explicit unsupported
-  error. Stopping the blob backend must make the integrated vmselect return an
-  HTTP error.
+  error.
+- In both suites, establish exact baseline results with the Cold cache disabled,
+  then interrupt only blob access while the gateway/service stays running. The
+  local fixture moves object contents out of the open storage root; the S3 proxy
+  rejects every request with a fixture-specific HTTP 503 while retaining Moto's
+  data for restoration. Require a frontend HTTP error containing that blob error,
+  and increments in Cold query, query-error, and object-GET counters. S3 also
+  records rejected GETs at the proxy. Connection refusals and unrelated timeouts
+  cannot satisfy this check. `/health` and `/ready` must remain successful because
+  readiness checks catalog/coverage, not blob availability. Restore blob access
+  and require exact reference results and unchanged published catalog/coverage.
+  New reports retain these observations under `blob_outage`.
 
 All vmselect instances use `-search.disableCache`,
 `-search.denyPartialResponse=true`, `-replicationFactor=1`,
@@ -171,9 +201,42 @@ gateway fails queries and readiness even with a warm cache. Coverage-gap tests u
 fixtures whose initial contract already has a shorter H, rather than substituting
 a later configuration mismatch for an actual missing-coverage test.
 
-The JSON v2 fixture assumes the run finishes in the same UTC hour as fixture
-generation. Crossing the next UTC hour makes another window age-eligible: the
-automatic no-op check can change, and queries requiring that unarchived window
-correctly fail. Start this suite with enough time before the hour boundary and
-retry with a new workdir if it crosses. The SQLite service fixture uses its own
-archive-age offset to keep the next eligible window about 30 minutes away.
+Both fixtures use a shared archive-age calculation that places the next eligible
+window exactly 30 minutes after fixture creation. A run may begin at any point in
+the UTC hour; crossing the next UTC hour does not itself change required coverage.
+The report records `created_at_ms`, `archive_age_ms`, `next_eligible_at_ms`, and
+`finished_at_ms`. Each suite must finish its assertions within that 30-minute
+horizon and reports failure if it does not. Actual production eligibility and
+coverage checks remain active. The [historical hour-boundary failure](serve-validation.md)
+is preserved separately.
+
+
+## Runtime provenance
+
+Both suites select workload-child `GOMAXPROCS` in this order: `--gomaxprocs N`,
+the outer `GOMAXPROCS` environment variable, then `2`. The selected value must be
+a positive integer and applies equally to stock VM, gateway/serve, catalog,
+interrupted commands, and synchronous archive/maintenance CLI commands. For example:
+
+```sh
+GOMAXPROCS=7 python3 scripts/e2e.py --gomaxprocs 3 --backend local --workdir .cache/runtime-local
+```
+
+Here the wrapper has `GOMAXPROCS=7`, while every workload child receives `3`.
+`results.json` records the outer value, selection source, chosen value, and each
+managed or one-shot process's command, allowlisted runtime environment, and exit
+status when available. Records are appended before launch and retained on expected
+or unexpected failures. Credentials and unrelated environment variables are not
+recorded. `--vm-only` writes the same process provenance to `runtime.json`.
+The recorded value is the environment actually passed to the process, not a
+measurement of Go's scheduler or a claim about peak process memory. Executable
+version probes are outside the measured workload.
+
+Before this correction, managed children always received `GOMAXPROCS=2` while
+one-shot commands inherited the wrapper environment. Historical result JSON remains
+unchanged; the [stage 2 narrative](serve-validation.md) distinguishes those settings.
+Run the focused harness regressions with:
+
+```sh
+python3 -m unittest discover -s scripts -p 'test_e2e_harness.py' -v
+```

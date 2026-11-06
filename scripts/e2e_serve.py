@@ -25,10 +25,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from e2e import (ROOT, HTTP, Cluster, Processes, api, command_stats, compare,
-                 fixture, free_port, metrics, remote_write, request,
+from e2e import (ROOT, HTTP, Cluster, Processes, api, compare,
+                 fixture, fixture_horizon, free_port, metrics, positive_int, remote_write, request,
                  start_select, test_s3_request, timed)
 from s3_compat_proxy import S3CompatibilityProxy
+from blob_outage import assert_running_blob_failure, unavailable_blobs
 
 
 class ControlledSource:
@@ -206,7 +207,7 @@ def provenance():
 
 def run(work, args):
     work = work.resolve()
-    procs = Processes(work)
+    procs = Processes(work, args.gomaxprocs)
     source_proxy = s3_proxy = None
     report = {'backend': args.backend, 'replicas': args.replicas,
               'architecture': 'SQLite catalog with one serve process, scheduled archive and read gateway',
@@ -215,7 +216,7 @@ def run(work, args):
               'dedup_interval': '1ms', 'vm_result_cache': 'disabled',
               'tiered_vm_labels_api_max_duration': '30s',
               'comparison': 'exact timestamps, labels and numeric strings; no tolerance',
-              'checks': [], 'query_timings_ms': {}}
+              'checks': [], 'query_timings_ms': {}, 'runtime': procs.runtime}
     env = {'AWS_ACCESS_KEY_ID': 'vmtier-test', 'AWS_SECRET_ACCESS_KEY': 'vmtier-test-secret'}
     try:
         for name in ('vmstorage', 'vminsert', 'vmselect', 'vmtier'):
@@ -257,13 +258,9 @@ def run(work, args):
         ref, hot = Cluster(procs, 'reference', args.replicas), Cluster(procs, 'hot', args.replicas)
         ref.start('full')
         hot.start('full')
-        clock_ms = int(time.time() * 1000)
-        hour = 3600000
-        floor = clock_ms // hour * hour
-        start, boundary, end = floor - 6 * hour, floor - 3 * hour, floor - hour
-        # Keep the next eligible window about 30 minutes away. This tests real
-        # wall-clock scheduling without crossing a new window during the suite.
-        age_ms = clock_ms - boundary - hour // 2
+        horizon = fixture_horizon(int(time.time() * 1000))
+        start, boundary, end = (horizon[key] for key in ('start_ms', 'boundary_ms', 'end_ms'))
+        age_ms, hour = horizon['archive_age_ms'], horizon['window_ms']
         tenants = ['1:2', '7:9']
         count = 0
         for i, tenant in enumerate(tenants):
@@ -272,8 +269,7 @@ def run(work, args):
             remote_write(hot.insert, tenant, data)
         ref.flush()
         hot.flush()
-        report['fixture'] = {'start_ms': start, 'boundary_ms': boundary, 'end_ms': end,
-                             'archive_age_ms': age_ms, 'window_ms': hour, 'input_samples': count,
+        report['fixture'] = {**horizon, 'input_samples': count,
                              'tenants': tenants, 'series_per_tenant': 16, 'scrape_interval_ms': 30000,
                              'special_cases': ['irregular gaps', 'counter reset', 'stale marker', 'NaN',
                                                '+Inf', '-Inf', 'duplicate/conflicting timestamps',
@@ -329,9 +325,9 @@ def run(work, args):
                     assert object_get(key) == data
 
         # Missing state must not be initialized implicitly by the daemon.
-        command_stats(serve_command(), work / 'serve-missing.log', env, False)
+        procs.command_stats(serve_command(), work / 'serve-missing.log', env, False)
         assert not database.exists()
-        command_stats([binary, 'catalog-init', '-backend', 'sqlite', '-config', config_path,
+        procs.command_stats([binary, 'catalog-init', '-backend', 'sqlite', '-config', config_path,
                        '-path', catalog_dir, '-id', catalog_id], work / 'catalog-init.log', env)
         assert snapshot(database)['state']['generation'] == 0
         report['checks'].append('serve refuses missing state; SQLite initialization is explicit')
@@ -396,11 +392,11 @@ def run(work, args):
             raise AssertionError('S3/local blobs unexpectedly contain a legacy catalog.json')
 
         # The supported offline APIs and a second daemon must honor lifetime ownership.
-        command_stats([binary, 'catalog-backup', '-path', catalog_dir, '-id', catalog_id,
+        procs.command_stats([binary, 'catalog-backup', '-path', catalog_dir, '-id', catalog_id,
                        '-out', work / 'forbidden-live-backup'], work / 'backup-owned.log', env, False)
-        command_stats(serve_command(rpc=free_port(), http=free_port()), work / 'serve-second-owner.log', env, False)
-        command_stats([binary, 'verify', '-config', config_path], work / 'verify-owned.log', env, False)
-        command_stats([binary, 'inspect', '-config', config_path], work / 'inspect-owned.log', env, False)
+        procs.command_stats(serve_command(rpc=free_port(), http=free_port()), work / 'serve-second-owner.log', env, False)
+        procs.command_stats([binary, 'verify', '-config', config_path], work / 'verify-owned.log', env, False)
+        procs.command_stats([binary, 'inspect', '-config', config_path], work / 'inspect-owned.log', env, False)
         assert not (work / 'forbidden-live-backup').exists()
         assert snapshot(database) == stable
         report['checks'].append('live owner excludes offline inspect/verify/backup and a second serve process without changing catalog')
@@ -444,7 +440,7 @@ def run(work, args):
         for label, changed in variants:
             path = work / f'changed-{label}.json'
             path.write_text(json.dumps(changed))
-            command_stats(serve_command(path), work / f'reject-{label}.log', env, False)
+            procs.command_stats(serve_command(path), work / f'reject-{label}.log', env, False)
             assert snapshot(database) == stable
         process = start_service('serve-restarted-after-hot-removal')
         assert snapshot(database) == stable and source_proxy.native_requests == exports
@@ -533,6 +529,30 @@ def run(work, args):
             compare(api(ref.select, tenants[0], 'query', fail_params), api(top_select, tenants[0], 'query', fail_params), label + ' recovery')
         assert snapshot(database) == stable
         report['checks'].append('missing/truncated/checksum-invalid payloads fail queries; restored bytes recover without catalog mutation')
+        assert cfg['cache_bytes'] == 0
+        outage_params = dict(fail_params, timeout='15s')
+        expected = api(ref.select, tenants[0], 'query', outage_params)
+        compare(expected, api(top_select, tenants[0], 'query', outage_params), 'blob outage baseline')
+        request(f'http://127.0.0.1:{http_port}/health')
+        request(f'http://127.0.0.1:{http_port}/ready')
+        before_proxy = s3_proxy.snapshot() if s3_proxy else None
+        with unavailable_blobs(store, work, s3_proxy) as marker:
+            evidence = assert_running_blob_failure(
+                lambda: api(top_select, tenants[0], 'query', outage_params),
+                process, lambda: metrics(http_port), marker)
+            request(f'http://127.0.0.1:{http_port}/health')
+            request(f'http://127.0.0.1:{http_port}/ready')
+            assert snapshot(database) == stable
+        compare(expected, api(top_select, tenants[0], 'query', outage_params), 'blob outage recovery')
+        assert snapshot(database) == stable and source_proxy.native_requests == exports
+        if s3_proxy:
+            evidence['proxy_failed_gets'] = s3_proxy.snapshot()['unavailable_get_requests'] - before_proxy['unavailable_get_requests']
+            assert evidence['proxy_failed_gets'] > 0
+        evidence.update(cache_bytes=0, process_pid=process.pid,
+                        coverage_unchanged=True, healthy_and_ready_during_outage=True,
+                        exact_baseline_and_recovery=True)
+        report['blob_outage'] = evidence
+        report['checks'].append('running service attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes')
         try:
             request(f'http://127.0.0.1:{cold_select}/delete/{tenants[0]}/prometheus/api/v1/admin/tsdb/delete_series?' +
                     urllib.parse.urlencode({'match[]': 'cold_only'}), data=b'')
@@ -544,9 +564,9 @@ def run(work, args):
         report['checks'].append('Cold delete remains explicitly unsupported')
         stop_service(process)
         assert snapshot(database) == stable and source_proxy.native_requests == exports
-        command_stats([binary, 'catalog-backup', '-path', catalog_dir, '-id', catalog_id,
+        procs.command_stats([binary, 'catalog-backup', '-path', catalog_dir, '-id', catalog_id,
                        '-out', work / 'final-backup'], work / 'backup-after-stop.log', env)
-        command_stats([binary, 'verify', '-config', config_path], work / 'verify-after-stop.log', env)
+        procs.command_stats([binary, 'verify', '-config', config_path], work / 'verify-after-stop.log', env)
         report['checks'].append('clean shutdown releases ownership for offline backup/verify and leaves completed windows unchanged')
 
         if s3_proxy:
@@ -561,6 +581,7 @@ def run(work, args):
             ordered = sorted(values)
             report['query_timings_ms'][key] = {'count': len(values), 'median': statistics.median(values),
                                               'p95': ordered[min(len(ordered) - 1, int(.95 * len(ordered)))]}
+        assert int(time.time() * 1000) < horizon['next_eligible_at_ms'], 'Fixture exceeded its 30-minute eligibility horizon'
         report['status'] = 'passed'
     except Exception as error:
         report['status'], report['failure'] = 'failed', str(error)
@@ -571,6 +592,8 @@ def run(work, args):
             source_proxy.close()
         if s3_proxy:
             s3_proxy.close()
+        if 'fixture' in report:
+            report['fixture']['finished_at_ms'] = int(time.time() * 1000)
         report['recorded_at_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         (work / 'results.json').write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
         print(json.dumps({k: v for k, v in report.items() if k not in ('final_metrics', 'provenance')}, indent=2))
@@ -581,6 +604,7 @@ def main():
     parser.add_argument('--backend', choices=['local', 's3'], default='local')
     parser.add_argument('--replicas', choices=[1, 2], type=int, default=1)
     parser.add_argument('--workdir', type=Path)
+    parser.add_argument('--gomaxprocs', type=positive_int, help='GOMAXPROCS for workload children (default: outer GOMAXPROCS, else 2)')
     args = parser.parse_args()
     work = args.workdir or Path(tempfile.mkdtemp(prefix='vmtier-serve-e2e-'))
     if work.exists() and any(work.iterdir()):
