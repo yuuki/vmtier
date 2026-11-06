@@ -70,6 +70,14 @@ func newSQLiteSource(t *testing.T, mode string) (*httptest.Server, *sqliteSource
 			}
 			end++
 			body := nativeFixture(start, end, f.mode != "empty")
+			if strings.HasPrefix(f.mode, "multipack") {
+				record := append([]byte(nil), body[16:]...)
+				body = append(body, record...)
+				body = append(body, record...)
+				if f.mode == "multipack-truncated" {
+					body = body[:len(body)-1]
+				}
+			}
 			if f.mode == "record-boundary" {
 				body = body[:16]
 			}

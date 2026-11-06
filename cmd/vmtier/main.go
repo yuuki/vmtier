@@ -32,9 +32,11 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: vmtier serve|archive|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-backup|catalog-restore; version")
+		return errors.New("usage: vmtier serve|archive|preflight|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-backup|catalog-restore; version")
 	}
 	switch args[0] {
+	case "preflight":
+		return runPreflightCommand(args)
 	case "serve":
 		return runServeCommand(args)
 	case "catalog-inspect", "catalog-import", "catalog-backup", "catalog-restore":

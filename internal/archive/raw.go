@@ -32,7 +32,7 @@ func verifyRawResponse(body io.Reader, maxBytes int64, maxSamples int, start, en
 		}
 	}
 	if limited.N <= 0 {
-		return errors.New("raw verification response too large; choose a smaller window")
+		return errors.New("raw verification response too large; choose a smaller window before catalog initialization; changing a bound window requires migration to a new catalog")
 	}
 	if err != nil {
 		return fmt.Errorf("incomplete or invalid raw verification JSON: %w", err)

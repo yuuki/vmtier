@@ -337,7 +337,7 @@ func extractSamples(idx *pack.Index, data []byte, limit int) (map[string][]sampl
 			ts, vs := mb.Block.AppendRowsWithTimeRangeFilter(nil, nil, storage.TimeRange{MinTimestamp: idx.Start, MaxTimestamp: idx.End - 1})
 			total += len(ts)
 			if total > limit {
-				return nil, errors.New("archive sample verification limit exceeded; choose a smaller window")
+				return nil, errors.New("archive sample verification limit exceeded; choose a smaller window before catalog initialization; changing a bound window requires migration to a new catalog")
 			}
 			for i, t := range ts {
 				if math.IsNaN(vs[i]) && !decimal.IsStaleNaN(vs[i]) {
