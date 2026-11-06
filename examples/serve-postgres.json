@@ -36,6 +36,7 @@
   "service": {
     "archive_interval": "30s",
     "archive_timeout": "2m",
-    "archive_lease_ttl": "30s"
+    "archive_lease_ttl": "30s",
+    "max_replicas": 2
   }
 }

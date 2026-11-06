@@ -9,6 +9,7 @@ import (
 func postgresConfig() Config {
 	c := good()
 	c.Catalog = Catalog{Type: "postgres", ID: "pg-catalog", DSNEnv: "VMTIER_CONFIG_TEST_DSN"}
+	c.Service.MaxReplicas = 1
 	c.Store = Store{Type: "s3", Bucket: "test", RequestsPerSecond: 20, MaxConcurrentRequests: 2, MaxQueuedRequests: 8}
 	return c
 }

@@ -54,6 +54,7 @@ func postgresCLIConfig(t *testing.T) (context.Context, config.Config, string, st
 	}
 	c, _ := sqliteCLIConfig(t, t.TempDir(), true)
 	c.Catalog = config.Catalog{Type: "postgres", ID: "postgres-cli", DSNEnv: "VMTIER_PG_CLI_TEST_DSN"}
+	c.Service.MaxReplicas = 1
 	c.Store.RequestsPerSecond, c.Store.MaxConcurrentRequests, c.Store.MaxQueuedRequests = 20, 2, 8
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)

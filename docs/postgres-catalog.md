@@ -17,7 +17,10 @@ DSN through the environment variable named by `catalog.dsn_env`; configuration
 files contain no database password. Provision a dedicated database/schema and
 least-privilege credentials. Select the writable primary through a stable HA
 endpoint and use verified TLS for remote connections. PostgreSQL `serve` requires
-shared S3 storage and explicit request limits.
+shared S3 storage and explicit aggregate request limits. Set
+`service.max_replicas` to the maximum simultaneous S3 clients sharing that budget;
+each receives a fixed share. See [HA deployment](ha-deployment.md) for replica,
+maintenance, rollout, and endpoint requirements.
 
 ```sh
 export VMTIER_POSTGRES_DSN='postgres://USER@DB-ENDPOINT/DATABASE?sslmode=verify-full'

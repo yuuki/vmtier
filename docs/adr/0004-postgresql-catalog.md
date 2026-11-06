@@ -7,7 +7,10 @@ Stage 1 adds the repository implementation and extracts its domain interface.
 Stage 2 enables PostgreSQL service/maintenance access with DB-time leases and
 transaction-enforced fencing. [ADR 0003](0003-first-release-scope.md) continues to
 describe the retained SQLite deployment. Database topology, gateway endpoint,
-request budgets, migration, and failure qualification are explicit further work.
+request budgets, migration, and failure qualification are explicit work stages.
+Stage 3 adds static aggregate S3 budget allocation, paired gateway/proxy examples,
+and a stock-VM failover harness. The outer L4 and database HA controllers remain
+operator-provided dependencies.
 
 ## Context
 

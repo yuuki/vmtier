@@ -37,6 +37,7 @@ type Store struct {
 }
 
 type Service struct {
+	MaxReplicas     int    `json:"max_replicas,omitempty"`
 	ArchiveInterval string `json:"archive_interval,omitempty"`
 	ArchiveTimeout  string `json:"archive_timeout,omitempty"`
 	ArchiveLeaseTTL string `json:"archive_lease_ttl,omitempty"`
@@ -147,7 +148,7 @@ func (c *Config) Validate() error {
 			c.Store.RequestsPerSecond, c.Store.MaxConcurrentRequests, c.Store.MaxQueuedRequests = 80, 8, 64
 		}
 		if c.Catalog.Type == "postgres" && (c.Store.RequestsPerSecond == 0 || c.Store.MaxConcurrentRequests == 0 || c.Store.MaxQueuedRequests == 0) {
-			return errors.New("PostgreSQL service requires explicit S3 request limits allocated for each replica")
+			return errors.New("PostgreSQL service requires explicit aggregate S3 request limits")
 		}
 		if c.Store.RequestsPerSecond != 0 || c.Store.MaxConcurrentRequests != 0 || c.Store.MaxQueuedRequests != 0 {
 			if math.IsNaN(c.Store.RequestsPerSecond) || math.IsInf(c.Store.RequestsPerSecond, 0) || c.Store.RequestsPerSecond <= 0 || c.Store.RequestsPerSecond > 1000000 || c.Store.MaxConcurrentRequests < 1 || c.Store.MaxConcurrentRequests > 10000 || c.Store.MaxQueuedRequests < 1 || c.Store.MaxQueuedRequests > 100000 {
@@ -161,6 +162,9 @@ func (c *Config) Validate() error {
 		if _, err := c.BlobLocator(); err != nil {
 			return err
 		}
+	}
+	if _, err := c.perReplicaStore(); err != nil {
+		return err
 	}
 	c.archiveLeaseTTL = 30 * time.Second
 	if c.Service.ArchiveLeaseTTL != "" {
@@ -268,11 +272,15 @@ func (c *Config) ValidateArchiveRange(start, end int64) error {
 	return nil
 }
 func (c *Config) OpenBlobs() (objectstore.BlobStore, error) {
-	switch c.Store.Type {
+	store, err := c.perReplicaStore()
+	if err != nil {
+		return nil, err
+	}
+	switch store.Type {
 	case "local":
-		return objectstore.NewLocal(c.Store.Path, 64<<20)
+		return objectstore.NewLocal(store.Path, 64<<20)
 	case "s3":
-		return objectstore.NewS3(objectstore.S3Config{Endpoint: c.Store.Endpoint, Region: c.Store.Region, Bucket: c.Store.Bucket, Prefix: c.Store.Prefix, RequestsPerSecond: c.Store.RequestsPerSecond, MaxConcurrentRequests: c.Store.MaxConcurrentRequests, MaxQueuedRequests: c.Store.MaxQueuedRequests})
+		return objectstore.NewS3(objectstore.S3Config{Endpoint: store.Endpoint, Region: store.Region, Bucket: store.Bucket, Prefix: store.Prefix, RequestsPerSecond: store.RequestsPerSecond, MaxConcurrentRequests: store.MaxConcurrentRequests, MaxQueuedRequests: store.MaxQueuedRequests})
 	default:
 		return nil, fmt.Errorf("unsupported store type %q", c.Store.Type)
 	}

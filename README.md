@@ -2,9 +2,11 @@
 
 **Archive older VictoriaMetrics samples to S3-compatible storage and query Hot and Cold data through an unmodified stock vmselect.** vmtier is an independent, Apache-2.0-licensed OSS project, not an official VictoriaMetrics product.
 
-The current implementation adds a single-owner **`vmtier serve`** runtime to the native gateway MVP: SQLite publication and coverage, age-based archive scheduling, and a shared S3 request budget. See the [service guide](docs/serve.md) and [service validation](docs/serve-validation.md). The [first-release design](docs/design.md) tracks remaining work, including pack rotation and reader optimizations. The JSON v2 MVP remains available for regression testing and migration.
+**`vmtier serve`** supports a single-owner SQLite deployment or a PostgreSQL catalog with multiple read gateways and one leased, fenced archiver. See the [SQLite service guide](docs/serve.md), [PostgreSQL guide](docs/postgres-catalog.md), and [HA deployment](docs/ha-deployment.md). The [first-release design](docs/design.md) tracks remaining work, including pack rotation and reader optimizations. The JSON v2 MVP remains available for regression testing and migration.
 
 Compatibility is pinned to **VictoriaMetrics OSS v1.128.0-cluster**, commit [`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2). Other versions' native codecs and read RPCs have not been validated.
+
+The SQLite deployment shares one process-local S3 budget:
 
 ```mermaid
 flowchart LR
@@ -114,7 +116,7 @@ Keep the RPC listener on a trusted network. `/health` reports process liveness; 
 
 ## Documentation
 
-- [PostgreSQL catalog foundation](docs/postgres-catalog.md) and [HA architecture decision](docs/adr/0004-postgresql-catalog.md) — repository implementation and staged work; not yet a PostgreSQL service deployment.
+- [PostgreSQL catalog and service](docs/postgres-catalog.md), [HA deployment](docs/ha-deployment.md), and [HA architecture decision](docs/adr/0004-postgresql-catalog.md).
 - [SQLite service guide](docs/serve.md), [service validation](docs/serve-validation.md), and [SQLite catalog maintenance and migration](docs/sqlite-catalog.md).
 - [First-release design and implementation plan](docs/design.md) — implemented stages and remaining work.
 - [Legacy JSON v2 MVP design](docs/mvp-design.md), [native gateway decision](docs/adr/0001-native-gateway.md), and [independent catalog decision](docs/adr/0002-independent-catalog.md).
