@@ -24,7 +24,7 @@ import urllib.parse
 
 from e2e import (ROOT, HTTP, Cluster, Processes, api, compare, free_port, metrics,
                  positive_int, remote_write, request, start_select, timed)
-from e2e_serve import provenance, snapshot, wait_ready, wait_query_reconnect
+from e2e_serve import provenance, snapshot, wait_ready
 
 HOUR = 3600000
 INTERVAL = 30000
@@ -305,7 +305,7 @@ def run(work, args):
             return process
 
         process = start_service('serve-workload')
-        start_select(procs, 'cold-select', cold_port, [rpc_port], '30s')
+        cold_process = start_select(procs, 'cold-select', cold_port, [rpc_port], '30s')
         sampler.phase = 'source-outage'
         deadline = time.monotonic() + 10
         while not source.failures and time.monotonic() < deadline:
@@ -405,13 +405,17 @@ def run(work, args):
         report['checks'].append('Source outage publishes nothing; subsequent archive catch-up makes commits while exact Cold queries run')
 
         # Restart clears raw cache without changing the authority or stored packs.
+        # Recreate the disposable frontend too: stock vmselect pools connections
+        # to the old process and may return a cached dial error or EOF after a
+        # restart. This measurement is not a frontend reconnect qualification.
         sampler.phase = 'cache-cold-warm-pressure'
+        procs.stop(cold_process)
         procs.stop(process)
         assert process.returncode == 0
         process = start_service('serve-cold-cache')
         wait_ready(process, http_port, work)
-        wait_query_reconnect(lambda: api(cold_port, tenants[0], 'query',
-                                        {'query': 'qualify_load{instance="missing"}', 'time': (horizon['boundary_ms'] + HOUR) / 1000}))
+        cold_port = free_port()
+        cold_process = start_select(procs, 'cold-select-measured', cold_port, [rpc_port], '30s')
 
         def measure(kind, tenant, path, params, expected=None, expected_count=None):
             if expected is None:
@@ -494,35 +498,36 @@ def run(work, args):
         # A deliberately tiny allowance proves the whole request is refused,
         # independent of scheduling luck or frontend aggregation size.
         sampler.phase = 'explicit-read-budget-refusal'
+        procs.stop(cold_process)
         procs.stop(process)
         assert process.returncode == 0
         limited = dict(cfg, max_query_bytes=1024, query_memory_bytes=2048, cache_bytes=0)
         config_path.write_text(json.dumps(limited, indent=2) + '\n')
         process = start_service('serve-explicit-refusal')
         wait_ready(process, http_port, work)
-        began = time.monotonic()
-        while True:
-            try:
-                api(cold_port, tenants[0], 'query_range', broad)
-            except urllib.error.HTTPError as error:
-                body = error.read().decode()
-                if 'connection refused' in body and time.monotonic() - began < 5:
-                    time.sleep(.1)
-                    continue
-                assert 'limit exceeded' in body and 'query' in body.lower(), body
-                report['explicit_refusal'] = {'max_query_bytes': 1024, 'http_status': error.code,
-                                               'message': body, 'metrics': metrics(http_port)}
-                break
-            else:
-                raise AssertionError('1 KiB read budget unexpectedly accepted the broad query')
+        cold_port = free_port()
+        cold_process = start_select(procs, 'cold-select-refusal', cold_port, [rpc_port], '30s')
+        try:
+            api(cold_port, tenants[0], 'query_range', broad)
+        except urllib.error.HTTPError as error:
+            body = error.read().decode()
+            assert 'limit exceeded' in body and 'query' in body.lower(), body
+            report['explicit_refusal'] = {'max_query_bytes': 1024, 'http_status': error.code,
+                                           'message': body, 'metrics': metrics(http_port)}
+        else:
+            raise AssertionError('1 KiB read budget unexpectedly accepted the broad query')
         assert metrics(http_port)['vmtier_query_memory_reserved_bytes'] == 0
         assert snapshot(database) == stable
         report['checks'].append('1 KiB query allowance refuses the broad query without partial success or catalog change and releases its reservation')
+        sampler.phase = 'budget-restored-recovery'
+        procs.stop(cold_process)
         procs.stop(process)
         config_path.write_text(json.dumps(cfg, indent=2) + '\n')
         process = start_service('serve-recovered')
         wait_ready(process, http_port, work)
-        actual, _, _ = wait_query_reconnect(lambda: api(cold_port, tenants[0], 'query_range', broad))
+        cold_port = free_port()
+        cold_process = start_select(procs, 'cold-select-recovered', cold_port, [rpc_port], '30s')
+        actual = api(cold_port, tenants[0], 'query_range', broad)
         compare(expected_broad, actual, 'budget restored exact recovery')
         report['final_metrics'] = metrics(http_port)
         report['latency_distributions_ms'] = distributions(report['measurements'])
