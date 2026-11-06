@@ -1,8 +1,9 @@
 # Historical v1 validation procedure
 
 This document records the procedure for the former all-S3 catalog architecture.
-Its prose has been translated into English. The current checkout runs v2, so the
-commands below do not reproduce the v1 results with current sources. See the
+Its prose has been translated into English. The current checkout provides SQLite
+`serve` and retained JSON v2 commands, so the commands below do not reproduce the
+v1 results with current sources. See the
 [current testing guide](../../testing.md) for the supported procedure.
 
 The target was **VictoriaMetrics OSS v1.128.0-cluster**, commit

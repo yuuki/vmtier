@@ -1,6 +1,21 @@
 # VM compatibility and protocol boundaries
 
+[Documentation index](README.md) · [Service guide](serve.md) ·
+[Catalog maintenance](sqlite-catalog.md)
+
 The SQLite [`serve` runtime](serve.md) and legacy JSON v2 MVP both target **VictoriaMetrics OSS v1.128.0-cluster**, commit **`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) distinguishes implemented stages from remaining work.
+
+## Compatibility at a glance
+
+| Component | Current boundary |
+| --- | --- |
+| VictoriaMetrics | Pinned OSS cluster revision only; single-node VM integration is unsupported. |
+| Query evaluation | Stock vmselect evaluates MetricsQL; vmtier returns validated raw blocks over read RPC. |
+| Current runtime | `serve` with SQLite schema 1, one local state owner, pack/index format v1. |
+| Legacy runtime | Separate `archive`, `gateway`, and local/HTTP JSON v2 catalog; retained for regression and offline migration. |
+| Object storage | Ordinary PUT, GET, and single-range GET; no conditional PUT or ETag dependency. Real-provider qualification is pending. |
+| Mutations | No late updates to published windows, backfill, deletion, compaction, GC, or Cold TTL. |
+| Deduplication | 1 ms, configured consistently across VM components. Frontend result caching is disabled. |
 
 ## Pinned primary sources
 
@@ -19,7 +34,9 @@ The SQLite [`serve` runtime](serve.md) and legacy JSON v2 MVP both target **Vict
 
 ## RPC and HTTP support
 
-Stock vmselect serves the HTTP API; vmtier implements storage RPC only.
+Stock vmselect serves the metric query HTTP API. vmtier implements storage read
+RPC and its own health/readiness/metrics HTTP endpoints; it does not expose a
+Prometheus query endpoint.
 
 | RPC | Gateway behavior | Use |
 | --- | --- | --- |
@@ -40,18 +57,28 @@ A tenant is an accountID/projectID pair. Native exported metric names omit it, s
 
 The gateway uses the storage query's actual time range. VM evaluates `rate`, `increase`, rollups, offsets, subqueries, and `@`. Before sending results, vmtier validates query limits, tenant, codec, and checksums of all selected blocks. Missing, corrupt, or timed-out Cold data is an error rather than an empty result.
 
-The top-level vmselect requires `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false -search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`. Cold is not a replica of Hot. Consistency with the frontend result cache enabled is outside the MVP contract; immutable S3 block caching is independent and remains available.
+The top-level vmselect requires `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false -search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`. Cold is not a replica of Hot. Consistency with the frontend result cache enabled is outside the current contract; immutable S3 block caching is independent and remains available. See the [frontend command](serve.md#connect-stock-vmselect).
 
 Cold metadata is calculated from actual Cold data ranges. Upstream Hot metadata can return broader ranges because its index uses daily granularity; parity is evaluated per API in E2E tests. Support does not extend to Graphite, cross-tenant discovery, or administrative statistics.
 
-Metadata currently uses full validated block reads. An uncached S3 metadata scan
-can exceed stock vmselect's five-second `-search.maxLabelsAPIDuration` default,
-with or without request pacing. The current service and JSON v2 regression fixtures
-use 30 seconds on the combined frontend; see [service query configuration](serve.md).
-This setting does not establish a production latency guarantee. Reader optimizations
-and representative workload qualification remain pending.
+Metadata uses full validated block reads with LRU caching, shared cache misses,
+and adjacent-range coalescing. The [metadata measurements](metadata-validation.md)
+passed stock vmselect's five-second `-search.maxLabelsAPIDuration` default on the
+recorded JSON and SQLite S3 fixtures after the reader changes. The harness retains
+a configurable 30-second default, and larger ranges/cardinality can still time
+out. These results and the [combined workload measurements](workload-validation.md)
+are scoped observations, not a general metadata latency guarantee. See
+[service query configuration](serve.md#connect-stock-vmselect).
 
-The public RPC deadline has second-level precision and is converted into an S3 context deadline. Immediate cancellation on client disconnect is not guaranteed because the public API does not expose the RPC request context. Limits on concurrency, queueing, response bytes, and series/blocks produce explicit errors when exceeded.
+The public RPC deadline has second-level precision and is converted into an S3
+context deadline. Immediate cancellation on client disconnect is not guaranteed
+because the public API does not expose the RPC request context. Both runtimes
+reserve logical query work before backend search, with 128 MiB per-query and
+256 MiB shared defaults. The eight-request RPC ceiling and memory admission have
+no deliberate queue wait. S3 has its separate bounded queue. Limits on read/decoded
+work, catalog plans, response bytes, series, blocks, and shared reads produce
+explicit errors. [Memory accounting](query-memory.md) explains reservation lifetimes
+and why these budgets are not a process RSS limit.
 
 ## Codec and upgrades
 
@@ -87,6 +114,10 @@ pack/native format v1. Offline v2 import checks referenced indexes and copies
 metadata without rewriting objects; see [migration and recovery](sqlite-catalog.md).
 SQLite `inspect` and `verify` are offline and cannot open a live service's state.
 The standalone `archive` and `gateway` commands reject SQLite configurations.
+The SQLite writer can rotate several packs within one logical window and publishes
+zero packs for a verified empty window; the retained JSON v2 writer still emits
+one pack per window. [Capacity preflight](preflight.md) sizes the SQLite pipeline
+without opening the catalog or object store.
 
 The following HTTP API belongs only to the legacy JSON v2 catalog. `serve` has no
 catalog HTTP listener. Catalog HTTP is an internal API for trusted networks, not a
@@ -113,6 +144,17 @@ TLS proxy deployment, and [service operation](serve.md) for shared S3 request li
 
 The native pack-to-gateway-to-stock-vmselect spike and exact comparisons after rebuilding Hot with recent-only data succeeded in the original architecture. Historical all-S3 catalog results remain separate. The [MVP validation report](validation.md) records the legacy independent catalog and restricted S3 proxy results. The [SQLite foundation report](sqlite-catalog-validation.md) covers the original repository and offline tools; [service validation](serve-validation.md) records runtime checks separately. Earlier results do not establish that later implementations passed the same scenarios.
 
+Later [implementation validation](implementation-validation.md) records 1,440
+exact query comparisons across both runtimes and local/Moto backends. Separate
+reports cover [archive bounds](archive-validation.md),
+[reader behavior](reader-validation.md), [metadata latency](metadata-validation.md),
+[catalog scale](catalog-capacity-validation.md), [combined workload and memory](workload-validation.md),
+and [offline recovery](recovery-validation.md). Each report retains its own
+revision, fixture, and limitations; none establishes real-provider support.
+
 Differential tests normalize label/series ordering, compare timestamps and values without tolerance, disable result caches, and use 1ms deduplication on both sides. They provide evidence for the fixture, not every MetricsQL function, cardinality, or VM release. Local S3 test doubles and the restriction proxy do not establish real Sakura/AWS IAM, SigV4 authentication, consistency SLAs, durability, or performance.
 
-A GitHub Actions workflow is included. Hosted CI has not been executed as part of this work because the repository has not been pushed or published. Local execution of equivalent build/test/E2E commands is distinct from a future hosted CI result.
+The [GitHub Actions workflow](../.github/workflows/ci.yml) defines automated checks.
+See [Testing](testing.md) for the commands and evidence layout. A recorded local
+run is distinct from a hosted CI result; consult the relevant run and its artifacts
+before making a CI claim.

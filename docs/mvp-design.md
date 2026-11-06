@@ -1,14 +1,17 @@
 # Legacy JSON v2 MVP design and data contract
 
 This document describes the retained JSON v2 MVP with separate archive, catalog,
-and gateway processes. The current [SQLite service](serve.md) combines these owners
+and gateway processes. Start with [Current architecture](architecture.md) for the
+implemented SQLite system. The current [SQLite service](serve.md) combines these owners
 and adds per-stream publication and a shared S3 request budget while keeping native
 pack/index v1 and the pinned VM read RPC. See [catalog migration](sqlite-catalog.md)
 for cutover and the [first-release design](design.md) for implementation progress.
 The limits and command architecture below belong to the legacy MVP; they do not
 describe the SQLite catalog's storage or lifecycle.
+The retained commands share current incremental raw verification and reader
+improvements with SQLite, but the JSON v2 writer still emits one pack per window.
 
-vmtier is an independent archiver and read gateway, not an official VictoriaMetrics product. The supported OSS cluster version is pinned to `v1.128.0-cluster`, commit `9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. See the [prior-art comparison](prior-art.md), [native gateway decision](adr/0001-native-gateway.md), and [compatibility reference](compatibility.md).
+vmtier is an independent archiver and read gateway, not an official VictoriaMetrics product. The tested OSS cluster version is pinned to `v1.128.0-cluster`, commit `9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. See the [prior-art comparison](prior-art.md), [native gateway decision](adr/0001-native-gateway.md), and [compatibility reference](compatibility.md).
 
 ## Architecture
 
@@ -83,11 +86,11 @@ The original payload bytes are preserved at rest, but reads decode and re-encode
 
 The MVP scans a JSON series dictionary and block directory. It does not use Prometheus `tsdb/index` postings or treat VM blocks as Prometheus chunks. This is not claimed to be an optimal high-cardinality index. Pack, index, series, block, and query limits prevent unbounded materialization. Size windows before the first publication: the window is then fixed by the catalog contract. Changing it later requires an explicit migration to a new catalog, not an in-place configuration edit. Smaller windows also increase catalog entry counts.
 
-CLI defaults are: 64MiB pack, 16MiB index, 128MiB native input, 10,000 series and 100,000 blocks per pack, 512KiB portable block, 64KiB native metric name, and 5,000,000 expanded verification samples. The catalog is limited to 10,000 entries and 16MiB. Queries have a 128MiB read/decoded budget and 100,000-block limit; RPC allows 8 concurrent requests, a 5s queue wait, and a 30s request limit. Per-request bounds do not eliminate the need to budget total concurrent memory. Automatic pack splitting is not implemented; exceeding a bound is an error.
+CLI defaults are: 64MiB pack, 16MiB index, 128MiB native input, 10,000 series and 100,000 blocks per pack, 512KiB portable block, 64KiB native metric name, and 5,000,000 expanded verification samples. The JSON catalog is limited to 10,000 entries and 16MiB. The retained gateway shares current query admission: 128MiB logical work per query and 256MiB shared by default, a 100,000-block limit, eight active RPCs without queueing, and a 30s request limit. These allowances are not a process memory limit; see [memory accounting](query-memory.md). Automatic pack splitting is unavailable to the JSON v2 writer; exceeding a bound is an error. The [SQLite writer](archive-packs.md) supports bounded rotation within one window.
 
 Candidate selection uses the actual storage RPC time range and label matchers calculated by vmselect, not just the frontend HTTP `start/end`. Stock vmselect expands history requirements for range vectors, offsets, subqueries, and `@`. Matching for `=`, `!=`, `=~`, `!~`, and absent/empty labels follows VM's regex implementation. Cold metadata is derived from the same committed data.
 
-The S3 reader uses the block directory for Range GETs and validates length, Content-Range, and SHA-256, independently of ETags. Cache keys include tenant and immutable object/checksum/range identity. A cached catalog success cannot substitute for an unavailable authority. Read retries and timeouts are finite. Publication waits until a GET returns the expected uploaded content; missing objects after publication are errors. A request per block leaves room to reduce request amplification.
+The S3 reader uses the block directory for Range GETs and validates length, Content-Range, and SHA-256, independently of ETags. Cache keys include tenant and immutable object/checksum/range identity. A cached catalog success cannot substitute for an unavailable authority. Read retries and timeouts are finite. Publication waits until a GET returns the expected uploaded content; missing objects after publication are errors. The retained gateway now shares the [byte-bounded LRU, identical-miss sharing, and adjacent-range reads](reader-validation.md) with SQLite; the historical measurements describe the reader at their recorded revision.
 
 ## Failures and resources
 

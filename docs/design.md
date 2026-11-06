@@ -1,4 +1,10 @@
-# First-release design
+# First-release design and roadmap
+
+For the architecture that exists today, read [Current architecture](architecture.md).
+For deployment, use the [service guide](serve.md). This document records the target
+design and delivery plan, including requirements that are not yet implemented.
+The status table and delivery stages below distinguish current behavior from that
+target; proposed capacity fixtures are not support claims.
 
 This is the implementation design for the first supported vmtier release. The
 [SQLite catalog](sqlite-catalog.md) and [`serve` runtime](serve.md) provide

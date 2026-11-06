@@ -2,6 +2,37 @@
 
 The command procedures on this page describe the retained **JSON v2 MVP**, which uses separate archiver, catalog, and gateway processes. For the current SQLite runtime, use the [`serve` guide](serve.md) and [SQLite maintenance and migration guide](sqlite-catalog.md). The lateness, retention, immutable-object, and trusted-network requirements apply to both runtimes. See the [first-release design](design.md) for implemented stages and remaining work, and [compatibility](compatibility.md) for protocol coverage.
 
+## Commands and configuration
+
+Build from source using [Getting started](getting-started.md). The examples below
+use [config.json](../examples/config.json), which selects an S3-compatible endpoint
+and an HTTP JSON v2 catalog. Copy it to `config.json` in the repository root, then
+set the object location, sources, tenants, timing policy, coverage origin, and
+lateness assertion for your deployment. See the [example guide](../examples/README.md).
+
+```sh
+.bin/vmtier catalog-init -path .state/catalog -id demo-v2
+.bin/vmtier catalog -path .state/catalog -id demo-v2 -http 127.0.0.1:8491
+# Keep the catalog running and use another shell for these commands.
+.bin/vmtier archive -config config.json
+.bin/vmtier gateway -config config.json -listen 127.0.0.1:8489 -http 127.0.0.1:8490
+# While the gateway is running, use another shell for inspection/verification.
+.bin/vmtier inspect -config config.json
+.bin/vmtier verify -config config.json
+```
+
+`catalog-init` defaults to the JSON backend. The HTTP client configuration must use
+`{"type":"http","url":"http://127.0.0.1:8491","id":"demo-v2"}`. For same-host
+development without the HTTP service, use
+`{"type":"local","path":".state/catalog","id":"demo-v2"}` instead.
+`catalog.type: "local"` is JSON v2, not SQLite.
+
+`archive` is a one-shot command for an external scheduler. Optional
+`-start <epoch-ms> -end <epoch-ms>` bounds select a half-open interval `[start,end)`;
+both bounds must be window-aligned and satisfy age and retention checks.
+Without bounds it selects incomplete eligible windows from committed coverage.
+The standalone `archive` and `gateway` commands do not accept SQLite configs.
+
 ## Initial deployment
 
 1. Pin stock VM to the supported version and inventory every tenant, export source, shard, and replica. Use a Hot-only export endpoint, never the combined query frontend.
@@ -10,7 +41,7 @@ The command procedures on this page describe the retained **JSON v2 MVP**, which
 4. Require `H > L` and `R > H + safety_margin + window`, where H is archive age and R is Hot retention. Recovery must complete within the available headroom. Run one writer. `lateness_enforced` acknowledges this external contract; it does not implement enforcement. Use Go duration syntax, such as `720h`, not `30d`.
 5. Give the archive a dedicated S3 prefix and least-privilege access. The adapter uses ordinary PUT with Content-MD5, GET, and Range GET; it does not require conditional PUT, ETags, or LIST. Read-back SHA-256 verification precedes publication. Use a storage class that permits immediate reads.
 6. Explicitly initialize the catalog on persistent storage, start its service, and connect all clients to the same catalog ID. Run `vmtier archive -config FILE`, verify packs and indexes, and inspect tenants, sources, and coverage. The catalog must not advance until every source is complete. Schedule subsequent runs with a single-writer external scheduler.
-7. Register Hot and the Cold gateway with the query vmselect. Set `replicationFactor=1`, `globalReplicationFactor=1`, `skipSlowReplicas=false`, `denyPartialResponse=true`, `disableCache=true`, and `dedup.minScrapeInterval=1ms` using the flags shown in the README.
+7. Register Hot and the Cold gateway with the query vmselect. Set `replicationFactor=1`, `globalReplicationFactor=1`, `skipSlowReplicas=false`, `denyPartialResponse=true`, `disableCache=true`, and `dedup.minScrapeInterval=1ms` using the flags in the [service guide](serve.md#connect-stock-vmselect).
 8. In an isolated environment, compare Cold-only and boundary queries with a complete reference VM and confirm that a missing Cold object produces an error before deciding to use the deployment.
 
 Set `coverage_start_ms` to the start of the guaranteed history, in epoch milliseconds, aligned to a window boundary. Do not move it forward merely to pass readiness. Earlier history is outside Cold's completeness guarantee.
@@ -25,7 +56,7 @@ For example, a dedicated host can use cron with a fixed working directory and wr
 
 vmtier does not install this schedule. Monitor exit codes and structured logs, distinguishing a skipped lock acquisition from an archive failure.
 
-Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`; do not put them in configuration files, logs, or Git. General IAM role and credential-provider-chain support is unverified. Keep TLS verification enabled. The local backend is for development and does not provide S3 durability guarantees.
+Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`; do not put them in configuration files, logs, or Git. The client reads these variables directly; AWS profiles and instance-role discovery are not supported. Keep TLS verification enabled. The local backend is for development and does not provide S3 durability guarantees.
 
 ## Catalog initialization and placement
 
@@ -78,40 +109,12 @@ Retention headroom is the finite time until the oldest unarchived sample can no 
 
 ### Service capacity and failure accounting
 
-The SQLite service additionally exposes these capacity signals without listing
-the blob backend:
-
-| Metric | Accounting |
-| --- | --- |
-| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
-| `vmtier_catalog_committed_object_bytes{kind="data\|index"}` | Sum of byte lengths in committed pack descriptors, retained across restart. Excludes unreferenced/failed attempts, other prefixes, provider versions, and provider overhead; this is **not measured bucket usage**. |
-| `vmtier_catalog_windows`, `vmtier_catalog_packs` | Committed logical windows (including empty windows) and immutable pack references. |
-| `vmtier_catalog_capacity_available` | One only when the current bounded observation succeeds. Capacity gauges are omitted on failure, rather than reporting stale values or false zeroes. |
-| `vmtier_cache_used_bytes`, `vmtier_cache_limit_bytes`, `vmtier_cache_entries`, `vmtier_cache_inflight_reads` | Retained immutable raw bytes plus keys and a conservative per-entry bookkeeping allowance; excludes allocator/GC overhead, transient parsed indexes and active-query allocations. In-flight shared reads are bounded separately. |
-| `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
-| `vmtier_query_limit_refusals_total{reason=...}` | Resource refusals with a fixed reason vocabulary: `memory_admission`, `shared_reads`, `read_bytes`, `decoded_bytes`, `catalog_plan`, `blocks`, `series`, or `response_bytes`. Other backend failures and cancellations do not masquerade as limit refusals. |
-| `vmtier_archive_failed_windows_total{tenant=...,source=...,reason=...}` | Errored attempts for configured tenant/source pairs only; reasons are `error`, `timeout`, and `canceled`. A retry increments again; skipped/backoff windows do not. Shutdown cancellation is counted if a window was attempted. No timestamp or error-message labels are used. |
-
-Attempt/refusal counters and cache/admission state start over on process restart;
-committed totals are read afresh from SQLite. An errored attempt is not necessarily
-a new missing window: failure after commit acknowledgement can leave the window
-committed, so interpret failures together with coverage and lag. The service does
-not estimate orphan bytes or perform automatic GC. Use provider accounting for
-actual bucket growth and host monitoring for disk availability and peak RSS.
-Each capacity scrape aggregates the complete `packs` and `windows` tables on
-the catalog's single SQLite connection. The shared five-second scrape context
-bounds the observation time, not the number of rows scanned. Large catalogs or
-frequent scrapes can therefore contend with publication and query selection;
-include scrape load in the catalog-capacity qualification tracked by
-[#14](https://github.com/yuuki/vmtier/issues/14).
-Compare rising failed-window/refusal rates with declining retention headroom
-before increasing workloads or resource limits. These signals do not extend the
-time available to recover an unarchived suffix.
-
-Cache and query-admission/refusal metrics are also available in the retained
-JSON v2 gateway. Catalog capacity and failed-window metrics describe the SQLite
-service only. The SQL capacity totals use a constant-memory scan of committed
-descriptors under the scrape timeout; they do not add an in-memory catalog mirror.
+The current [service capacity and failure reference](serve.md#service-capacity-and-failure-accounting)
+documents SQLite catalog totals, failed-window counters, cache accounting, and
+query admission/refusals. Cache and query-admission metrics also apply to the
+legacy JSON v2 gateway; catalog capacity and failed-window metrics are SQLite only.
+See [catalog capacity measurements](catalog-capacity-validation.md) for scrape
+costs and [query memory accounting](query-memory.md) for component limits.
 
 ## Failure and restart behavior
 

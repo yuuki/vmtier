@@ -1,126 +1,108 @@
 # vmtier
 
-**Archive older VictoriaMetrics samples to S3-compatible storage and query Hot and Cold data through an unmodified stock vmselect.** vmtier is an independent, Apache-2.0-licensed OSS project, not an official VictoriaMetrics product.
+Archive older VictoriaMetrics samples to S3-compatible storage and query Hot and
+Cold data through an unmodified stock vmselect.
 
-The current implementation adds a single-owner **`vmtier serve`** runtime to the native gateway MVP: SQLite publication and coverage, age-based archive scheduling, and a shared S3 request budget. See the [service guide](docs/serve.md) and [service validation](docs/serve-validation.md). The SQLite writer now rotates bounded packs and verifies its raw oracle incrementally. The reader uses LRU caching, shared concurrent misses, and adjacent Range GETs. The [first-release design](docs/design.md) separates these implementations from the remaining workload, provider, and recovery qualification. The JSON v2 MVP remains available for regression testing and migration.
+vmtier is an independent, Apache-2.0-licensed project, not an official
+VictoriaMetrics product. It is **under development**: the SQLite service works
+end to end in local differential tests, with scoped workload and recovery
+measurements. Real S3 providers and production deployment conditions still need
+qualification.
 
-Compatibility is pinned to **VictoriaMetrics OSS v1.128.0-cluster**, commit [`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2). Other versions' native codecs and read RPCs have not been validated.
+## How it works
+
+`vmtier serve` runs an age-based archiver, a SQLite catalog, and a vmstorage-compatible
+read gateway in one process. Stock vmselect evaluates MetricsQL across Hot
+vmstorage and the Cold gateway.
 
 ```mermaid
 flowchart LR
   W[vminsert] --> H[stock vmstorage: Hot]
   H --> E[Hot-only stock vmselect]
-  E -->|native export of windows older than H| A
-  subgraph Service[One vmtier serve process]
-    A[Archiver and scheduler] -->|publish after verification| C[(SQLite catalog)]
-    G[Read RPC gateway] -->|committed coverage| C
+  E -->|native export| A
+  subgraph Service[vmtier serve]
+    A[Archiver] -->|verified publication| C[(SQLite catalog)]
+    G[Cold read gateway] --> C
     A --> B[Shared S3 request budget]
     G --> B
   end
-  B -->|ordinary PUT / GET / Range GET| S[S3: native packs / indexes]
-  Q[stock vmselect: MetricsQL evaluation] --> H
+  B --> S[S3: native packs and indexes]
+  Q[stock vmselect: query frontend] --> H
   Q --> G
 ```
 
-Stock vmselect evaluates expressions. The gateway returns raw blocks, preserving native portable payloads at rest and decoding, clipping, and rebuilding wire blocks when reading. This is not a decode-free path. Hot and Cold provide complementary time coverage, so the query frontend must not skip either node as a redundant replica.
+The archiver checks native exports against an independent raw-data query and
+verifies uploaded objects before publishing coverage. SQLite on persistent local
+storage is the authority for committed windows. S3 needs ordinary PUT, GET, and
+Range GET; conditional PUT, ETags, and LIST are not required. The gateway decodes,
+clips, and rebuilds blocks for stock vmselect on reads. SQLite archive windows
+can span multiple bounded packs; the reader uses LRU caching, shared concurrent
+reads, adjacent Range GETs, and bounded query admission.
 
-**S3 conditional PUT and ETags are not required.** S3 stores payloads and indexes through ordinary PUT, GET, and Range GET. SQLite owns publication and coverage on persistent local storage; the legacy JSON v2 deployment uses a separate catalog service. This supports the project's requirement to work without conditional PUT on Sakura Object Storage. Connections to the actual Sakura service have not yet been tested.
+Compatibility is pinned to **VictoriaMetrics OSS v1.128.0-cluster**, commit
+[`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2).
+Other versions and single-node VictoriaMetrics are outside the validated scope.
 
-## Run the SQLite service
+## Get started
 
-Use [capacity preflight](docs/preflight.md) on representative busy windows before binding the window policy. Follow the [service guide](docs/serve.md) to configure and explicitly initialize a SQLite catalog, then run `vmtier serve -config FILE`. The process owns archival, the read RPC listener, health/metrics, and its state-directory lock. It resumes from committed per-stream coverage and shares S3 request limits across archives, queries, and SDK retries. The [Sakura example](examples/serve-sakura.json) requires deployment-specific source, coverage, and lateness settings before use.
-
-`inspect -config FILE` and `verify -config FILE` support SQLite as offline commands; stop `serve` before using them or the [catalog maintenance commands](docs/sqlite-catalog.md). Standalone `archive` and `gateway` commands remain JSON v2 tools and reject SQLite configurations. Importing an existing JSON v2 catalog does not rewrite its pack objects.
-
-## Build and reproduce the legacy JSON v2 MVP
-
-Requirements: Linux amd64, Go **1.27.3** (the tested version; minimum 1.25.3), Python 3.12 or newer, a C toolchain, curl, and approximately 2 GB of free disk space. Docker is not required. These commands use disposable local VM processes and a Moto S3 test backend.
-
-```sh
-./scripts/bootstrap.sh
-make build test stock
-python3 -m venv .deps/e2e-venv
-. .deps/e2e-venv/bin/activate
-python -m pip install -r scripts/requirements-e2e.txt
-python scripts/e2e.py --backend local --workdir .cache/demo-local
-python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/demo-s3
-```
-
-If Go is installed outside `PATH`, use `make GO=/path/to/go ...`. The test environment must permit local TCP listeners.
-
-Bootstrap downloads checksum-pinned VM sources and the SQLite driver, then generates `.deps/` and `vendor/`. It does not update unrelated modules or patch VM. The SQLite driver uses CGO and bundled SQLite. `go.mod` and `go.sum` record the pinned dependencies; generated vendor files are not tracked in Git.
-
-The legacy JSON v2 E2E harness:
-
-1. Loads the same complete dataset into a reference VM and the Hot cluster.
-2. Starts a separate catalog service and exports age-eligible windows. It compares every timestamp and value with an independent raw JSON response, checks supplementary sample counts, uploads and reads back the objects, and commits the catalog generation only after verification.
-3. Confirms that a Cold-only stock vmselect reads native packs through the independent gateway.
-4. **Recreates Hot in a fresh storage directory with recent samples only and checks that raw export of the old range is empty.** This does not simulate waiting for natural retention expiry.
-5. Compares instant and range queries across Cold, Hot, and their boundary, plus metadata and tenant isolation, against the reference VM.
-6. Tests retries, failures, and caching, and writes `results.json` and logs into the work directory.
-
-The harness stops its processes on completion and does not connect to an existing production VM. See the [MVP validation report](docs/validation.md) for the historical 720 exact query comparisons, measurements, and untested areas. The SQLite runtime has a [separate harness and validation report](docs/serve-validation.md).
-
-## Legacy JSON v2 commands and deployment
-
-This section describes the retained separate-process MVP. Use the [service guide](docs/serve.md) for SQLite deployment; its in-process catalog has no catalog HTTP listener.
+On Linux with Go, Python 3, a C toolchain, and curl installed:
 
 ```sh
+git clone https://github.com/yuuki/vmtier.git
+cd vmtier
+make bootstrap build
 .bin/vmtier version
-.bin/vmtier catalog-init -path .state/catalog -id dev-catalog-001
-.bin/vmtier catalog -path .state/catalog -id dev-catalog-001 -http 127.0.0.1:8491
-# Keep the catalog running and use another shell for these commands.
-.bin/vmtier archive -config config.json  # Select safe, incomplete windows automatically.
-.bin/vmtier archive -config config.json -start 1791244800000 -end 1791266400000
-.bin/vmtier gateway -config config.json -listen 127.0.0.1:8489 -http 127.0.0.1:8490
-.bin/vmtier inspect -config config.json
-.bin/vmtier verify -config config.json
 ```
 
-`archive` is a one-shot command intended for an external scheduler. Without `-start` and `-end`, it selects complete windows from the catalog's contiguous coverage up to the current time minus the archive age, H. Explicit bounds use UTC epoch **milliseconds** and the half-open interval `[start,end)`. The catalog is the restart checkpoint; committed windows are not exported again. Windows that are too recent or lack retention headroom are rejected. The timestamps above illustrate the syntax and are not deployment-specific values.
+See [Getting started](docs/getting-started.md) for exact prerequisites and a
+self-contained local demo with disposable stock VM processes. To configure an
+existing cluster, follow the [service guide](docs/serve.md) and
+[configuration examples](examples/README.md). Configuration requires an explicit
+coverage origin and an externally enforced lateness policy before startup. Run
+[capacity preflight](docs/preflight.md) on representative busy windows before
+initializing the catalog.
 
-Set `coverage_start_ms` in the [example configuration](examples/config.json) to the earliest time whose completeness must be guaranteed, aligned to a window boundary. Set `lateness_enforced` to `true` **only when every write path actually enforces the lateness bound**. The examples intentionally refuse to start until these deployment decisions have been made. Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`, not through the configuration file. Create the bucket beforehand. A [Sakura configuration example](examples/sakura.json) is also provided.
+## Operating boundaries
 
-Configure the catalog explicitly. An HTTP service uses `{"type":"http","url":"http://127.0.0.1:8491","id":"dev-catalog-001"}`. Same-host development can use `{"type":"local","path":".state/catalog","id":"dev-catalog-001"}`. `catalog-init` creates new state and refuses to overwrite an existing catalog. Normal `catalog` startup fails if state is missing; it never silently creates an empty catalog. Client and server IDs must match.
+- Run one service owner with persistent local SQLite state. There is no HA or
+  automatic failover. Catalog loss cannot be repaired from an S3 listing alone;
+  [offline backup and restore](docs/sqlite-catalog.md) are provided.
+- Enforce bounded lateness on every ingestion path. With archive age H, lateness L,
+  Hot retention R, and window width W, require `H > L >= 0` and
+  `R > H + safety_margin + W`. vmtier does not shorten Hot retention or prevent
+  data loss during an unbounded outage.
+- Tenants, sources, coverage origin, and window policy are fixed by the catalog.
+  Guaranteed history begins at `coverage_start_ms`; missing required Cold coverage
+  fails the query. Hot and Cold are complementary nodes, so both must participate
+  in queries with partial responses disabled.
+- Pack rotation keeps objects bounded; whole-window input, physical sample counts,
+  and query work still have limits. Query admission is logical accounting, not a
+  process RSS ceiling. See [architecture and limits](docs/architecture.md),
+  [memory accounting](docs/query-memory.md), and the [measured local workload](docs/workload-validation.md).
+- Compaction, GC, Cold TTL, backfill, deletion, multipart upload, and downsampling
+  are not implemented.
+- Keep RPC and HTTP endpoints on trusted networks. Restrict mutation APIs upstream.
+  S3 request limits cover a bucket only when the service is its sole client.
 
-Deploy the catalog on a trusted network. An optional shared bearer token is supplied through `VMTIER_CATALOG_TOKEN`. Deployments outside loopback need TLS termination and network access controls. The catalog is a single authority with persistent storage, not an HA service: losing its disk cannot be repaired from the S3 object listing alone.
+Local and Moto-backed tests cover exact query results, metadata, restart,
+publication, and failure behavior. Separate local runs cover offline recovery,
+87,600 catalog windows, and a conditional ten-tenant/5,000-series-per-tenant
+workload with two dense hours and two Hot replicas; the larger 10,000-series
+target exceeded the default query budget.
+These measurements do not establish real Sakura/AWS compatibility, universal
+production throughput, or natural retention-expiry behavior.
+[Validation records](docs/README.md#validation-records) identify each tested revision
+and its limits.
 
-Each export source must be a Hot-only stock vmselect connected to all of that source's Hot shards. Do not archive through the combined Hot/Cold query frontend. Source IDs, URLs, and the tenant set are fixed after the first commit. Shard topology inside a source must also remain stable; the gateway cannot detect its changes.
+## Documentation and contributing
 
-Required query-frontend flags, with deduplication configured consistently across VM components:
+- [Documentation index](docs/README.md) — guides, references, designs, and evidence.
+- [Service operation](docs/serve.md) — configuration, scheduling, monitoring, and shutdown.
+- [Architecture](docs/architecture.md) and [compatibility](docs/compatibility.md) — current implementation and protocol boundaries.
+- [Contributing](CONTRIBUTING.md) and [testing](docs/testing.md) — development setup, checks, and pull requests.
+- [First-release roadmap](docs/design.md) — remaining implementation and qualification work.
+- [Legacy JSON v2 operation](docs/operations.md) — retained separate-process commands and migration context.
 
-```sh
-.bin/vmselect -httpListenAddr=127.0.0.1:8482 \
-  -storageNode=127.0.0.1:8401,127.0.0.1:8489 \
-  -replicationFactor=1 -globalReplicationFactor=1 \
-  -search.skipSlowReplicas=false -search.denyPartialResponse=true \
-  -search.disableCache -dedup.minScrapeInterval=1ms
-```
-
-Keep the RPC listener on a trusted network. `/health` reports process liveness; `/ready` validates the catalog and required coverage. `/metrics` exposes archive lag, retention headroom, object reads, cache hits, and query errors. Use `verify` for periodic payload verification. Cold metadata is also available through the gateway.
-
-## Guarantees and limits
-
-- Archive age H, allowed lateness L, and Hot retention R must satisfy `H > L >= 0` and `R > H + safety_margin + window`. Hot retention does not follow vmtier's watermark. vmtier does not automatically shorten retention or delete Hot data, and cannot prevent loss during an unbounded export or storage outage.
-- Lateness is an external ingestion contract. A read gateway cannot block direct late writes, backfills, or deletes. Changes to archived windows and topology changes are unsupported. Block mutation APIs with upstream access controls.
-- Guaranteed query coverage begins at `coverage_start_ms`. Earlier history is outside that guarantee. Queries requiring a gap in archived coverage fail instead of returning an incomplete successful result.
-- Both runtimes support one archiver writer, fixed tenants, a pinned VM version, and **1 ms** deduplication. Unsupported RPCs, including Graphite, administration, writes, and deletes, return errors. Single-node VM integration is out of scope.
-- Limits are 64 MiB per pack, 16 MiB per index, and 10,000 series and 100,000 blocks per pack. SQLite [rotates packs](docs/archive-packs.md) within one immutable logical window; verified empty windows need no objects. Whole-window input, physical samples, pack count, and attempt time remain bounded. The retained JSON v2 writer stays single-pack and its catalog has a 10,000-entry lifetime limit; SQLite uses bounded indexed selection without that lifetime cap. Run [preflight](docs/preflight.md) before initialization because changing window width requires a new catalog.
-- S3 needs ordinary PUT with Content-MD5, GET, and single-range GET. Objects are read back and verified by length and SHA-256 before publication. Correctness does not depend on conditional PUT, ETags, or LIST. Storage classes requiring a restore operation before reads are unsupported. Moto and the compatibility proxy do not validate real-service authentication, durability, or performance.
-- The catalog fixes coverage origin, window size, deduplication, H, L, tenants, and sources, and publishes with generation checks. SQLite also fixes the blob locator and holds a lifetime state-directory lock. Queries fail when the authority is unavailable. Offline SQLite backup/restore and JSON v2 import are implemented; restore requires a new catalog ID. Recovery needs enough remaining Hot history to catch up. Automatic migration from the old all-S3 catalog is not available.
-- SQLite S3 configurations default to 80 requests/s, eight in flight, and 64 queued requests through one shared budget. This covers a bucket only when this process is its sole client. Limits and actual Sakura performance require deployment testing; a dedicated prefix alone does not isolate provider quotas.
-- Cold metadata still uses full validated block reads, with [bounded LRU caching and adjacent ranges](docs/reader-validation.md). The earlier uncached S3 fixture exceeded vmselect's default five-second labels API deadline. The [before/after metadata measurements](docs/metadata-validation.md) passed the retained fixture with the five-second deadline after the reader changes. The harness retains a configurable 30-second default; this does not establish an arbitrary-workload latency guarantee.
-- Query admission reserves a per-query logical work allowance under a shared budget, including parsed-index estimates and copied result names. Cache flights, archive work, runtime overhead, and metadata serialization also consume memory; this is not a heap or RSS ceiling. See [component accounting](docs/query-memory.md) and the [measured workload envelope](docs/workload-validation.md), including the larger workload that exceeded the default query budget.
-- Compaction, GC, Cold TTL deletion, multipart upload, and downsampling remain unimplemented.
-- VM frontend result caching is disabled in the MVP; the immutable Cold block cache is separate. Upstream public APIs do not expose immediate cancellation on client disconnect, so backend work can continue until its deadline.
-
-## Documentation
-
-- [SQLite service guide](docs/serve.md), [service validation](docs/serve-validation.md), and [SQLite catalog maintenance and migration](docs/sqlite-catalog.md).
-- [Archive packing](docs/archive-packs.md), [capacity preflight](docs/preflight.md), [incremental oracle evidence](docs/raw-oracle-validation.md), and [reader cache/range evidence](docs/reader-validation.md).
-- [Workload and combined memory qualification](docs/workload-validation.md) and [87,600-window catalog qualification](docs/catalog-capacity-validation.md).
-- [First-release design and implementation plan](docs/design.md) — implemented stages and remaining work.
-- [Legacy JSON v2 MVP design](docs/mvp-design.md), [native gateway decision](docs/adr/0001-native-gateway.md), and [independent catalog decision](docs/adr/0002-independent-catalog.md).
-- [Compatibility](docs/compatibility.md), [legacy MVP operations](docs/operations.md), and [test instructions](docs/testing.md).
-- [Historical MVP validation](docs/validation.md), [prior art](docs/prior-art.md), and [third-party notices](THIRD_PARTY_NOTICES.md).
-- [Contributing](CONTRIBUTING.md), including English-language documentation and comment conventions.
+The project uses the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) and
+[third-party notices](THIRD_PARTY_NOTICES.md) for attribution and redistribution
+requirements. Repository documentation and code comments are written in English.
