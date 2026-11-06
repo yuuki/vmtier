@@ -5,6 +5,8 @@ locator. Both read gateways are active. One archiver holds the database lease;
 the other can take over after release or expiry. See the
 [PostgreSQL service guide](postgres-catalog.md) for initialization and schema
 upgrades, and [the deployment examples](../examples/ha/README.md) for RPC routing.
+The [qualification report](postgres-ha-validation.md) links executed gateway,
+migration, and PostgreSQL failure evidence with their deployment limits.
 
 ## Failure domains and endpoints
 

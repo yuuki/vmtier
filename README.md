@@ -117,6 +117,7 @@ Keep the RPC listener on a trusted network. `/health` reports process liveness; 
 ## Documentation
 
 - [PostgreSQL catalog and service](docs/postgres-catalog.md), [HA deployment](docs/ha-deployment.md), and [HA architecture decision](docs/adr/0004-postgresql-catalog.md).
+- [SQLite-to-PostgreSQL migration](docs/postgres-migration.md) and [local HA qualification](docs/postgres-ha-validation.md), including fault and query evidence and untested deployment boundaries.
 - [SQLite service guide](docs/serve.md), [service validation](docs/serve-validation.md), and [SQLite catalog maintenance and migration](docs/sqlite-catalog.md).
 - [First-release design and implementation plan](docs/design.md) — implemented stages and remaining work.
 - [Legacy JSON v2 MVP design](docs/mvp-design.md), [native gateway decision](docs/adr/0001-native-gateway.md), and [independent catalog decision](docs/adr/0002-independent-catalog.md).

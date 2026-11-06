@@ -13,6 +13,10 @@ and a stock-VM failover harness. The outer L4 and database HA controllers remain
 operator-provided dependencies.
 Stage 4 adds stopped-writer SQLite import with atomic destination verification and
 a cutover exercise against stock VM using the same object references.
+Stage 5 adds local synchronous PostgreSQL fault qualification, including dropped
+commit acknowledgements, stale writers, transport blackholes, and explicitly
+fenced primary promotion. [The validation report](../postgres-ha-validation.md)
+records measurements and separates these tests from untested production HA.
 
 ## Context
 
@@ -48,7 +52,7 @@ authority is unavailable. GC is absent, so reader leases are unnecessary at this
 stage. Use the writable primary; routing reads to lagging replicas is not part
 of this design.
 
-## Subsequent stages
+## Implementation stages
 
 1. Enable PostgreSQL service configuration with DB-time archiver leases and a
    monotonically increasing fencing token checked in the publication transaction.

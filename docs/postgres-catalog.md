@@ -4,6 +4,8 @@ The PostgreSQL implementation follows [issue #25](https://github.com/yuuki/vmtie
 It implements the same domain operations used by the SQLite reader and archiver:
 `Status`, `PublishWindow`, and bounded `Select`. The
 [architecture decision](adr/0004-postgresql-catalog.md) records the staged HA design.
+Executed gateway, migration, and database fault checks are recorded in
+[local HA qualification](postgres-ha-validation.md), including their limits.
 
 `serve` supports PostgreSQL with an active-standby archiver and independently
 available read gateways. All candidates share one catalog and S3 blob locator.
