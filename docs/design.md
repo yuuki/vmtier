@@ -424,7 +424,11 @@ acceptance criterion: stock-VM comparisons are recorded separately, and the
 success only for the retained small fixture. The [workload/memory](workload-validation.md)
 and [catalog](catalog-capacity-validation.md) reports qualify a scoped local envelope for #11/#14. Remaining evidence includes
 real Sakura (#15), natural retention (#16), enforced ingress lateness (#17),
-end-to-end recovery/cutover (#18), and reproducible release artifacts (#19).
+and reproducible release artifacts (#19). The scoped [offline recovery/cutover
+suite](recovery-validation.md) exercises #18 against stock VM and local objects,
+including older-backup catch-up and process crashes. Its expired-source refusal
+fixture reconstructs absent history; it does not establish natural retention
+expiry or physical power-loss durability.
 Executed checks and their limitations belong in stage-specific validation reports;
 historical results remain evidence only for their recorded revision.
 

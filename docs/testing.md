@@ -273,3 +273,34 @@ that every entry fits or that zero GETs occur. These per-call counters are proce
 observations; in this fixture archival has completed and does not upload during
 the measurement. On S3, request counts include transport retries. Loopback latency
 and this small fixture do not establish a general metadata deadline guarantee.
+
+## Offline recovery and cutover
+
+The dedicated recovery suite starts disposable stock VM clusters and a JSON v2
+authority, then performs the documented offline import, backup, restore, and
+SQLite service operations:
+
+```sh
+python3 scripts/e2e_recovery.py --workdir .cache/recovery-local
+python3 scripts/e2e_recovery.py --replicas 2 --workdir .cache/recovery-replicated
+```
+
+The work directory must not already exist. `--gomaxprocs` uses the same precedence
+as the other suites. `--rollover-delay` defaults to 60 seconds: the archive policy
+is chosen so a real wall-clock eligibility boundary advances during the run,
+without a production clock override or a changed archive contract. If import and
+backup fail to finish before that deadline, the suite fails and asks for a larger
+delay; it never silently skips the older-backup recovery check.
+
+`report.json` retains provenance, each process command, exact comparison counts,
+catalog IDs and coverage, unchanged import object hashes/stat identities, backup
+age, downtime, retention headroom, and failure evidence. SIGKILL is injected after
+native objects have been uploaded and before the independent raw oracle completes,
+and again after a committed recovery. The expired-source negative case uses a
+short configured recovery deadline and reconstructs an empty disposable Hot;
+it does **not** establish natural VM retention expiry. See the
+[measured recovery report](recovery-validation.md) for results and limitations.
+
+Hosted CI runs the local recovery suite and includes its complete `ci-recovery-local`
+work directory in the existing byte-preserving evidence archive, including on
+failure. This is additional process recovery coverage, not a power-loss test.

@@ -1,0 +1,970 @@
+{
+  "backend": "local",
+  "checks": [
+    "JSON v2 writer/authority stopped; import retains coverage and every object byte/stat; Cold and boundary results match stock reference before/after cutover",
+    "older offline backup restores under a new ID; readiness and missing-suffix queries fail until exact Hot-retained catch-up",
+    "SIGKILL after staging leaves orphan objects unpublished; retry ignores them; committed windows survive SIGKILL and are not re-exported"
+  ],
+  "committed_crash": {
+    "catalog_snapshot_unchanged": true,
+    "generation_after_restart": 8,
+    "signal": "SIGKILL",
+    "source_requests_after_restart": 0
+  },
+  "comparison": "exact labels, timestamps and numeric strings; no tolerance",
+  "cutover": {
+    "coverage": [
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "1:2"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "7:9"
+      }
+    ],
+    "destination_id": "recovery-imported-sqlite",
+    "downtime_seconds": 0.14647021499877155,
+    "json_generation": 3,
+    "old_writer_completed_and_authority_stopped": true,
+    "source_id": "recovery-json-v2",
+    "sqlite_generation": 6,
+    "unchanged_objects": {
+      ".writer.lock": {
+        "bytes": 0,
+        "inode": 399518,
+        "mtime_ns": 1793974158312374160,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "tenants/1:2/attempts/10a5465bfb87d4d2a71dca9a050c570d/c39dc4a9741f788d223b61367148e1ca3a09f1a733f2bbc48d6f9707a4646272.json": {
+        "bytes": 4648,
+        "inode": 399496,
+        "mtime_ns": 1793974158368437785,
+        "sha256": "c39dc4a9741f788d223b61367148e1ca3a09f1a733f2bbc48d6f9707a4646272"
+      },
+      "tenants/1:2/attempts/10a5465bfb87d4d2a71dca9a050c570d/c39dc4a9741f788d223b61367148e1ca3a09f1a733f2bbc48d6f9707a4646272.pack": {
+        "bytes": 6545,
+        "inode": 399497,
+        "mtime_ns": 1793974158360374673,
+        "sha256": "fedbe77007f1de991f5fbaf68f0a97cd5a84ed52b72a28c0375cdc4742205b7c"
+      },
+      "tenants/1:2/attempts/3e965dda2b598393741ff1790b8014d7/e4cf5f387543cf23e7e122c1d0a22bbe81866440bfa98b1b95ae23505c923e40.json": {
+        "bytes": 4648,
+        "inode": 399508,
+        "mtime_ns": 1793974158316374203,
+        "sha256": "e4cf5f387543cf23e7e122c1d0a22bbe81866440bfa98b1b95ae23505c923e40"
+      },
+      "tenants/1:2/attempts/3e965dda2b598393741ff1790b8014d7/e4cf5f387543cf23e7e122c1d0a22bbe81866440bfa98b1b95ae23505c923e40.pack": {
+        "bytes": 6545,
+        "inode": 399513,
+        "mtime_ns": 1793974158312374160,
+        "sha256": "fedbe77007f1de991f5fbaf68f0a97cd5a84ed52b72a28c0375cdc4742205b7c"
+      },
+      "tenants/1:2/attempts/6bc2b679101811fc8be3f61972055074/1d3911b2d3d353da7a27a5995ea2f1ad0966945cf19218d2090553040061f3d4.json": {
+        "bytes": 4923,
+        "inode": 399354,
+        "mtime_ns": 1793974158429940082,
+        "sha256": "1d3911b2d3d353da7a27a5995ea2f1ad0966945cf19218d2090553040061f3d4"
+      },
+      "tenants/1:2/attempts/6bc2b679101811fc8be3f61972055074/1d3911b2d3d353da7a27a5995ea2f1ad0966945cf19218d2090553040061f3d4.pack": {
+        "bytes": 6567,
+        "inode": 399472,
+        "mtime_ns": 1793974158420375314,
+        "sha256": "e5ab300ec6d0ba2b4a951fa9bfc1bb31f57a3f06fd9f137997fcc2970ceb4737"
+      },
+      "tenants/7:9/attempts/50349914274afc4e68bfc5e5b2894c64/f173de89e0de4ebcb566d9625b1ce9d44adb616de229fe23230b354fc8f15a6b.json": {
+        "bytes": 4648,
+        "inode": 399499,
+        "mtime_ns": 1793974158341645547,
+        "sha256": "f173de89e0de4ebcb566d9625b1ce9d44adb616de229fe23230b354fc8f15a6b"
+      },
+      "tenants/7:9/attempts/50349914274afc4e68bfc5e5b2894c64/f173de89e0de4ebcb566d9625b1ce9d44adb616de229fe23230b354fc8f15a6b.pack": {
+        "bytes": 6546,
+        "inode": 399509,
+        "mtime_ns": 1793974158332374373,
+        "sha256": "ab09eff04abdb9fc94f0ba0fd53c673e2fb75f2ef4497825c3ac7a7aa2ee3ffe"
+      },
+      "tenants/7:9/attempts/80b7971d187bac491569c9667c394817/316b21c5e07e323937d3af011a62044896bf743f739c3044a4e69fe3dcf28c7d.json": {
+        "bytes": 4923,
+        "inode": 399312,
+        "mtime_ns": 1793974158452375656,
+        "sha256": "316b21c5e07e323937d3af011a62044896bf743f739c3044a4e69fe3dcf28c7d"
+      },
+      "tenants/7:9/attempts/80b7971d187bac491569c9667c394817/316b21c5e07e323937d3af011a62044896bf743f739c3044a4e69fe3dcf28c7d.pack": {
+        "bytes": 6568,
+        "inode": 399339,
+        "mtime_ns": 1793974158448375613,
+        "sha256": "8ce5c12a66f8a13af9975575549111ae162d69fe0e13d9bca3b7daa66ae8e205"
+      },
+      "tenants/7:9/attempts/9f825c376365434b4a81979c15c04cec/6731d48ee37b80e6421d7f76fb19b9f34b17500632b81a5fdd4063e0b026d861.json": {
+        "bytes": 4648,
+        "inode": 399493,
+        "mtime_ns": 1793974158396375058,
+        "sha256": "6731d48ee37b80e6421d7f76fb19b9f34b17500632b81a5fdd4063e0b026d861"
+      },
+      "tenants/7:9/attempts/9f825c376365434b4a81979c15c04cec/6731d48ee37b80e6421d7f76fb19b9f34b17500632b81a5fdd4063e0b026d861.pack": {
+        "bytes": 6546,
+        "inode": 399494,
+        "mtime_ns": 1793974158380374887,
+        "sha256": "ab09eff04abdb9fc94f0ba0fd53c673e2fb75f2ef4497825c3ac7a7aa2ee3ffe"
+      }
+    }
+  },
+  "differential_checks": {
+    "committed-after-sigkill": 120,
+    "json-before-cutover": 120,
+    "restored-after-catchup": 120,
+    "sqlite-after-cutover": 120
+  },
+  "environment": {
+    "os": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14",
+    "scope": "disposable managed container; stock VM memory.allowedBytes=128MiB per process"
+  },
+  "error": "AssertionError((400, 'error when exporting data on the time range (start=1793974216000, end=1793974217000): cannot fetch data for \"accountID=0, projectID=0, filters=[{__name__=\\\\\"recovery_probe\\\\\"}], timeRange=[2026-11-06T14:10:16Z..2026-11-06T14:10:17Z]\": error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:53119: cannot execute funcName=\"search_v7\" on vmstorage \"127.0.0.1:53119\": Cold search: unarchived required interval [1793974216000,1793974233000)\\n'))",
+  "finished_at_utc": "2026-11-06T14:10:35.655524+00:00",
+  "fixture": {
+    "archive_age_ms": 7818165,
+    "configured_hot_retention_ms": 864000000,
+    "dedup_interval": "1ms",
+    "end_ms": 1793970000000,
+    "initial_boundary_ms": 1793962800000,
+    "input_samples": 17654,
+    "next_eligible_at_ms": 1793974218165,
+    "result_cache": "disabled",
+    "series_per_tenant": 16,
+    "start_ms": 1793952000000,
+    "stock_hot_retention": "30d",
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "window_ms": 3600000
+  },
+  "limitations": [
+    "loopback local filesystem; no real provider",
+    "SIGKILL is not physical power-loss durability",
+    "expired-source absence is reconstructed, not natural VM retention expiry"
+  ],
+  "precommit_crash": {
+    "exit_code": -9,
+    "generation_after": 6,
+    "generation_before": 6,
+    "missing_suffix_error": {
+      "body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:58385: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:58385\\\": Cold search: unarchived required interval [1793962800000,1793966400000)\"}",
+      "http_status": 422
+    },
+    "phase": "native packs uploaded/read back; independent raw verification response blocked",
+    "readiness_error": {
+      "body": "archive coverage for 1:2 ends at 1793962800000; required 1793966400000\n",
+      "http_status": 503
+    },
+    "signal": "SIGKILL",
+    "unpublished_object_keys": [
+      "tenants/1:2/attempts/84f6a07753365a60bc09efc30da3c4b5/cc38a4b5ce9c55f073dfffc8d49ca9b47e9c0b33e5b0cb9120d671c4cb2aca01.json",
+      "tenants/1:2/attempts/84f6a07753365a60bc09efc30da3c4b5/cc38a4b5ce9c55f073dfffc8d49ca9b47e9c0b33e5b0cb9120d671c4cb2aca01.pack"
+    ]
+  },
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "f7d52efaae90c90585832893f926422b457a643722e55c4e13cffbc22a739685",
+      "vmselect": "a1f8fc3b7efd708c734f1817a1eea777319bfb4baae50292994336ded1f9998c",
+      "vmstorage": "4fd7f1fe6fa9e32af350ecbec5517c5a0d7633637b031e4b61fbaad862544131",
+      "vmtier": "63396250a4c99cd0325b5d6b266c3c87e86a92565f36c2148e1f81f1a9f772b4"
+    },
+    "executor_hostname": "36765b6c3f29",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "e2a8a391dbd6e321a8653a346c51b2196d8d0f9ac7c55ec5605489f55b21d069",
+    "harness_sha256": {
+      "e2e.py": "d1cb61f6d5808ea070a0d6668a6d71c87044c24c7bac277ae526b7cb83baff65",
+      "e2e_recovery.py": "446954fef2a5693debfccc402efe99a8217ffecd532cec24d8bf218ea2570e4b",
+      "e2e_serve.py": "6e89d7e7d492de9b3aa7ab28436dd934e33ea78aa007723c3766a476cc77c968",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    }
+  },
+  "recovery": {
+    "backup_age_seconds": 58.61795687675476,
+    "backup_generation": 6,
+    "catchup_seconds_including_crash": 0.3478099439998914,
+    "configured_retention_headroom_seconds_at_restart": 852581.115,
+    "coverage": [
+      {
+        "end_ms": 1793966400000,
+        "source_id": "hot",
+        "tenant": "1:2"
+      },
+      {
+        "end_ms": 1793966400000,
+        "source_id": "hot",
+        "tenant": "7:9"
+      }
+    ],
+    "downtime_seconds": 0.40414752700053214,
+    "missing_interval_ms_per_tenant": 3600000,
+    "missing_stream_windows": 2,
+    "new_id": "recovery-restored-sqlite",
+    "old_id": "recovery-imported-sqlite",
+    "old_owner_stopped_before_restore": true,
+    "original_advanced_generation": 8,
+    "restored_generation": 8
+  },
+  "replicas": 1,
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:51035",
+          "-vminsertAddr=127.0.0.1:54667",
+          "-vmselectAddr=127.0.0.1:39973",
+          "-storageDataPath=/tmp/vmtier-recovery-final-local/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 60117
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:56619",
+          "-storageNode=127.0.0.1:54667",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 60125
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:42811",
+          "-storageNode=127.0.0.1:39973",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 60132
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:42817",
+          "-vminsertAddr=127.0.0.1:58057",
+          "-vmselectAddr=127.0.0.1:39155",
+          "-storageDataPath=/tmp/vmtier-recovery-final-local/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 60139
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:33767",
+          "-storageNode=127.0.0.1:58057",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 60145
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:46041",
+          "-storageNode=127.0.0.1:39155",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 60152
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-init",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/json-catalog",
+          "-id",
+          "recovery-json-v2"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "json-init"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/json-catalog",
+          "-id",
+          "recovery-json-v2",
+          "-http",
+          "127.0.0.1:41701"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "json-authority",
+        "pid": 60170
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "archive",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/json-config.json",
+          "-start",
+          "1793952000000",
+          "-end",
+          "1793962800000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "json-archive"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "gateway",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/json-config.json",
+          "-listen",
+          "127.0.0.1:53315",
+          "-http",
+          "127.0.0.1:42179"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "json-gateway",
+        "pid": 60209
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:36117",
+          "-storageNode=127.0.0.1:53315",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/json-cold-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "json-cold-select",
+        "pid": 60216
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:57205",
+          "-storageNode=127.0.0.1:39155,127.0.0.1:53315",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/json-tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "json-tiered-select",
+        "pid": 60223
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-import",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/json-config.json",
+          "-from",
+          "/tmp/vmtier-recovery-final-local/json-catalog",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/imported",
+          "-id",
+          "recovery-imported-sqlite"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-import"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "serve",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/imported-config.json",
+          "-listen",
+          "127.0.0.1:40841",
+          "-http",
+          "127.0.0.1:34711"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-imported",
+        "pid": 60242
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:39897",
+          "-storageNode=127.0.0.1:40841",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/imported-cold-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "imported-cold-select",
+        "pid": 60249
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:54679",
+          "-storageNode=127.0.0.1:39155,127.0.0.1:40841",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/imported-tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "imported-tiered-select",
+        "pid": 60256
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/imported",
+          "-id",
+          "recovery-imported-sqlite",
+          "-out",
+          "/tmp/vmtier-recovery-final-local/backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-backup"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "serve",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/imported-config.json",
+          "-listen",
+          "127.0.0.1:40165",
+          "-http",
+          "127.0.0.1:35253"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-original-advancing",
+        "pid": 60271
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-restore",
+          "-backup",
+          "/tmp/vmtier-recovery-final-local/backup",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/restored",
+          "-id",
+          "recovery-restored-sqlite"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-restore"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "serve",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/restored-config.json",
+          "-listen",
+          "127.0.0.1:58385",
+          "-http",
+          "127.0.0.1:38157"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -9,
+        "kind": "managed",
+        "name": "serve-restored-precommit",
+        "pid": 61018
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:40313",
+          "-storageNode=127.0.0.1:58385",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/missing-suffix-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "missing-suffix-select",
+        "pid": 61027
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "serve",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/restored-config.json",
+          "-listen",
+          "127.0.0.1:50757",
+          "-http",
+          "127.0.0.1:33913"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -9,
+        "kind": "managed",
+        "name": "serve-restored-catchup",
+        "pid": 61035
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:35285",
+          "-storageNode=127.0.0.1:50757",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/restored-cold-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "restored-cold-select",
+        "pid": 61051
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:54551",
+          "-storageNode=127.0.0.1:39155,127.0.0.1:50757",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/restored-tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "restored-tiered-select",
+        "pid": 61058
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "serve",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/restored-config.json",
+          "-listen",
+          "127.0.0.1:36965",
+          "-http",
+          "127.0.0.1:37931"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-committed-restart",
+        "pid": 61112
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:37519",
+          "-storageNode=127.0.0.1:36965",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/committed-cold-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "committed-cold-select",
+        "pid": 61127
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:45437",
+          "-storageNode=127.0.0.1:39155,127.0.0.1:36965",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/committed-tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "committed-tiered-select",
+        "pid": 61142
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-init",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/expired-json",
+          "-id",
+          "expired-json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "expired-json-init"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/expired-json",
+          "-id",
+          "expired-json",
+          "-http",
+          "127.0.0.1:42129"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "expired-authority",
+        "pid": 61279
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "archive",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/expired-json-config.json",
+          "-start",
+          "1793974215000",
+          "-end",
+          "1793974216000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "expired-archive"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-import",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/expired-json-config.json",
+          "-from",
+          "/tmp/vmtier-recovery-final-local/expired-json",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/expired-original",
+          "-id",
+          "expired-original"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "expired-import"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/expired-original",
+          "-id",
+          "expired-original",
+          "-out",
+          "/tmp/vmtier-recovery-final-local/expired-backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "expired-backup"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:42817",
+          "-vminsertAddr=127.0.0.1:58057",
+          "-vmselectAddr=127.0.0.1:39155",
+          "-storageDataPath=/tmp/vmtier-recovery-final-local/hot-storage-0-empty-expiry-fixture",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-empty-expiry-fixture",
+        "pid": 61328
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:33767",
+          "-storageNode=127.0.0.1:58057",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-empty-expiry-fixture",
+        "pid": 61340
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:46041",
+          "-storageNode=127.0.0.1:39155",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/hot-select-empty-expiry-fixture"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-empty-expiry-fixture",
+        "pid": 61375
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "catalog-restore",
+          "-backup",
+          "/tmp/vmtier-recovery-final-local/expired-backup",
+          "-path",
+          "/tmp/vmtier-recovery-final-local/expired-restored",
+          "-id",
+          "expired-restored"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "expired-restore"
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmtier",
+          "serve",
+          "-config",
+          "/tmp/vmtier-recovery-final-local/expired-restored-config.json",
+          "-listen",
+          "127.0.0.1:53119",
+          "-http",
+          "127.0.0.1:50409"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-expired-restored",
+        "pid": 62337
+      },
+      {
+        "command": [
+          "/workspace/vmtier-recovery/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:38713",
+          "-storageNode=127.0.0.1:53119",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/tmp/vmtier-recovery-final-local/expired-cold-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "expired-cold-select",
+        "pid": 62350
+      }
+    ],
+    "selected_GOMAXPROCS": "2",
+    "selection": "argument"
+  },
+  "started_at_utc": "2026-11-06T14:09:14.947623+00:00",
+  "status": "failed",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}

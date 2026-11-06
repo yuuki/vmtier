@@ -26,6 +26,7 @@ jobs:
       - run: python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/ci-s3
       - run: python scripts/e2e_serve.py --backend local --workdir .cache/ci-serve-local
       - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-serve-s3
+      - run: python scripts/e2e_recovery.py --workdir .cache/ci-recovery-local
       - name: Package E2E evidence
         if: always()
         run: python scripts/package_evidence.py
