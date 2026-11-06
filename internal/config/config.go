@@ -17,6 +17,7 @@ import (
 	"github.com/yuuki/vmtier/internal/archive"
 	"github.com/yuuki/vmtier/internal/catalog"
 	"github.com/yuuki/vmtier/internal/cold"
+	"github.com/yuuki/vmtier/internal/gateway"
 	"github.com/yuuki/vmtier/internal/objectstore"
 	"github.com/yuuki/vmtier/internal/pack"
 )
@@ -68,6 +69,7 @@ type Config struct {
 	CacheBytes                               int64    `json:"cache_bytes"`
 	MaxQueryBytes                            int64    `json:"max_query_bytes"`
 	MaxPackBlocks                            int      `json:"max_pack_blocks,omitempty"`
+	QueryMemoryBytes                         int64    `json:"query_memory_bytes,omitempty"`
 	age, retention, lateness, safety, window time.Duration
 	archiveInterval                          time.Duration
 }
@@ -229,7 +231,23 @@ func (c *Config) Validate() error {
 	if c.MaxPackBlocks < 0 || c.MaxPackBlocks > pack.DefaultLimits().MaxBlocks {
 		return errors.New("max_pack_blocks must be 0 (default) or 1..100000")
 	}
+	limits := c.GatewayLimits()
+	if c.QueryMemoryBytes < 0 || limits.QueryMemoryBytes < limits.QueryWorkBytes || limits.QueryMemoryBytes > 8<<30 {
+		return errors.New("query_memory_bytes must cover max_query_bytes and be at most 8 GiB (defaults: 256 MiB shared, 128 MiB per query)")
+	}
 	return nil
+}
+
+// GatewayLimits reserves the reader's full logical work budget before each query.
+func (c *Config) GatewayLimits() gateway.Limits {
+	work, shared := c.MaxQueryBytes, c.QueryMemoryBytes
+	if work == 0 {
+		work = 128 << 20
+	}
+	if shared == 0 {
+		shared = 256 << 20
+	}
+	return gateway.Limits{QueryWorkBytes: work, QueryMemoryBytes: shared}
 }
 
 // ValidateArchiveRange prevents partial or differently aligned windows from

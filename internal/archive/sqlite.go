@@ -24,7 +24,10 @@ type SQLiteArchiver struct {
 	Config        Config
 	RetryInterval time.Duration
 	WindowTimeout time.Duration
-	retryAfter    map[string]time.Time
+	// OnWindowFailure observes an attempted window, including cancellation.
+	// It must return promptly; no callback is made for a skipped retry.
+	OnWindowFailure func(tenant, source string, err error)
+	retryAfter      map[string]time.Time
 }
 
 // RunPass archives at most one oldest eligible window per tenant/source. A failed
@@ -111,6 +114,9 @@ func (a *SQLiteArchiver) RunPass(ctx context.Context, now time.Time) (*Result, e
 			return out, errors.New("archive window overflows timestamp range")
 		}
 		fail := func(err error) {
+			if a.OnWindowFailure != nil {
+				a.OnWindowFailure(stream.Tenant, stream.SourceID, err)
+			}
 			a.retryAfter[key] = clock().Add(retryInterval)
 			failures = append(failures, fmt.Errorf("archive tenant %s source %s window [%d,%d): %w", stream.Tenant, stream.SourceID, start, end, err))
 			slog.Error("archive stream failed", "tenant", stream.Tenant, "source", stream.SourceID, "start_ms", start, "end_ms", end, "error", err)

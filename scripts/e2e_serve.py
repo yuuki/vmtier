@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from e2e import (ROOT, HTTP, Cluster, Processes, api, compare,
+from e2e import (ROOT, HTTP, Cluster, Processes, api, check_metadata, compare,
                  fixture, fixture_horizon, free_port, metrics, positive_int, remote_write, request,
                  start_select, test_s3_request, timed)
 from s3_compat_proxy import S3CompatibilityProxy
@@ -175,7 +175,7 @@ def expressions(boundary):
     ]
 
 
-def start_tiered_select(processes, name, port, nodes):
+def start_tiered_select(processes, name, port, nodes, labels_api_duration='30s'):
     # Metadata currently validates payload blocks. Allow the shared S3 request
     # budget to pace these reads; the stock default labels deadline is only 5s.
     return processes.start(name, [ROOT / '.bin/vmselect',
@@ -183,7 +183,7 @@ def start_tiered_select(processes, name, port, nodes):
         '-storageNode=' + ','.join(f'127.0.0.1:{p}' for p in nodes),
         '-replicationFactor=1', '-globalReplicationFactor=1', '-search.skipSlowReplicas=false',
         '-search.denyPartialResponse=true', '-search.disableCache',
-        '-search.maxLabelsAPIDuration=30s', '-dedup.minScrapeInterval=1ms',
+        f'-search.maxLabelsAPIDuration={labels_api_duration}', '-dedup.minScrapeInterval=1ms',
         '-memory.allowedBytes=128MiB', f'-cacheDataPath={processes.work / name}'],
         f'http://127.0.0.1:{port}/health')
 
@@ -214,7 +214,7 @@ def run(work, args):
               'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'vm_revision': '9a009c491da4c17531893ab4acb6a5f1b5e0eaf2',
               'dedup_interval': '1ms', 'vm_result_cache': 'disabled',
-              'tiered_vm_labels_api_max_duration': '30s',
+              'tiered_vm_labels_api_max_duration': args.labels_api_duration,
               'comparison': 'exact timestamps, labels and numeric strings; no tolerance',
               'checks': [], 'query_timings_ms': {}, 'runtime': procs.runtime}
     env = {'AWS_ACCESS_KEY_ID': 'vmtier-test', 'AWS_SECRET_ACCESS_KEY': 'vmtier-test-secret'}
@@ -453,7 +453,7 @@ def run(work, args):
         assert snapshot(database) == stable and source_proxy.native_requests == exports
         report['checks'].append('restart preserves coverage and avoids reexport; changed policy/source/blob locator/identity are rejected')
         top_select = free_port()
-        start_tiered_select(procs, 'tiered-select', top_select, hot.storage_read + [rpc_port])
+        start_tiered_select(procs, 'tiered-select', top_select, hot.storage_read + [rpc_port], args.labels_api_duration)
         count = 0
         for tenant in tenants:
             for label, (lo, hi) in {'cold': (start + 600000, boundary - 600000),
@@ -475,13 +475,9 @@ def run(work, args):
         assert count == 360
         report['differential_checks'] = count
         report['checks'].append('360 exact instant/range comparisons passed across Cold, Hot and the boundary')
-        for tenant in tenants:
-            for path in ['labels', 'label/cold_label/values', 'label/__name__/values', 'series']:
-                params = {'start': start / 1000, 'end': end / 1000, 'match[]': '{__name__!=""}'}
-                expected, actual = api(ref.select, tenant, path, params), api(top_select, tenant, path, params)
-                if expected and isinstance(expected[0], str):
-                    expected, actual = sorted(expected), sorted(actual)
-                compare(expected, actual, f'{tenant} metadata {path}')
+        report['metadata_measurements'] = []
+        check_metadata(ref.select, top_select, http_port, tenants, start, end,
+                       'uncached', 0, report['metadata_measurements'])
         report['checks'].append('Cold label names/values and series discovery match the reference for both tenants')
         report['final_metrics'] = metrics(http_port)
         if args.backend == 's3':
@@ -510,6 +506,12 @@ def run(work, args):
                                        'warm_blob_bytes': c.get(byte_key, 0) - b.get(byte_key, 0),
                                        'cache_limit_bytes': cfg['cache_bytes'], 'vm_result_cache': 'disabled'}
         report['checks'].append('warm immutable cache returns equal data with no additional Range GETs')
+        if args.measure_warm_metadata:
+            check_metadata(ref.select, top_select, http_port, tenants, start, end,
+                           'prime', cfg['cache_bytes'], report['metadata_measurements'])
+            check_metadata(ref.select, top_select, http_port, tenants, start, end,
+                           'warm', cfg['cache_bytes'], report['metadata_measurements'])
+            report['checks'].append('warm metadata measurements preserve exact reference parity')
         stop_service(process)
         assert_http_failure(lambda: api(top_select, tenants[0], 'query', dict(cache_params, timeout='3s')), 'stopped service')
         cfg['cache_bytes'] = 0
@@ -612,6 +614,8 @@ def main():
     parser.add_argument('--replicas', choices=[1, 2], type=int, default=1)
     parser.add_argument('--workdir', type=Path)
     parser.add_argument('--gomaxprocs', type=positive_int, help='GOMAXPROCS for workload children (default: outer GOMAXPROCS, else 2)')
+    parser.add_argument('--labels-api-duration', choices=['5s', '30s'], default='30s', help='stock tiered vmselect labels API deadline')
+    parser.add_argument('--measure-warm-metadata', action='store_true', help='prime and measure repeated metadata calls with the immutable cache enabled')
     parser.add_argument('--pack-max-blocks', type=positive_int, help='Lower the pack block limit to force multi-pack service windows (for example 4)')
     args = parser.parse_args()
     if args.pack_max_blocks and args.pack_max_blocks > 100000:

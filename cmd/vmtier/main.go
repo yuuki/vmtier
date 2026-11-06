@@ -173,8 +173,8 @@ func run(args []string) error {
 		return json.NewEncoder(os.Stdout).Encode(m)
 	case "gateway":
 		reader := c.Reader(s, cs)
-		api := gateway.New(reader, gateway.Limits{})
-		srv, e := vmselectapi.NewServer(*listen, api, vmselectapi.Limits{MaxLabelNames: 10000, MaxLabelValues: 100000, MaxTagValueSuffixes: 10000, MaxConcurrentRequests: 8, MaxQueueDuration: 5 * time.Second, MaxQueueDurationFlagName: "vmtier queue timeout", MaxConcurrentRequestsFlagName: "vmtier concurrency"}, false)
+		api := gateway.New(reader, c.GatewayLimits())
+		srv, e := vmselectapi.NewServer(*listen, api, vmselectapi.Limits{MaxLabelNames: 10000, MaxLabelValues: 100000, MaxTagValueSuffixes: 10000, MaxConcurrentRequests: 8, MaxQueueDuration: 0, MaxQueueDurationFlagName: "vmtier queue timeout", MaxConcurrentRequestsFlagName: "vmtier concurrency"}, false)
 		if e != nil {
 			return e
 		}
@@ -200,6 +200,7 @@ func run(args []string) error {
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
+			writeCapacityMetrics(ctx, w, reader, api, nil)
 			coverage, e := reader.Ready(ctx)
 			ready := 1
 			if e != nil {

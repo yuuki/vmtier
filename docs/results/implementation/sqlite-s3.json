@@ -1,0 +1,1232 @@
+{
+  "architecture": "SQLite catalog with one serve process, scheduled archive and read gateway",
+  "archive_metrics": {
+    "vmtier_archive_bytes_total": 138595.0,
+    "vmtier_archive_committed_windows_total": 6.0,
+    "vmtier_archive_failed_passes_total": 5.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"error\"}": 5.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 1793965811.0,
+    "vmtier_archive_passes_total": 9.0,
+    "vmtier_archive_samples_total": 9038.0,
+    "vmtier_blocks_total": 4.0,
+    "vmtier_cache_entries": 0.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_inflight_reads": 0.0,
+    "vmtier_cache_limit_bytes": 0.0,
+    "vmtier_cache_misses_total": 5.0,
+    "vmtier_cache_used_bytes": 0.0,
+    "vmtier_catalog_capacity_available": 1.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 83257.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 55338.0,
+    "vmtier_catalog_file_bytes{file=\"database\"}": 36864.0,
+    "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+    "vmtier_catalog_file_bytes{file=\"wal\"}": 197792.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_catalog_packs": 6.0,
+    "vmtier_catalog_windows": 6.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793952000000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793952000000.0,
+    "vmtier_object_download_bytes_total": 147532.0,
+    "vmtier_object_get_requests_total": 13.0,
+    "vmtier_object_put_requests_total": 12.0,
+    "vmtier_object_range_requests_total": 2.0,
+    "vmtier_query_errors_total": 1.0,
+    "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+    "vmtier_query_memory_limit_bytes": 268435456.0,
+    "vmtier_query_memory_reserved_bytes": 0.0,
+    "vmtier_query_requests_total": 2.0,
+    "vmtier_query_work_bytes": 134217728.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 850188.296,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 850188.296,
+    "vmtier_s3_attempts_total": 27.0,
+    "vmtier_s3_canceled_requests_total": 0.0,
+    "vmtier_s3_in_flight_requests": 0.0,
+    "vmtier_s3_queued_requests": 0.0,
+    "vmtier_s3_rejected_requests_total": 0.0,
+    "vmtier_s3_wait_seconds_total": 0.057590602,
+    "vmtier_s3_waited_requests_total": 12.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 850188.296,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 850188.296
+  },
+  "backend": "s3",
+  "blob_outage": {
+    "cache_bytes": 0,
+    "coverage_unchanged": true,
+    "error_body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:49353: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:49353\\\": Cold search: operation error S3: GetObject, exceeded maximum number of attempts, 3, https response error StatusCode: 503, RequestID: , HostID: , api error VMTierInjectedBlobOutage: vmtier test S3 proxy\"}",
+    "exact_baseline_and_recovery": true,
+    "healthy_and_ready_during_outage": true,
+    "http_status": 422,
+    "process_pid": 40138,
+    "proxy_failed_gets": 3,
+    "vmtier_object_get_requests_total_delta": 3.0,
+    "vmtier_query_errors_total_delta": 1.0,
+    "vmtier_query_requests_total_delta": 1.0
+  },
+  "cache_measurement": {
+    "cache_limit_bytes": 33554432,
+    "cold_latency_ms": 268.8548919998084,
+    "cold_range_gets": 4.0,
+    "vm_result_cache": "disabled",
+    "warm_blob_bytes": 0.0,
+    "warm_latency_ms": 2.8642800000397983,
+    "warm_range_gets": 0.0
+  },
+  "catalog": {
+    "coverage": [
+      {
+        "end_ms": 1793952000000,
+        "source_id": "hot",
+        "tenant": "1:2"
+      },
+      {
+        "end_ms": 1793952000000,
+        "source_id": "hot",
+        "tenant": "7:9"
+      }
+    ],
+    "generation": 6,
+    "packs": 6,
+    "schema": 1,
+    "windows": 6
+  },
+  "checks": [
+    "reference and pre-archive Hot contain the same old data",
+    "serve refuses missing state; SQLite initialization is explicit",
+    "source outage leaves zero coverage and fails readiness and required Cold queries",
+    "healthy tenant reaches coverage and remains queryable while another source stream fails",
+    "SIGTERM during native export publishes nothing; restart automatically archives six stream windows",
+    "live owner excludes offline inspect/verify/backup and a second serve process without changing catalog",
+    "stock vmselect reads committed SQLite native packs through independent Cold RPC and Range GET",
+    "Cold raw export excludes young samples at and after the exact boundary millisecond",
+    "fresh Hot contains recent data only; both tenants have empty old-range raw exports",
+    "restart preserves coverage and avoids reexport; changed policy/source/blob locator/identity are rejected",
+    "360 exact instant/range comparisons passed across Cold, Hot and the boundary",
+    "Cold label names/values and series discovery match the reference for both tenants",
+    "shared S3 transport exposes admitted attempts and wait metrics without queue rejection",
+    "warm immutable cache returns equal data with no additional Range GETs",
+    "warm metadata measurements preserve exact reference parity",
+    "service outage propagates as query failure; restart restores reads from persistent SQLite state",
+    "missing/truncated/checksum-invalid payloads fail queries; restored bytes recover without catalog mutation",
+    "running service attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes",
+    "Cold delete remains explicitly unsupported",
+    "clean shutdown releases ownership for offline backup/verify and leaves completed windows unchanged",
+    "S3 traffic passes conditional-request rejection and ETag removal; every PUT has valid Content-MD5"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "dedup_interval": "1ms",
+  "differential_checks": 360,
+  "environment": {
+    "go": "go version go1.27.3 linux/amd64",
+    "linux_kernel": "6.18.57",
+    "logical_cpus_available": 5,
+    "machine": "x86_64",
+    "measurement_scope": "single development container, loopback; no real Sakura/AWS/MinIO service",
+    "moto": "5.1.15",
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "python": "3.12.14"
+  },
+  "final_metrics": {
+    "vmtier_archive_bytes_total": 0.0,
+    "vmtier_archive_committed_windows_total": 0.0,
+    "vmtier_archive_failed_passes_total": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+    "vmtier_archive_passes_total": 509.0,
+    "vmtier_archive_samples_total": 0.0,
+    "vmtier_blocks_total": 2257.0,
+    "vmtier_cache_entries": 0.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_inflight_reads": 0.0,
+    "vmtier_cache_limit_bytes": 0.0,
+    "vmtier_cache_misses_total": 2611.0,
+    "vmtier_cache_used_bytes": 0.0,
+    "vmtier_catalog_capacity_available": 1.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 83257.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 55338.0,
+    "vmtier_catalog_file_bytes{file=\"database\"}": 36864.0,
+    "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+    "vmtier_catalog_file_bytes{file=\"wal\"}": 0.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_catalog_packs": 6.0,
+    "vmtier_catalog_windows": 6.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793952000000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793952000000.0,
+    "vmtier_object_download_bytes_total": 4448174.0,
+    "vmtier_object_get_requests_total": 354.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 628.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+    "vmtier_query_memory_limit_bytes": 268435456.0,
+    "vmtier_query_memory_reserved_bytes": 0.0,
+    "vmtier_query_requests_total": 380.0,
+    "vmtier_query_work_bytes": 134217728.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 850134.677,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 850134.677,
+    "vmtier_s3_attempts_total": 982.0,
+    "vmtier_s3_canceled_requests_total": 0.0,
+    "vmtier_s3_in_flight_requests": 0.0,
+    "vmtier_s3_queued_requests": 0.0,
+    "vmtier_s3_rejected_requests_total": 0.0,
+    "vmtier_s3_wait_seconds_total": 0.045813267,
+    "vmtier_s3_waited_requests_total": 7.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1793952000000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 850134.677,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 850134.677
+  },
+  "fixture": {
+    "archive_age_ms": 12007502,
+    "boundary_ms": 1793952000000,
+    "created_at_ms": 1793965807502,
+    "end_ms": 1793959200000,
+    "finished_at_ms": 1793965873504,
+    "input_samples": 17654,
+    "max_pack_blocks": 100000,
+    "next_eligible_at_ms": 1793967607502,
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate/conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1793941200000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "window_ms": 3600000
+  },
+  "frontend_reconnect": {
+    "cached_dial_error_retries": 4,
+    "cached_dial_error_retry_budget_seconds": 5,
+    "seconds": 0.6693224369998916
+  },
+  "interrupted_shutdown_seconds": 0.003289248999976735,
+  "metadata_measurements": [
+    {
+      "cache_bytes": 0,
+      "download_bytes": 72258.0,
+      "get_requests": 3.0,
+      "latency_ms": 269.60806200008847,
+      "path": "labels",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 72258.0,
+      "get_requests": 3.0,
+      "latency_ms": 313.6361869999291,
+      "path": "label/cold_label/values",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 72258.0,
+      "get_requests": 3.0,
+      "latency_ms": 300.7523080000283,
+      "path": "label/__name__/values",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 72258.0,
+      "get_requests": 3.0,
+      "latency_ms": 296.2450210000043,
+      "path": "series",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 66337.0,
+      "get_requests": 3.0,
+      "latency_ms": 300.9299740001552,
+      "path": "labels",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 66337.0,
+      "get_requests": 3.0,
+      "latency_ms": 314.41427400000066,
+      "path": "label/cold_label/values",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 66337.0,
+      "get_requests": 3.0,
+      "latency_ms": 308.74731799985966,
+      "path": "label/__name__/values",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 66337.0,
+      "get_requests": 3.0,
+      "latency_ms": 313.48893999984284,
+      "path": "series",
+      "phase": "uncached",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 52042.0,
+      "get_requests": 1.0,
+      "latency_ms": 412.351924999939,
+      "path": "labels",
+      "phase": "prime",
+      "range_requests": 7.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 7.332746999964002,
+      "path": "label/cold_label/values",
+      "phase": "prime",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 6.361571000070398,
+      "path": "label/__name__/values",
+      "phase": "prime",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 7.421874000101525,
+      "path": "series",
+      "phase": "prime",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 66337.0,
+      "get_requests": 3.0,
+      "latency_ms": 273.0640259999291,
+      "path": "labels",
+      "phase": "prime",
+      "range_requests": 3.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 6.513046000009126,
+      "path": "label/cold_label/values",
+      "phase": "prime",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 7.131672000014078,
+      "path": "label/__name__/values",
+      "phase": "prime",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 13.677445999974225,
+      "path": "series",
+      "phase": "prime",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 12.318696000193086,
+      "path": "labels",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 7.9012450000846,
+      "path": "label/cold_label/values",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 15.11255200011874,
+      "path": "label/__name__/values",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 10.612770000079763,
+      "path": "series",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 6.265054000095915,
+      "path": "labels",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 7.433165000065856,
+      "path": "label/cold_label/values",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 7.898538000063127,
+      "path": "label/__name__/values",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 33554432,
+      "download_bytes": 0.0,
+      "get_requests": 0.0,
+      "latency_ms": 14.006316999939372,
+      "path": "series",
+      "phase": "warm",
+      "range_requests": 0.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    }
+  ],
+  "object_bytes": {
+    "index": 55338,
+    "pack": 83257
+  },
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "f7d52efaae90c90585832893f926422b457a643722e55c4e13cffbc22a739685",
+      "vmselect": "a1f8fc3b7efd708c734f1817a1eea777319bfb4baae50292994336ded1f9998c",
+      "vmstorage": "4fd7f1fe6fa9e32af350ecbec5517c5a0d7633637b031e4b61fbaad862544131",
+      "vmtier": "63396250a4c99cd0325b5d6b266c3c87e86a92565f36c2148e1f81f1a9f772b4"
+    },
+    "executor_hostname": "36765b6c3f29",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "e2a8a391dbd6e321a8653a346c51b2196d8d0f9ac7c55ec5605489f55b21d069",
+    "harness_sha256": {
+      "e2e.py": "d1cb61f6d5808ea070a0d6668a6d71c87044c24c7bac277ae526b7cb83baff65",
+      "e2e_serve.py": "6e89d7e7d492de9b3aa7ab28436dd934e33ea78aa007723c3766a476cc77c968",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    }
+  },
+  "query_timings_ms": {
+    "boundary_reference": {
+      "count": 60,
+      "median": 1.745805499922426,
+      "p95": 6.840654000143331
+    },
+    "boundary_tiered": {
+      "count": 60,
+      "median": 150.757808499975,
+      "p95": 297.93275399993036
+    },
+    "cold_reference": {
+      "count": 60,
+      "median": 2.0379645000048185,
+      "p95": 7.5560509999377246
+    },
+    "cold_tiered": {
+      "count": 60,
+      "median": 449.67102299995076,
+      "p95": 781.1123609999413
+    },
+    "hot_reference": {
+      "count": 60,
+      "median": 1.2232134999976552,
+      "p95": 3.7515830001666473
+    },
+    "hot_tiered": {
+      "count": 60,
+      "median": 1.9954744998358365,
+      "p95": 163.5202309998931
+    }
+  },
+  "recorded_at_utc": "2026-11-06T11:51:13.504600+00:00",
+  "replicas": 2,
+  "restart_shutdown_seconds": 0.007446289999961664,
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "/workspace/tools/moto-venv/bin/moto_server",
+          "-H",
+          "127.0.0.1",
+          "-p",
+          "51709"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "moto-s3",
+        "pid": 33368
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:39655",
+          "-vminsertAddr=127.0.0.1:50953",
+          "-vmselectAddr=127.0.0.1:35045",
+          "-storageDataPath=/workspace/vmtier/.cache/reader-serve-s3/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 33477
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:33981",
+          "-vminsertAddr=127.0.0.1:43155",
+          "-vmselectAddr=127.0.0.1:57529",
+          "-storageDataPath=/workspace/vmtier/.cache/reader-serve-s3/reference-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-1-full",
+        "pid": 33494
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:50565",
+          "-storageNode=127.0.0.1:50953,127.0.0.1:43155",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 33516
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:51325",
+          "-storageNode=127.0.0.1:35045,127.0.0.1:57529",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/reader-serve-s3/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 33529
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:45211",
+          "-vminsertAddr=127.0.0.1:55355",
+          "-vmselectAddr=127.0.0.1:37591",
+          "-storageDataPath=/workspace/vmtier/.cache/reader-serve-s3/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 33541
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:44285",
+          "-vminsertAddr=127.0.0.1:50167",
+          "-vmselectAddr=127.0.0.1:37751",
+          "-storageDataPath=/workspace/vmtier/.cache/reader-serve-s3/hot-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-1-full",
+        "pid": 33562
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:34545",
+          "-storageNode=127.0.0.1:55355,127.0.0.1:50167",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 33574
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:49659",
+          "-storageNode=127.0.0.1:37591,127.0.0.1:37751",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/reader-serve-s3/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 33591
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "serve-missing"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "catalog-init",
+          "-backend",
+          "sqlite",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-path",
+          "/workspace/vmtier/.cache/reader-serve-s3/catalog",
+          "-id",
+          "serve-e2e"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-init"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-source-outage",
+        "pid": 33886
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:59207",
+          "-storageNode=127.0.0.1:49353",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/reader-serve-s3/cold-only-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-only-select",
+        "pid": 33912
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-resumed-independent-streams",
+        "pid": 33934
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "/workspace/vmtier/.cache/reader-serve-s3/catalog",
+          "-id",
+          "serve-e2e",
+          "-out",
+          "/workspace/vmtier/.cache/reader-serve-s3/forbidden-live-backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "backup-owned"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-listen",
+          "127.0.0.1:57937",
+          "-http",
+          "127.0.0.1:42699"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "serve-second-owner"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "verify-owned"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "inspect",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "inspect-owned"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:45211",
+          "-vminsertAddr=127.0.0.1:55355",
+          "-vmselectAddr=127.0.0.1:37591",
+          "-storageDataPath=/workspace/vmtier/.cache/reader-serve-s3/hot-storage-0-recent-only",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-recent-only",
+        "pid": 34301
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:44285",
+          "-vminsertAddr=127.0.0.1:50167",
+          "-vmselectAddr=127.0.0.1:37751",
+          "-storageDataPath=/workspace/vmtier/.cache/reader-serve-s3/hot-storage-1-recent-only",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-1-recent-only",
+        "pid": 34337
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:34545",
+          "-storageNode=127.0.0.1:55355,127.0.0.1:50167",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-recent-only",
+        "pid": 34377
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:49659",
+          "-storageNode=127.0.0.1:37591,127.0.0.1:37751",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/reader-serve-s3/hot-select-recent-only"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-recent-only",
+        "pid": 34401
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/changed-archive_age.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-archive_age"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/changed-lateness.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-lateness"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/changed-source.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-source"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/changed-blob-locator.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-blob-locator"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/changed-identity.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-identity"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-restarted-after-hot-removal",
+        "pid": 34573
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:57651",
+          "-storageNode=127.0.0.1:37591,127.0.0.1:37751,127.0.0.1:49353",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-search.maxLabelsAPIDuration=5s",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/reader-serve-s3/tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "tiered-select",
+        "pid": 34586
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-cache-enabled",
+        "pid": 39982
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json",
+          "-listen",
+          "127.0.0.1:49353",
+          "-http",
+          "127.0.0.1:60261"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-fault-tests",
+        "pid": 40138
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "/workspace/vmtier/.cache/reader-serve-s3/catalog",
+          "-id",
+          "serve-e2e",
+          "-out",
+          "/workspace/vmtier/.cache/reader-serve-s3/final-backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "backup-after-stop"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "verify",
+          "-config",
+          "/workspace/vmtier/.cache/reader-serve-s3/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "3"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "verify-after-stop"
+      }
+    ],
+    "selected_GOMAXPROCS": "3",
+    "selection": "argument"
+  },
+  "s3_compatibility_proxy": {
+    "bad_content_md5": 0,
+    "conditional_requests_rejected": 0,
+    "etag_headers_removed": 1088,
+    "put_content_md5": 17,
+    "put_requests": 17,
+    "range_requests": 658,
+    "requests": 1094,
+    "unavailable_get_requests": 3,
+    "unavailable_requests": 3
+  },
+  "started_at_utc": "2026-11-06T11:50:05.399639+00:00",
+  "status": "passed",
+  "tiered_vm_labels_api_max_duration": "5s",
+  "vm_result_cache": "disabled",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}
