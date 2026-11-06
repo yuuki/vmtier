@@ -1,0 +1,241 @@
+{
+  "architecture": "SQLite catalog with one serve process, scheduled archive and read gateway",
+  "archive_metrics": {
+    "vmtier_archive_bytes_total": 121146.0,
+    "vmtier_archive_committed_windows_total": 6.0,
+    "vmtier_archive_failed_passes_total": 5.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 1793960063.0,
+    "vmtier_archive_passes_total": 9.0,
+    "vmtier_archive_samples_total": 9038.0,
+    "vmtier_blocks_total": 2.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_misses_total": 3.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793948400000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793948400000.0,
+    "vmtier_object_download_bytes_total": 128580.0,
+    "vmtier_object_get_requests_total": 13.0,
+    "vmtier_object_put_requests_total": 12.0,
+    "vmtier_object_range_requests_total": 2.0,
+    "vmtier_query_errors_total": 1.0,
+    "vmtier_query_requests_total": 2.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 852336.831,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 852336.831,
+    "vmtier_s3_attempts_total": 27.0,
+    "vmtier_s3_canceled_requests_total": 0.0,
+    "vmtier_s3_in_flight_requests": 0.0,
+    "vmtier_s3_queued_requests": 0.0,
+    "vmtier_s3_rejected_requests_total": 0.0,
+    "vmtier_s3_wait_seconds_total": 0.088113503,
+    "vmtier_s3_waited_requests_total": 13.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1793948400000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1793948400000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 852336.831,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 852336.831
+  },
+  "backend": "s3",
+  "cache_measurement": {
+    "cache_limit_bytes": 33554432,
+    "cold_latency_ms": 257.6312389992381,
+    "cold_range_gets": 4.0,
+    "vm_result_cache": "disabled",
+    "warm_blob_bytes": 0.0,
+    "warm_latency_ms": 2.570123999248608,
+    "warm_range_gets": 0.0
+  },
+  "catalog": {
+    "coverage": [
+      {
+        "end_ms": 1793948400000,
+        "source_id": "hot",
+        "tenant": "1:2"
+      },
+      {
+        "end_ms": 1793948400000,
+        "source_id": "hot",
+        "tenant": "7:9"
+      }
+    ],
+    "generation": 6,
+    "packs": 6,
+    "schema": 1,
+    "windows": 6
+  },
+  "checks": [
+    "reference and pre-archive Hot contain the same old data",
+    "serve refuses missing state; SQLite initialization is explicit",
+    "source outage leaves zero coverage and fails readiness and required Cold queries",
+    "healthy tenant reaches coverage and remains queryable while another source stream fails",
+    "SIGTERM during native export publishes nothing; restart automatically archives six stream windows",
+    "live owner excludes offline inspect/verify/backup and a second serve process without changing catalog",
+    "stock vmselect reads committed SQLite native packs through independent Cold RPC and Range GET",
+    "Cold raw export excludes young samples at and after the exact boundary millisecond",
+    "fresh Hot contains recent data only; both tenants have empty old-range raw exports",
+    "restart preserves coverage and avoids reexport; changed policy/source/blob locator/identity are rejected",
+    "360 exact instant/range comparisons passed across Cold, Hot and the boundary",
+    "Cold label names/values and series discovery match the reference for both tenants",
+    "shared S3 transport exposes admitted attempts and wait metrics without queue rejection",
+    "warm immutable cache returns equal data with no additional Range GETs",
+    "service outage propagates as query failure; restart restores reads from persistent SQLite state",
+    "missing/truncated/checksum-invalid payloads fail queries; restored bytes recover without catalog mutation",
+    "Cold delete remains explicitly unsupported",
+    "clean shutdown releases ownership for offline backup/verify and leaves completed windows unchanged",
+    "S3 traffic passes conditional-request rejection and ETag removal; every PUT has valid Content-MD5"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "dedup_interval": "1ms",
+  "differential_checks": 360,
+  "environment": {
+    "go": "go version go1.27.3 linux/amd64",
+    "linux_kernel": "6.18.57",
+    "logical_cpus_available": 5,
+    "machine": "x86_64",
+    "measurement_scope": "single development container, loopback; no real Sakura/AWS/MinIO service",
+    "moto": "5.1.15",
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "python": "3.12.14"
+  },
+  "final_metrics": {
+    "vmtier_archive_bytes_total": 0.0,
+    "vmtier_archive_committed_windows_total": 0.0,
+    "vmtier_archive_failed_passes_total": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+    "vmtier_archive_passes_total": 922.0,
+    "vmtier_archive_samples_total": 0.0,
+    "vmtier_blocks_total": 1524.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_misses_total": 1878.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793948400000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793948400000.0,
+    "vmtier_object_download_bytes_total": 3649906.0,
+    "vmtier_object_get_requests_total": 354.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 1524.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_requests_total": 380.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 852239.655,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 852239.655,
+    "vmtier_s3_attempts_total": 1878.0,
+    "vmtier_s3_canceled_requests_total": 0.0,
+    "vmtier_s3_in_flight_requests": 0.0,
+    "vmtier_s3_queued_requests": 0.0,
+    "vmtier_s3_rejected_requests_total": 0.0,
+    "vmtier_s3_wait_seconds_total": 0.103103029,
+    "vmtier_s3_waited_requests_total": 16.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1793948400000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1793948400000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 852239.655,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 852239.655
+  },
+  "fixture": {
+    "archive_age_ms": 9859141,
+    "boundary_ms": 1793948400000,
+    "end_ms": 1793955600000,
+    "input_samples": 17654,
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate/conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1793937600000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "window_ms": 3600000
+  },
+  "frontend_reconnect": {
+    "cached_dial_error_retries": 2,
+    "cached_dial_error_retry_budget_seconds": 5,
+    "seconds": 0.46410039300099015
+  },
+  "interrupted_shutdown_seconds": 0.003349180999066448,
+  "object_bytes": {
+    "index": 42512,
+    "pack": 78634
+  },
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "b1a4bff847b8d5244efe527993095b09877a132656298e03c9c8289bad0bc265",
+      "vmselect": "4ce13988c7704def02e48c474472998a17bd03dd9d5ed3160eaddc611babde3a",
+      "vmstorage": "4703d779d9481b8d81a17722af21ae7766dae53d2e8101ca46bc09b071c9df7b",
+      "vmtier": "30357c7049c53dbfc35e89b871aa129ec68d487d04ffa680a1f05cb604248dfd"
+    },
+    "executor_hostname": "05fa190d414f",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "e43295863e6fcc702bebe2a3b67702799cb9c515f31e6b8a5a4a757c74a99cdf",
+    "harness_sha256": {
+      "e2e.py": "1710be48f8823a661b33b75d023a6cb97580b2f75656f5e0661fd6fc020cee32",
+      "e2e_serve.py": "42d4242278d3950db624c3349cbac7a348c3add7230c7bf72a62b70af73094d8",
+      "s3_compat_proxy.py": "b38f0ac20e8fba6ca73dc098566143b634c8c9dc8ae626244e058e68bdba53e5"
+    }
+  },
+  "query_timings_ms": {
+    "boundary_reference": {
+      "count": 60,
+      "median": 1.909350001369603,
+      "p95": 10.592728000119678
+    },
+    "boundary_tiered": {
+      "count": 60,
+      "median": 160.0335709999854,
+      "p95": 490.87725299978047
+    },
+    "cold_reference": {
+      "count": 60,
+      "median": 2.358893999371503,
+      "p95": 7.600561999424826
+    },
+    "cold_tiered": {
+      "count": 60,
+      "median": 441.4386110001942,
+      "p95": 1175.752115999785
+    },
+    "hot_reference": {
+      "count": 60,
+      "median": 1.543219998893619,
+      "p95": 3.1897389999357983
+    },
+    "hot_tiered": {
+      "count": 60,
+      "median": 2.2339710003507207,
+      "p95": 264.5644220010581
+    }
+  },
+  "recorded_at_utc": "2026-11-06T10:16:06.948739+00:00",
+  "replicas": 2,
+  "restart_shutdown_seconds": 0.0077446640007110545,
+  "s3_compatibility_proxy": {
+    "bad_content_md5": 0,
+    "conditional_requests_rejected": 0,
+    "etag_headers_removed": 2041,
+    "put_content_md5": 17,
+    "put_requests": 17,
+    "range_requests": 1617,
+    "requests": 2044
+  },
+  "started_at_utc": "2026-11-06T10:14:17.364399+00:00",
+  "status": "passed",
+  "tiered_vm_labels_api_max_duration": "30s",
+  "vm_result_cache": "disabled",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}

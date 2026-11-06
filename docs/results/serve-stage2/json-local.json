@@ -1,0 +1,208 @@
+{
+  "architecture": "v2: independent persistent catalog authority; ordinary PUT/GET/Range blobs",
+  "archive": {
+    "bytes": 67755,
+    "committed_windows": 3,
+    "cpu_seconds": 3.16166,
+    "entries": 6,
+    "exit_code": 0,
+    "max_rss_kib_children": 43284,
+    "samples": 9038,
+    "samples_per_second": 1622.2745424208822,
+    "skipped_windows": 0,
+    "wall_seconds": 5.571190180000485
+  },
+  "archive_repeat": {
+    "cpu_seconds": 0.024700999999999862,
+    "exit_code": 0,
+    "max_rss_kib_children": 43284,
+    "wall_seconds": 0.026042612000310328
+  },
+  "backend": "local",
+  "cache_measurement": {
+    "blob_read_amplification_including_index": 10.021875,
+    "cache_limit_bytes": 33554432,
+    "cold_blob_download_bytes_including_index": 9621.0,
+    "cold_latency_ms": 8.133291999911307,
+    "cold_range_gets": 2.0,
+    "query": "cold_only[30m]",
+    "read_amplification_denominator": "returned raw timestamp+float64 pairs, 16 bytes/sample",
+    "returned_raw_samples": 60,
+    "vm_result_cache": "disabled",
+    "warm_blob_download_bytes": 0.0,
+    "warm_latency_ms": 4.20098699942173,
+    "warm_range_gets": 0.0
+  },
+  "catalog_authority": {
+    "id": "vmtier-e2e-authority",
+    "s3_conditional_writes": false,
+    "s3_etag_required": false,
+    "type": "independent-http-service"
+  },
+  "checks": [
+    "reference and pre-archive Hot both contain identical old data",
+    "unenforced late-write contract rejected",
+    "unreachable export source rejected before coverage commit",
+    "SIGKILL during native stream leaves no committed coverage; fresh archive resumes",
+    "age-selected native export uploaded, verified and committed",
+    "same archive windows replay safely and verify succeeds",
+    "committed catalog rejects a changed coverage origin instead of masking holes",
+    "committed catalog rejects changes to archive age and allowed lateness",
+    "native portable pack independently served to unmodified stock vmselect (query + Range GET)",
+    "Cold-only raw export excludes all young samples, including the exact boundary millisecond",
+    "fresh Hot storage contains recent samples only; raw old-range export is empty for both tenants",
+    "360 exact differential instant/range queries passed across Cold, Hot and boundary",
+    "label names/values and series discovery include Cold; tenant-separated values match reference",
+    "immutable block cache reuses data with zero additional Range GETs; values unchanged",
+    "warm-cache queries and readiness fail on catalog outage; durable authority restart restores reads",
+    "missing/truncated/checksum-invalid objects fail query and verify; restored objects recover",
+    "Cold delete API explicitly rejects unsupported mutation",
+    "catalog startup refuses missing authority state; no implicit empty genesis",
+    "Cold backend failure propagates as stock vmselect HTTP failure, never empty success"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "dedicated_latency_ms": {
+    "cold_only": {
+      "gateway_cache_bytes": 0,
+      "query": "cold_only",
+      "reference_median": 4.023888999654446,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 6.812806001107674,
+      "vm_result_cache": "disabled"
+    },
+    "cross_boundary": {
+      "gateway_cache_bytes": 0,
+      "query": "rate(requests_total[10m])",
+      "reference_median": 1.7324609998468077,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 4.488182999921264,
+      "vm_result_cache": "disabled"
+    },
+    "hot_only": {
+      "gateway_cache_bytes": 0,
+      "query": "hot_only",
+      "reference_median": 2.5449389995628735,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 4.363011999885202,
+      "vm_result_cache": "disabled"
+    }
+  },
+  "dedup_interval": "1ms",
+  "differential_checks": 360,
+  "environment": {
+    "go": "go version go1.27.3 linux/amd64",
+    "linux_kernel": "6.18.57",
+    "logical_cpus_available": 5,
+    "machine": "x86_64",
+    "measurement_scope": "single managed development container, loopback; no real Sakura/AWS/MinIO service",
+    "memory_total_gib": 33.28895950317383,
+    "moto": null,
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "python": "3.12.14"
+  },
+  "final_metrics": {
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_blocks_total": 787.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_misses_total": 1161.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793948400000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793948400000.0,
+    "vmtier_object_download_bytes_total": 2349978.0,
+    "vmtier_object_get_requests_total": 374.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 787.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_requests_total": 395.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 852544.724,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 852544.724
+  },
+  "fixture": {
+    "boundary_ms": 1793948400000,
+    "end_ms": 1793955600000,
+    "input_samples": 17654,
+    "labels": "fixed 2 instances, 2 zones; churn old/new",
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate and conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1793937600000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ]
+  },
+  "object_bytes": {
+    "catalog_authority_manifest": 3526,
+    "index": 28438,
+    "pack": 39317,
+    "packs": 6
+  },
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "b1a4bff847b8d5244efe527993095b09877a132656298e03c9c8289bad0bc265",
+      "vmselect": "4ce13988c7704def02e48c474472998a17bd03dd9d5ed3160eaddc611babde3a",
+      "vmstorage": "4703d779d9481b8d81a17722af21ae7766dae53d2e8101ca46bc09b071c9df7b",
+      "vmtier": "30357c7049c53dbfc35e89b871aa129ec68d487d04ffa680a1f05cb604248dfd"
+    },
+    "executor_hostname": "05fa190d414f",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "e43295863e6fcc702bebe2a3b67702799cb9c515f31e6b8a5a4a757c74a99cdf",
+    "harness_sha256": {
+      "e2e.py": "1710be48f8823a661b33b75d023a6cb97580b2f75656f5e0661fd6fc020cee32",
+      "s3_compat_proxy.py": "b38f0ac20e8fba6ca73dc098566143b634c8c9dc8ae626244e058e68bdba53e5"
+    }
+  },
+  "query_timings_ms": {
+    "boundary_reference": {
+      "count": 60,
+      "median": 3.7314945011530654,
+      "p95": 64.220796999507
+    },
+    "boundary_tiered": {
+      "count": 60,
+      "median": 9.11205299962603,
+      "p95": 1686.513491000369
+    },
+    "cold_reference": {
+      "count": 60,
+      "median": 4.808999499800848,
+      "p95": 1164.2811019992223
+    },
+    "cold_tiered": {
+      "count": 60,
+      "median": 11.864691499795299,
+      "p95": 524.683625999387
+    },
+    "hot_reference": {
+      "count": 60,
+      "median": 2.953010000055656,
+      "p95": 381.8964499987487
+    },
+    "hot_tiered": {
+      "count": 60,
+      "median": 7.47496650001267,
+      "p95": 634.5442609999736
+    }
+  },
+  "recorded_at_utc": "2026-11-06T10:10:56.660198+00:00",
+  "replicas": 1,
+  "started_at_utc": "2026-11-06T10:08:18.067275+00:00",
+  "status": "passed",
+  "tiered_vm_labels_api_max_duration": "30s",
+  "vm_result_cache": "disabled",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}

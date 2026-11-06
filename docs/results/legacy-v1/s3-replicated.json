@@ -1,0 +1,178 @@
+{
+  "archive": {
+    "bytes": 129996,
+    "committed_windows": 3,
+    "cpu_seconds": 0.101201,
+    "entries": 6,
+    "exit_code": 0,
+    "max_rss_kib_children": 22820,
+    "samples": 9038,
+    "samples_per_second": 40909.46900625383,
+    "skipped_windows": 0,
+    "wall_seconds": 0.22092684700010068
+  },
+  "archive_repeat": {
+    "cpu_seconds": 0.009310999999999993,
+    "exit_code": 0,
+    "max_rss_kib_children": 22820,
+    "wall_seconds": 0.010609512999963044
+  },
+  "backend": "s3",
+  "cache_measurement": {
+    "cache_limit_bytes": 33554432,
+    "cold_download_bytes_including_catalog_and_index": 23240.0,
+    "cold_latency_ms": 31.629007999981695,
+    "cold_range_gets": 6.0,
+    "query": "cold_only[30m]",
+    "read_amplification_denominator": "returned raw timestamp+float64 pairs, 16 bytes/sample",
+    "read_amplification_including_catalog_and_index": 24.208333333333332,
+    "returned_raw_samples": 60,
+    "vm_result_cache": "disabled",
+    "warm_download_bytes_including_catalog": 5616.0,
+    "warm_latency_ms": 4.610050999872328,
+    "warm_range_gets": 0.0
+  },
+  "checks": [
+    "reference and pre-archive Hot both contain identical old data",
+    "unenforced late-write contract rejected",
+    "unreachable export source rejected before coverage commit",
+    "SIGKILL during native stream leaves no committed coverage; fresh archive resumes",
+    "age-selected native export uploaded, verified and committed",
+    "same archive windows replay safely and verify succeeds",
+    "native portable pack independently served to unmodified stock vmselect (query + Range GET)",
+    "Cold-only raw export excludes all young samples, including the exact boundary millisecond",
+    "fresh Hot storage contains recent samples only; raw old-range export is empty for both tenants",
+    "360 exact differential instant/range queries passed across Cold, Hot and boundary",
+    "label names/values and series discovery include Cold; tenant-separated values match reference",
+    "immutable block cache reuses data with zero additional Range GETs; values unchanged",
+    "missing/truncated/checksum-invalid objects fail query and verify; restored objects recover",
+    "Cold delete API explicitly rejects unsupported mutation",
+    "Cold backend failure propagates as stock vmselect HTTP failure, never empty success"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "dedicated_latency_ms": {
+    "cold_only": {
+      "gateway_cache_bytes": 0,
+      "query": "cold_only",
+      "reference_median": 1.0495920000721526,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 37.8764490001231,
+      "vm_result_cache": "disabled"
+    },
+    "cross_boundary": {
+      "gateway_cache_bytes": 0,
+      "query": "rate(requests_total[10m])",
+      "reference_median": 1.0949259999506467,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 28.43681900003503,
+      "vm_result_cache": "disabled"
+    },
+    "hot_only": {
+      "gateway_cache_bytes": 0,
+      "query": "hot_only",
+      "reference_median": 1.901006000025518,
+      "repetitions": 5,
+      "server_and_os": "warm",
+      "tiered_median": 3.5785009999926842,
+      "vm_result_cache": "disabled"
+    }
+  },
+  "dedup_interval": "1ms",
+  "differential_checks": 360,
+  "environment": {
+    "go": "go1.27.3",
+    "linux_kernel": "6.18.57",
+    "logical_cpus_available": 5,
+    "measurement_scope": "single managed development container, loopback, not cloud S3 production",
+    "memory_total_gib": 33,
+    "moto": "5.1.15",
+    "os": "Debian GNU/Linux 13 x86_64"
+  },
+  "final_metrics": {
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_blocks_total": 2010.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_misses_total": 2384.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1793934000000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1793934000000.0,
+    "vmtier_object_download_bytes_total": 5340866.0,
+    "vmtier_object_get_requests_total": 770.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 2010.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_requests_total": 395.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 849929.084,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 849929.084
+  },
+  "fixture": {
+    "boundary_ms": 1793934000000,
+    "end_ms": 1793941200000,
+    "input_samples": 17654,
+    "labels": "fixed 2 instances, 2 zones; churn old/new",
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate and conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1793923200000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ]
+  },
+  "object_bytes": {
+    "catalog": 2808,
+    "index": 49007,
+    "pack": 80989,
+    "packs": 6
+  },
+  "query_timings_ms": {
+    "boundary_reference": {
+      "count": 60,
+      "median": 1.1170684999797231,
+      "p95": 1.599438000084774
+    },
+    "boundary_tiered": {
+      "count": 60,
+      "median": 15.27148400009537,
+      "p95": 40.154551999876276
+    },
+    "cold_reference": {
+      "count": 60,
+      "median": 1.5974599998571648,
+      "p95": 2.676006999990932
+    },
+    "cold_tiered": {
+      "count": 60,
+      "median": 35.33529649985212,
+      "p95": 91.48411700016368
+    },
+    "hot_reference": {
+      "count": 60,
+      "median": 1.1647809999431047,
+      "p95": 1.989479000258143
+    },
+    "hot_tiered": {
+      "count": 60,
+      "median": 4.124628999989,
+      "p95": 23.8537550003457
+    }
+  },
+  "recorded_at_utc": "2026-11-06T06:54:45.531402+00:00",
+  "replicas": 2,
+  "status": "passed",
+  "vm_result_cache": "disabled",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}

@@ -1,0 +1,11 @@
+.bin/
+.deps/
+.state/
+vendor/
+*.test
+coverage.out
+__pycache__/
+
+.cache/
+
+.venv*/
