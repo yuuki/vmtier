@@ -146,19 +146,14 @@ func (a *SQLiteArchiver) publishStream(ctx context.Context, cfg Config, source S
 	if err != nil {
 		return generation, out, err
 	}
-	idx, data, samples, err := verifiedExport(ctx, cfg, source, tenant, start, end)
+	refs, samples, err := stageVerifiedPacks(ctx, a.Store, cfg, source, tenant, start, end)
 	if err != nil {
 		return generation, out, err
 	}
-	publication := catalog.Publication{Tenant: stream.Tenant, SourceID: stream.SourceID, Start: start, End: end, Packs: []catalog.PackRef{}}
+	publication := catalog.Publication{Tenant: stream.Tenant, SourceID: stream.SourceID, Start: start, End: end, Packs: refs}
 	var uploaded int64
-	if samples > 0 {
-		ref, err := uploadPack(ctx, a.Store, cfg, idx, data)
-		if err != nil {
-			return generation, out, err
-		}
-		publication.Packs = append(publication.Packs, ref)
-		uploaded = ref.DataBytes + ref.IndexBytes
+	for _, ref := range refs {
+		uploaded += ref.DataBytes + ref.IndexBytes
 	}
 	if err := cfg.validateTime(start, end, clock()); err != nil {
 		return generation, out, err

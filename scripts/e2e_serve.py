@@ -287,6 +287,9 @@ def run(work, args):
                'archive_age': f'{age_ms}ms', 'hot_retention': '240h', 'lateness': '30m',
                'safety_margin': '30m', 'window': '1h', 'lateness_enforced': True,
                'coverage_start_ms': start, 'service': {'archive_interval': '100ms'}}
+        if args.pack_max_blocks:
+            cfg['max_pack_blocks'] = args.pack_max_blocks
+        report['fixture']['max_pack_blocks'] = args.pack_max_blocks or 100000
         config_path = work / 'config.json'
         config_path.write_text(json.dumps(cfg, indent=2))
         binary = ROOT / '.bin/vmtier'
@@ -370,7 +373,11 @@ def run(work, args):
         wait_ready(process, http_port, work)
         stable = snapshot(database)
         assert stable['state']['generation'] == 6
-        assert len(stable['windows']) == 6 and len(stable['packs']) == 6
+        assert len(stable['windows']) == 6
+        if args.pack_max_blocks:
+            assert all(row['pack_count'] > 1 for row in stable['windows']), 'Fixture did not force multiple packs per logical window'
+        else:
+            assert len(stable['packs']) == 6
         assert all(row['end_ms'] == boundary for row in stable['coverage'])
         assert all(row['end_ms'] <= boundary for row in stable['windows'])
         report['archive_metrics'] = metrics(http_port)
@@ -605,7 +612,10 @@ def main():
     parser.add_argument('--replicas', choices=[1, 2], type=int, default=1)
     parser.add_argument('--workdir', type=Path)
     parser.add_argument('--gomaxprocs', type=positive_int, help='GOMAXPROCS for workload children (default: outer GOMAXPROCS, else 2)')
+    parser.add_argument('--pack-max-blocks', type=positive_int, help='Lower the pack block limit to force multi-pack service windows (for example 4)')
     args = parser.parse_args()
+    if args.pack_max_blocks and args.pack_max_blocks > 100000:
+        parser.error('--pack-max-blocks must be at most 100000')
     work = args.workdir or Path(tempfile.mkdtemp(prefix='vmtier-serve-e2e-'))
     if work.exists() and any(work.iterdir()):
         parser.error('--workdir must be new or empty; existing evidence is preserved')

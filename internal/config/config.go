@@ -67,6 +67,7 @@ type Config struct {
 	CoverageStart                            int64    `json:"coverage_start_ms"`
 	CacheBytes                               int64    `json:"cache_bytes"`
 	MaxQueryBytes                            int64    `json:"max_query_bytes"`
+	MaxPackBlocks                            int      `json:"max_pack_blocks,omitempty"`
 	age, retention, lateness, safety, window time.Duration
 	archiveInterval                          time.Duration
 }
@@ -225,6 +226,9 @@ func (c *Config) Validate() error {
 	if c.CacheBytes < 0 || c.CacheBytes > 256<<20 || c.MaxQueryBytes < 0 || c.MaxQueryBytes > 1<<30 {
 		return errors.New("cache/query budgets outside safe bounds")
 	}
+	if c.MaxPackBlocks < 0 || c.MaxPackBlocks > pack.DefaultLimits().MaxBlocks {
+		return errors.New("max_pack_blocks must be 0 (default) or 1..100000")
+	}
 	return nil
 }
 
@@ -269,7 +273,7 @@ func (c *Config) Archive(start, end int64) archive.Config {
 	for i, s := range c.Sources {
 		sources[i] = archive.Source{ID: s.ID, URL: s.URL}
 	}
-	return archive.Config{CoverageStart: c.CoverageStart, Tenants: c.Tenants, Sources: sources, StartMS: start, EndMS: end, Age: c.age, Retention: c.retention, Lateness: c.lateness, SafetyMargin: c.safety, Window: c.window, LatenessEnforced: c.LatenessEnforced}
+	return archive.Config{CoverageStart: c.CoverageStart, Tenants: c.Tenants, Sources: sources, StartMS: start, EndMS: end, Age: c.age, Retention: c.retention, Lateness: c.lateness, SafetyMargin: c.safety, Window: c.window, LatenessEnforced: c.LatenessEnforced, PackLimits: pack.Limits{MaxBlocks: c.MaxPackBlocks}}
 }
 func (c *Config) Reader(s objectstore.BlobStore, cs catalog.Store) *cold.Reader {
 	r := &cold.Reader{Store: s, CatalogStore: cs, DedupMS: 1, LatenessMS: c.lateness.Milliseconds(), Tenants: map[string]bool{}, SourceFingerprints: map[string]string{}, CoverageStart: c.CoverageStart, Age: c.age, Window: c.window, CacheBytes: c.CacheBytes, MaxQueryBytes: c.MaxQueryBytes}

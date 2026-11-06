@@ -55,7 +55,8 @@ func ParseTenant(s string) (Tenant, error) {
 }
 
 // Limits bounds memory per pack, not the total size of a historical archive.
-// The archiver must use smaller windows when these limits reject a window.
+// BuildPacks rotates between complete records; whole-window input and sample
+// bounds still apply. Window width cannot change in an existing catalog.
 type Limits struct {
 	MaxPackBytes       int64
 	MaxIndexBytes      int64
