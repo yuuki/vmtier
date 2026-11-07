@@ -2,6 +2,9 @@ name: PostgreSQL fault qualification
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+concurrency:
+  group: postgres-ha-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   synchronous-failover:
     runs-on: ubuntu-24.04

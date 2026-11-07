@@ -128,7 +128,7 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 		return err
 	}
 	defer func() { cancel(); rpc.MustStop() }()
-	ln, err := net.Listen("tcp", httpAddr)
+	ln, err := new(net.ListenConfig).Listen(ctx, "tcp", httpAddr)
 	if err != nil {
 		return err
 	}

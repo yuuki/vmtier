@@ -11,6 +11,7 @@ require (
 	github.com/klauspost/compress v1.20.3
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.53
+	go.uber.org/goleak v1.3.0
 	golang.org/x/sys v0.49.0
 )
 

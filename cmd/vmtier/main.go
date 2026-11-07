@@ -229,7 +229,7 @@ func runGateway(ctx context.Context, c *config.Config, s objectstore.BlobStore, 
 	}
 	defer srv.MustStop()
 	mux := gatewayMux(c, s, reader, api)
-	ln, e := net.Listen("tcp", httpAddr)
+	ln, e := new(net.ListenConfig).Listen(ctx, "tcp", httpAddr)
 	if e != nil {
 		return e
 	}
@@ -248,7 +248,7 @@ func runGateway(ctx context.Context, c *config.Config, s objectstore.BlobStore, 
 
 func gatewayMux(c *config.Config, s objectstore.BlobStore, reader *cold.Reader, api *gateway.API) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
@@ -257,11 +257,11 @@ func gatewayMux(c *config.Config, s objectstore.BlobStore, reader *cold.Reader, 
 			http.Error(w, e.Error(), http.StatusServiceUnavailable)
 			return
 		}
-		json.NewEncoder(w).Encode(coverage)
+		_ = json.NewEncoder(w).Encode(coverage)
 	})
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprintf(w, "vmtier_query_requests_total %d\nvmtier_query_errors_total %d\nvmtier_blocks_total %d\nvmtier_cache_hits_total %d\nvmtier_cache_misses_total %d\n", api.Requests.Load(), api.Errors.Load(), api.Blocks.Load(), reader.CacheHits.Load(), reader.CacheMisses.Load())
+		fmt.Fprintf(w, "vmtier_query_requests_total %d\nvmtier_query_errors_total %d\nvmtier_blocks_total %d\nvmtier_cache_hits_total %d\nvmtier_cache_misses_total %d\n", api.Requests.Load(), api.Errors.Load(), api.Blocks.Load(), reader.CacheHits.Load(), reader.CacheMisses.Load()) //nolint:gosec // G705: text/plain exposition of counters.
 		if st, ok := s.(interface{ Stats() objectstore.Snapshot }); ok {
 			v := st.Stats()
 			fmt.Fprintf(w, "vmtier_object_get_requests_total %d\nvmtier_object_range_requests_total %d\nvmtier_object_download_bytes_total %d\nvmtier_object_put_requests_total %d\n", v.Gets, v.RangeGets, v.DownloadedBytes, v.Puts)
@@ -276,7 +276,7 @@ func gatewayMux(c *config.Config, s objectstore.BlobStore, reader *cold.Reader, 
 		}
 		fmt.Fprintf(w, "vmtier_ready %d\n", ready)
 		for t, end := range coverage {
-			fmt.Fprintf(w, "vmtier_coverage_end_ms{tenant=%q} %d\nvmtier_archive_lag_seconds{tenant=%q} %.3f\nvmtier_retention_headroom_seconds{tenant=%q} %.3f\n", t, end, t, float64(reader.RequiredEnd(time.Now())-end)/1000, t, time.UnixMilli(end).Add(c.Retention()).Sub(time.Now()).Seconds())
+			fmt.Fprintf(w, "vmtier_coverage_end_ms{tenant=%q} %d\nvmtier_archive_lag_seconds{tenant=%q} %.3f\nvmtier_retention_headroom_seconds{tenant=%q} %.3f\n", t, end, t, float64(reader.RequiredEnd(time.Now())-end)/1000, t, time.Until(time.UnixMilli(end).Add(c.Retention())).Seconds()) //nolint:gosec // G705: text/plain exposition; tenants are validated account:project IDs.
 		}
 	})
 	return mux
@@ -321,14 +321,14 @@ func runCatalog(args []string) error {
 		slog.Info("catalog initialized", "id", *id, "path", *path)
 		return nil
 	}
-	ln, err := net.Listen("tcp", *addr)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ln, err := new(net.ListenConfig).Listen(ctx, "tcp", *addr)
 	if err != nil {
 		return err
 	}
 	server := &http.Server{Handler: catalog.Handler(local, os.Getenv("VMTIER_CATALOG_TOKEN")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	defer server.Close()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	errorsCh := make(chan error, 1)
 	go func() { errorsCh <- server.Serve(ln) }()
 	slog.Info("catalog authority started", "id", *id, "http", ln.Addr().String())

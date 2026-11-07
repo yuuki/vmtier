@@ -217,7 +217,7 @@ func (s *basicS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.objects[r.URL.Path] = append([]byte(nil), b...)
 		s.mu.Unlock()
-		w.WriteHeader(200) // deliberately no ETag
+		w.WriteHeader(http.StatusOK) // deliberately no ETag
 	case http.MethodGet:
 		s.mu.Lock()
 		b, ok := s.objects[r.URL.Path]
@@ -236,12 +236,12 @@ func (s *basicS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(b)))
 			w.Header().Set("Content-Length", fmt.Sprint(end-start+1))
-			w.WriteHeader(206)
+			w.WriteHeader(http.StatusPartialContent)
 			_, _ = w.Write(b[start : end+1])
 			return
 		}
 		w.Header().Set("Content-Length", fmt.Sprint(len(b)))
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(b)
 	default:
 		xmlError(w, 405, "MethodNotAllowed")
@@ -336,7 +336,7 @@ func TestS3RangeRejectsMalformedResponses(t *testing.T) {
 				if tc.contentRange != "" {
 					w.Header().Set("Content-Range", tc.contentRange)
 				}
-				w.WriteHeader(206)
+				w.WriteHeader(http.StatusPartialContent)
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			defer srv.Close()
@@ -351,7 +351,7 @@ func TestS3RangeRejectsMalformedResponses(t *testing.T) {
 func TestS3RejectsOversizedGet(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "2048")
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 	s := s3ForTest(t, srv.URL, 1024, 1)

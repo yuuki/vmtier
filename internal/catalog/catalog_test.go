@@ -264,7 +264,7 @@ func TestHTTPAuthorizationAndPublication(t *testing.T) {
 		t.Fatal(e)
 	}
 	resp.Body.Close()
-	if resp.Header.Get("Cache-Control") != "no-store" || resp.StatusCode != 401 {
+	if resp.Header.Get("Cache-Control") != "no-store" || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("headers/status: %v", resp)
 	}
 	for _, url := range []string{server.URL + "/path", server.URL + "?query=1", "http://user:password@example.com", "file:///tmp/catalog"} {
@@ -355,7 +355,7 @@ func TestRemoteFailureDoesNotReturnCachedManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if calls > 1 {
-			http.Error(w, "authority unavailable", 503)
+			http.Error(w, "authority unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		json.NewEncoder(w).Encode(validManifest())

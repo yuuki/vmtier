@@ -28,7 +28,7 @@ func TestPreflightCommandReadsOnlySourceAndNeverInitializesCatalog(t *testing.T)
 		requests++
 		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/select/1:2/prometheus/api/v1/") {
 			t.Errorf("non-source-read request: %s %s", r.Method, r.URL)
-			http.Error(w, "unexpected request", 500)
+			http.Error(w, "unexpected request", http.StatusInternalServerError)
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/export/native") {
