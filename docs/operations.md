@@ -59,6 +59,7 @@ The gateway exposes `/health`, `/ready`, and `/metrics`. `/ready` returns HTTP 5
 | `vmtier_query_requests_total`, `vmtier_query_errors_total`, `vmtier_blocks_total` | Gateway requests, errors, and returned blocks; metadata uses the same read path. |
 | `vmtier_object_get_requests_total`, `vmtier_object_range_requests_total`, `vmtier_object_download_bytes_total`, `vmtier_object_put_requests_total` | Per-process object-store I/O. |
 | `vmtier_cache_hits_total`, `vmtier_cache_misses_total` | Immutable index and block cache activity. |
+| `vmtier_build_info{version,commit,go_version,vm_version}` | Constant 1 identifying the running build; compare `commit` with the release's build record during upgrades. |
 
 For the legacy one-shot archiver, an external scheduler collects structured JSON logs, exit code, and standard output. The SQLite service exposes archive metrics directly. Metrics also consult the catalog. Monitor catalog health, persistent-disk capacity and I/O errors, and backup status separately.
 

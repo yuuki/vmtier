@@ -83,6 +83,7 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 	work := reader.WorkStats()
 	fmt.Fprintf(w, "vmtier_query_read_bytes_total %d\nvmtier_query_decoded_bytes_total %d\nvmtier_query_result_estimate_bytes_total %d\nvmtier_query_index_estimate_peak_bytes %d\nvmtier_query_work_peak_bytes %d\n", work.ReadBytes, work.DecodedBytes, work.ResultEstimateBytes, work.IndexEstimatePeakBytes, work.PeakBytes)
 	writeGoMemoryMetrics(w)
+	writeBuildInfoMetric(w, currentBuild())
 	for reason, count := range api.LimitRefusals() {
 		fmt.Fprintf(w, "vmtier_query_limit_refusals_total{reason=%q} %d\n", reason, count)
 	}

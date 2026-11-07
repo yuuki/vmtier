@@ -46,7 +46,7 @@ func run(args []string) error {
 		return runCatalog(args)
 	}
 	if args[0] == "version" {
-		fmt.Printf("vmtier; JSON catalog v%d; SQLite schema %d; VM %s %s\n", catalog.Version, catalog.SQLiteSchemaVersion, pack.VMVersion, pack.VMRevision)
+		writeVersion(os.Stdout, currentBuild())
 		return nil
 	}
 	switch args[0] {
