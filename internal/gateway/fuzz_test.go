@@ -2,8 +2,10 @@ package gateway
 
 import (
 	"regexp"
+	"regexp/syntax"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage"
 	"github.com/yuuki/vmtier/internal/pack"
@@ -30,8 +32,10 @@ func (f fuzzFilter) expected(labels map[string]string) (matched, ok bool) {
 	case f.isRegexp:
 		// VM's literal fast paths treat '.' as any byte, as its Hot index
 		// matcher does; plain Go regexps do not match newlines with '.'.
+		// Go regexps also read invalid UTF-8 as U+FFFD, while VM compares
+		// literal prefixes byte for byte; packs refuse such labels anyway.
 		re, err := regexp.Compile("^(?:" + f.value + ")$")
-		if err != nil || strings.Contains(value, "\n") {
+		if err != nil || strings.Contains(value, "\n") || !utf8.ValidString(value) || hasInnerAssertion(f.value) {
 			return false, false
 		}
 		matched = re.MatchString(value)
@@ -39,6 +43,35 @@ func (f fuzzFilter) expected(labels map[string]string) (matched, ok bool) {
 		matched = value == f.value
 	}
 	return matched != f.negative, true
+}
+
+// hasInnerAssertion reports whether expr has a zero-width assertion other than
+// a leading '^' or a trailing '$'. VM splits a regexp into a literal prefix and
+// a suffix and evaluates assertions against the suffix alone, in stock
+// vmstorage (Hot) and in the pinned regexutil.PromRegex (Cold) alike. So `0^`
+// matches "0" and `x\b` does not match "x" in both tiers, unlike a plain Go
+// regexp; the reference cannot model these expressions.
+func hasInnerAssertion(expr string) bool {
+	inner := strings.TrimLeft(expr, "^")
+	for strings.HasSuffix(inner, "$") && !strings.HasSuffix(inner, `\$`) {
+		inner = strings.TrimSuffix(inner, "$")
+	}
+	re, err := syntax.Parse(inner, syntax.Perl)
+	return err != nil || containsAssertion(re)
+}
+
+func containsAssertion(re *syntax.Regexp) bool {
+	switch re.Op {
+	case syntax.OpBeginLine, syntax.OpEndLine, syntax.OpBeginText, syntax.OpEndText,
+		syntax.OpWordBoundary, syntax.OpNoWordBoundary:
+		return true
+	}
+	for _, sub := range re.Sub {
+		if containsAssertion(sub) {
+			return true
+		}
+	}
+	return false
 }
 
 // FuzzMatcher checks that the two matching paths of a Cold query agree: the
