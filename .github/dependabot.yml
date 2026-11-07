@@ -1,0 +1,39 @@
+# Version updates arrive as reviewable PRs after a cooldown, so a compromised
+# or quickly yanked release is less likely to be proposed.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ['*']
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # Codecs and read RPCs are pinned to one VM revision; upgrades follow
+      # docs/compatibility.md with new fixtures and differential tests.
+      - dependency-name: github.com/VictoriaMetrics/VictoriaMetrics
+    groups:
+      aws-sdk:
+        patterns: ['github.com/aws/*']
+  - package-ecosystem: docker
+    # Release builder base image. Keep its Go version equal to go.mod.
+    directory: /release
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: pip
+    directory: /scripts
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
