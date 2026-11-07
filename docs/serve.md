@@ -1,5 +1,9 @@
 # Run the SQLite service
 
+For an external catalog with renewable archiver ownership, see the
+[PostgreSQL service guide](postgres-catalog.md). This guide remains specific to
+the SQLite single-owner deployment.
+
 `vmtier serve` runs the archiver, SQLite catalog, and Cold read gateway in one
 process. They share one blob-store client and its S3 request budget. The catalog
 is independent of S3: no conditional PUT, ETag CAS, or LIST-based discovery is used.
@@ -10,7 +14,8 @@ It remains under development: the [first-release design](design.md) tracks workl
 provider, retention, ingress, recovery, and release qualification. The
 [stage 2 validation](serve-validation.md) is historical evidence for its recorded
 revision; new implementation and focused tests do not replace that provenance.
-GC and HA remain outside the selected scope.
+GC remains unimplemented. This SQLite deployment has no automatic failover;
+[PostgreSQL HA](ha-deployment.md) is the separate multi-instance option.
 
 ## Configuration and startup
 
@@ -21,6 +26,16 @@ start and `lateness_enforced=false`; do not enable that assertion until all inge
 paths actually enforce the lateness limit. Source data must still be queryable in Hot.
 Run [capacity preflight](preflight.md) against representative busy windows before
 initialization fixes their width in the catalog contract.
+
+```sh
+cp examples/serve-sakura.json serve.json
+# Edit serve.json for your deployment before initializing the catalog.
+```
+
+Create the S3 bucket beforehand. Supply credentials through `AWS_ACCESS_KEY_ID`
+and `AWS_SECRET_ACCESS_KEY`, plus `AWS_SESSION_TOKEN` when needed. The S3 client
+reads these environment variables directly; it does not load AWS profiles or use
+instance-role discovery. Never put credentials in configuration files or source URLs.
 
 The service settings are:
 
@@ -38,10 +53,11 @@ The service settings are:
 }
 ```
 
-This fragment belongs in the full configuration, not in a standalone file. Initialize
-the authority explicitly, then start the service:
+This fragment belongs in the full configuration, not in a standalone file. Create
+the durable parent directory, initialize the authority explicitly, then start the service:
 
 ```sh
+mkdir -p .state
 .bin/vmtier catalog-init -backend sqlite -config serve.json \
   -path .state/catalog-sqlite -id sakura-serve-001
 .bin/vmtier serve -config serve.json \
@@ -51,12 +67,52 @@ the authority explicitly, then start the service:
 The initialization path/ID must match the service configuration. Startup refuses
 missing state, another owner, wrong identity, or a changed contract/blob locator.
 Startup does not silently create a catalog or contact S3 before those checks.
-Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
-optionally `AWS_SESSION_TOKEN`; do not place them in JSON.
+Relative catalog and local blob paths resolve against the process working directory,
+not the configuration file's directory. Use stable absolute paths for a supervised
+service so startup and offline maintenance refer to the same state.
 
 Keep the state directory on persistent local storage. The lock covers this directory
 on this host, not another host or another directory targeting the same bucket.
 Run only one owner for the bucket. No automatic failover is provided.
+
+## Configuration reference
+
+Configuration is one JSON object; unknown fields and trailing data are rejected.
+Durations use Go syntax such as `30s`, `6h`, or `720h` (not `30d`) and must be whole
+milliseconds. Time intervals are half-open, `[start,end)`, in UTC epoch milliseconds.
+The table covers SQLite; PostgreSQL adds the catalog connection, lease, and replica
+settings in its [configuration guide](postgres-catalog.md#configuration-and-lifecycle).
+
+| Fields | Meaning and constraints |
+| --- | --- |
+| `catalog.type`, `catalog.path`, `catalog.id` | Use `sqlite`, a persistent local directory, and an explicit ID. IDs contain 1–128 ASCII letters, digits, `.`, `_`, or `-`; `.` and `..` are invalid. The initialized ID must match. |
+| `store.type` | `s3` or `local`. Local blobs require `store.path`, distinct from the catalog directory, and no S3 fields or request limits. |
+| `store.endpoint`, `store.region`, `store.bucket`, `store.prefix` | S3 location. Bucket is required. Omitted endpoint uses the AWS endpoint; omitted region is `us-east-1`; omitted prefix uses the bucket root. Custom endpoints are HTTP(S) origins without credentials, query, or path. The client uses path-style addressing. |
+| `tenants` | 1–100 unique account/project IDs, for example `"1:2"`. |
+| `sources` | 1–100 unique `{ "id": "hot", "url": "http://127.0.0.1:8481" }` entries. Each URL is a Hot-only vmselect base URL covering all shards for that source. IDs use the catalog ID character rules. |
+| `archive_age`, `lateness`, `hot_retention`, `safety_margin`, `window` | Required timing policy: `H > L >= 0`, positive safety margin and window, and `R > H + safety_margin + window`. Set retention to match the actual Hot deployment. |
+| `coverage_start_ms` | Required positive epoch milliseconds, divisible by the window width in milliseconds. Choose the earliest complete window still available from Hot; history before it is outside the coverage guarantee. |
+| `lateness_enforced` | Must be `true` only after every ingestion path enforces `lateness`. This is an operator assertion, not an ingestion control. |
+| `cache_bytes` | Immutable raw index/block LRU cache allowance in bytes, including key/bookkeeping charges; omitted or zero disables retention. Maximum 256 MiB. Parsed indexes and shared-read buffers have separate accounting. |
+| `max_query_bytes` | Per-query read/decoded-work allowance in bytes; omitted or zero uses 128 MiB. Maximum 1 GiB, subject to the shared allowance below. This is not a process RSS limit. |
+| `query_memory_bytes` | Shared query work reservations; omitted or zero uses 256 MiB. Must cover one effective `max_query_bytes` reservation, at most 8 GiB. See [query work admission](#query-work-admission). |
+| `max_pack_blocks` | Optional per-pack block limit, 1–100,000; omitted or zero uses 100,000. Changes packing, not window capacity or the immutable contract. See [archive packing](archive-packs.md). |
+| `service.archive_interval`, `service.archive_timeout` | Default `30s` and `2m`; each accepts 10 ms through 24 hours. See [scheduling](#scheduling-and-publication). |
+| `store.requests_per_second`, `store.max_concurrent_requests`, `store.max_queued_requests` | Shared S3 limits; see [shared S3 budget](#shared-s3-budget). |
+
+Initialization pins the coverage start, window, archive age, lateness, tenant set,
+source IDs/URL fingerprints, 1 ms deduplication, and normalized blob location.
+Changing pinned values requires rebuilding under a new catalog and object prefix;
+backend import commands preserve the archive contract and object location.
+Restarting with different values fails. Shard topology behind a source URL must
+also stay fixed, although the gateway cannot detect a topology change.
+
+Cache/query budgets, `max_pack_blocks`, scheduling intervals, and S3 limits can
+change on restart. `hot_retention` and `safety_margin` are validated runtime
+settings rather than persisted contract fields; changes must still reflect the
+real Hot policy and leave enough time to archive and recover.
+
+## Connect stock vmselect
 
 Configure the [stock vmselect Hot/Cold frontend](getting-started.md#connect-the-query-frontend) with
 `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false
@@ -69,8 +125,8 @@ Label/series metadata uses the same validated block search as sample queries.
 repeated object I/O while retaining payload validation and actual sample-time
 filtering. The earlier uncached S3 fixture exceeded stock vmselect's default
 five-second labels API deadline. The [before/after measurements](metadata-validation.md)
-now pass that deadline on the retained JSON and SQLite fixtures after the reader
-changes. The service E2E harness retains its configurable 30-second default; no
+record passing that deadline on their JSON and SQLite fixtures after the reader
+changes; their recorded revision does not validate a later VM upgrade. The service E2E harness retains its configurable 30-second default; no
 30-second override was needed for these measured final runs.
 No metadata-specific index-only shortcut is implemented.
 
@@ -191,9 +247,9 @@ capacity accounting, and failure handling.
 
 `/health` reports process liveness. `/ready` returns 503 until every configured stream
 has required coverage and catalog checks pass. It does not scrub all S3 payloads or
-prove that external ingestion/retention settings match the contract. A failing
-stream makes global readiness fail; another tenant's fully covered queries can
-still succeed. A stopped service can fail Hot-only queries as well because stock
+prove that external ingestion/retention settings match the contract. A stream
+missing required coverage makes global readiness fail; another tenant's fully
+covered queries can still succeed. A stopped service can fail Hot-only queries as well because stock
 vmselect fans out to both storage nodes and partial responses are disabled.
 
 `/metrics` retains the gateway, object-I/O, and tenant coverage metrics and adds:
@@ -205,6 +261,7 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_archive_last_commit_timestamp_seconds` | Last commit observed by this process; zero before one occurs |
 | `vmtier_stream_coverage_end_ms`, `vmtier_stream_archive_lag_seconds`, `vmtier_stream_retention_headroom_seconds` | Coverage and remaining time per tenant/source |
 | `vmtier_catalog_generation` | Current persisted generation |
+| `vmtier_ready` | Catalog/required coverage readiness, 1 or 0 |
 | `vmtier_s3_attempts_total`, `vmtier_s3_waited_requests_total`, `vmtier_s3_wait_seconds_total` | Budget admissions and queue/pacing waits |
 | `vmtier_s3_rejected_requests_total`, `vmtier_s3_canceled_requests_total` | Queue refusals and canceled waits |
 | `vmtier_s3_in_flight_requests`, `vmtier_s3_queued_requests` | Current budget occupancy |
@@ -217,6 +274,18 @@ There is no online mutation or management API.
 SIGINT/SIGTERM cancels archive and read work, drains listeners/handlers, and then
 releases catalog ownership. The catalog remains locked while any owned work drains.
 Published windows survive restart; an interrupted attempt does not advance coverage.
+
+### Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Startup rejects missing state or an unexpected ID | Confirm the working directory, catalog path, and ID. Initialize only a new deployment; restore missing existing state from backup. |
+| State-directory lock error | Stop the current owner before maintenance. Use `/ready` and `/metrics` to observe a running service. |
+| Contract or blob locator mismatch | Compare the configured fixed fields with offline `catalog-inspect`; do not initialize over existing state. |
+| `/health` succeeds but `/ready` returns 503 | Read the response and archive error logs; inspect per-stream lag/headroom metrics. Initial catch-up and an unavailable source can both leave coverage incomplete. |
+| Metadata or broad queries time out | Check query range/cardinality, S3 budget waits, and the frontend deadline. Larger deadlines do not increase throughput or remove the gateway's 30-second cap. |
+| A window exceeds a pack or verifier limit | Use [preflight](preflight.md) on representative data before initialization. Rotation does not remove whole-window or single-record bounds; a bound catalog's window width cannot be edited in place. |
+| Queries fail with `memory_admission` | Check `vmtier_query_memory_reserved_bytes` and refusal metrics. The shared budget permits only a bounded number of full per-query reservations; changing it requires workload/memory qualification. |
 
 ## Maintenance and JSON v2 migration
 

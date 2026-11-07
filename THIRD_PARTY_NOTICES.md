@@ -12,6 +12,7 @@ The repository's existing Apache-2.0 `LICENSE` is preserved. vmtier is an indepe
 | `github.com/aws/aws-sdk-go-v2/service/s3` | `v1.114.8` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
 | `github.com/aws/smithy-go` | `v1.28.8` | Generated `vendor/github.com/aws/smithy-go/LICENSE` and `NOTICE`, Apache-2.0; nested Go-derived `LICENSE` files, BSD-3-Clause. |
 | `github.com/klauspost/compress` | `v1.20.3` | Generated `vendor/github.com/klauspost/compress/LICENSE`, BSD-style three-clause terms; copyright notices include The Go Authors and Klaus Post. Subdirectories may contain additional licenses/notices, which are retained. |
+| `github.com/lib/pq` | `v1.10.9` | Generated `vendor/github.com/lib/pq/LICENSE.md`, MIT, Copyright (c) 2011-2013, 'pq' Contributors; Portions Copyright (C) 2011 Blake Mizerany. |
 | `github.com/mattn/go-sqlite3` | `v1.14.53` | Generated `vendor/github.com/mattn/go-sqlite3/LICENSE`, MIT, Copyright (c) 2014 Yasuhiro Matsumoto. The bundled SQLite 3.54.1 amalgamation retains its upstream copyright-disclaimer/blessing notices in `sqlite3-binding.c` and related headers; see [SQLite's copyright statement](https://www.sqlite.org/copyright.html). |
 | `golang.org/x/sys` | `v0.49.0` | Generated `vendor/golang.org/x/sys/LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors. |
 | Go runtime / standard library | See build toolchain version | Go distribution `LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors, and `PATENTS`; `runtime/memmove_amd64.s` also carries an MIT notice (see below). |
@@ -27,7 +28,7 @@ SHA-256 536d1c62eb98e5a67776a501fc4d0ec8cf6a41b8dc57a7bf4ef69f29456a6e9d
 
 TLS and the archive checksum are verified. The stock VM source is extracted into a revision-specific directory under `.deps/`, retaining its original vendor tree and license material for the independent E2E binaries. No upstream implementation files are patched.
 
-vmtier's separate `vendor/` is regenerated with `go mod download`, `go mod verify`, and `go mod vendor` from the committed `go.mod` and `go.sum`. This includes the VM library, SQLite driver, and updated direct and transitive modules used by vmtier. Go verifies downloaded module checksums; `go mod verify` checks cached module contents. Bootstrap does not select newer module versions. `.deps/` and `vendor/` are generated build inputs, not a separately authored implementation.
+vmtier's separate `vendor/` is regenerated with `go mod download`, `go mod verify`, and `go mod vendor` from the committed `go.mod` and `go.sum`. This includes the VM library, SQLite and PostgreSQL drivers, and updated direct and transitive modules used by vmtier. Go verifies downloaded module checksums; `go mod verify` checks cached module contents. Bootstrap does not select newer module versions. `.deps/` and `vendor/` are generated build inputs, not a separately authored implementation.
 
 The SQLite driver pin is recorded in `go.sum`:
 
@@ -40,6 +41,18 @@ The generated vendor retains the SQLite driver source used by the build, its MIT
 license, and SQLite notices. The catalog builds the bundled
 SQLite amalgamation through CGO and requires a C compiler; it does not depend on a
 separately installed SQLite service or shared library in the default build.
+
+The PostgreSQL driver pin is also recorded in `go.sum`:
+
+```text
+github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
+github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+```
+
+Go module verification and vendoring retain the PostgreSQL driver source used by
+the build and its MIT license. The driver is pure Go and requires no installed
+`libpq` client library. PostgreSQL server software is an external deployment/test
+prerequisite and is not bundled with vmtier.
 
 The gateway uses the public `vmselectapi.API`, `NewServer`, storage and encoding APIs. No copied/modified private vmselect server implementation is maintained. The bounded portable-format parser is vmtier implementation based on the documented pinned source layout, with upstream public codec calls. Compatibility tests are required when updating that layout.
 

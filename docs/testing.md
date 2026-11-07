@@ -1,5 +1,19 @@
 # Reproducing validation
 
+Run commands from the repository root. Choose a suite for the runtime and behavior
+being changed; historical reports describe their recorded revisions, not the
+current checkout.
+
+| Validation | Procedure |
+| --- | --- |
+| Go and harness regressions | [Setup and quick checks](#setup-and-quick-checks) |
+| SQLite service integration | [SQLite service](#sqlite-service) |
+| PostgreSQL repository, redundant gateways, migration, and database faults | [PostgreSQL repository and HA suites](#postgresql-repository-and-ha-suites) |
+| Retained JSON v2 runtime | [Legacy JSON v2 suite](#legacy-json-v2-suite) |
+| Stopped JSON-to-SQLite cutover, backup, restore, and process recovery | [Offline recovery and cutover](#offline-recovery-and-cutover) |
+| Workload and SQLite catalog smoke fixtures | [Workload and catalog qualification](#workload-and-catalog-qualification) |
+| Recorded results and limitations | [Evidence index](evidence.md) |
+
 ## Pinned environment
 
 The target is **VictoriaMetrics OSS v1.155.0-cluster**, commit
@@ -11,8 +25,8 @@ committed Go modules and regenerates vmtier's vendor tree independently of the
 stock VM vendor tree. Historical result files retain their original toolchains
 and VM revisions; they do not establish validation of an upgraded dependency set.
 The retained JSON v2 suite tests an independent persistent HTTP catalog authority and
-a blob store using ordinary PUT/GET/Range requests. The SQLite service has a separate
-harness described below. Evidence from the previous
+a blob store using ordinary PUT/GET/Range requests. SQLite and PostgreSQL service
+harnesses are described below. Evidence from the previous
 all-S3 catalog architecture is kept under [legacy-v1](results/legacy-v1/README.md)
 and is not included in current results.
 
@@ -33,6 +47,9 @@ python -m pip install -r scripts/requirements-e2e.txt
 Use a fresh work directory for every suite. The commands below assume this setup,
 including the active virtual environment for S3 tests. For documentation-only
 changes, check links, CLI flags, and implementation claims; no benchmarks are needed.
+The Python regression tests use only the standard library and can run before
+building binaries or installing Moto. They cover fixture timing, subprocess
+provenance, fault assertions, measurements, and evidence packaging.
 
 ## SQLite service
 
@@ -42,8 +59,12 @@ dependencies in the setup above, run:
 ```sh
 python3 scripts/e2e_serve.py --backend local --workdir .cache/serve-local-fresh
 MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e_serve.py \
-  --backend s3 --replicas 2 --workdir .cache/serve-s3-fresh
+  --backend s3 --replicas 2 --pack-max-blocks 4 --workdir .cache/serve-s3-fresh
 ```
+
+`--pack-max-blocks 4` forces multiple packs per nonempty fixture window while
+retaining the same coverage and exact query checks. Omit it to test default pack
+limits; see [archive packing](archive-packs.md) for the pipeline bounds.
 
 This harness starts one SQLite `serve` process. It exercises automatic archive
 progress, a failed tenant alongside a healthy tenant, interrupted export and restart,
@@ -60,6 +81,38 @@ passed with `--labels-api-duration 5s`, while still validating full payload bloc
 See [service validation](serve-validation.md) for results, preserved failure evidence,
 provenance, and unexecuted checks. Loopback timings do not qualify provider performance.
 
+## PostgreSQL repository and HA suites
+
+Use a disposable PostgreSQL 17 database and set `VMTIER_TEST_POSTGRES_DSN` before
+`make test race`; integration tests otherwise skip explicitly. Tests isolate
+themselves in temporary schemas. See [PostgreSQL setup](postgres-catalog.md#build-and-integration-tests).
+
+With HAProxy, `psql`, Moto, and the pinned stock VM binaries installed:
+
+```sh
+export VMTIER_TEST_POSTGRES_DSN='postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable'
+make build test race vet stock
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir .cache/postgres-gateways-fresh
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir .cache/postgres-migration-fresh
+python3 scripts/postgres_ha.py --postgres-bin /usr/lib/postgresql/17/bin \
+  --race --workdir .cache/postgres-faults-fresh
+```
+
+The gateway harness exercises two candidates, archiver takeover, gateway/proxy
+loss, static S3 budget allocation, and exact stock-VM comparisons. The commands
+above force multiple packs per nonempty window. Migration mode
+first archives into SQLite and verifies a stopped-writer metadata cutover without
+object PUTs. The database fault harness initializes its own primary and synchronous
+standby and exercises commit-response loss, stale writers, transport failures,
+and explicitly fenced promotion. It runs as an unprivileged user and needs no
+existing database server. All work directories must be fresh.
+
+The [HA report](postgres-ha-validation.md) separates retained v1.128.0-cluster stage
+evidence from v1.155.0-cluster integration runs. Reproduction commands use the
+current checkout and pin; preserve new reports separately from earlier artifacts. These local
+suites do not qualify production HA controllers, multi-AZ partitions, the outer
+L4 endpoint, or actual S3 providers.
+
 ## Legacy JSON v2 suite
 
 The current regression harness also sets `-search.maxLabelsAPIDuration=30s` on
@@ -75,14 +128,18 @@ MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e.py \
   --backend s3 --replicas 2 --workdir .cache/v2-s3-fresh
 ```
 
+`make e2e` and `make e2e-s3` are shortcuts for these JSON v2 suites. They build
+binaries first but do not install Python dependencies or run the service suites.
+
 `GO_BIN` selects the Go binary. `VM_SOURCE_DIR` selects where the verified pinned
 VM source is extracted; use a new directory or one already prepared by these
 scripts. An arbitrary existing source tree is rejected. To validate only fixture ingestion into VM, use
 `python3 scripts/e2e.py --vm-only`.
 
 Each run creates an isolated directory and starts dedicated processes on available
-loopback ports. Pass an **unused directory** to `--workdir PATH`; the suite does not
-reuse existing data. At exit it stops only the processes it started and leaves
+loopback ports. Pass a **new or empty directory** to `--workdir PATH`; nonempty
+directories are rejected. If omitted, a temporary directory is created. At exit
+the harness stops only the processes it started and leaves
 logs, configurations, `results.json`, and isolated VM data. It has no option to
 connect to an external VM or a real S3 service. S3 tests use Moto 5.2.5 and public,
 test-only credentials.
@@ -306,6 +363,36 @@ it does **not** establish natural VM retention expiry. See the
 Hosted CI runs the local recovery suite and includes its complete `ci-recovery-local`
 work directory in the existing byte-preserving evidence archive, including on
 failure. This is additional process recovery coverage, not a power-loss test.
+
+## Workload and catalog qualification
+
+After the same build setup, run the small local fixtures used by CI:
+
+```sh
+python3 scripts/qualify_workload.py --tenants 2 --series 1000 \
+  --history-hours 4 --dense-hours 2 --replicas 2 \
+  --workdir .cache/workload-smoke-fresh
+python3 scripts/catalog_capacity.py --hours 24 --tenants 2 --repeats 1 \
+  --output .cache/catalog-smoke-fresh/results.json \
+  --workdir .cache/catalog-smoke-fresh/work
+```
+
+These exercise the qualification harnesses; their sizes do not establish the
+full measured envelope. Use new work/output paths to preserve earlier evidence.
+`catalog_capacity.py` builds its own dedicated test binary; select a Go executable
+with `--go /path/to/go` (or `GO`), not `GO_BIN`. The expensive Go catalog fixture
+skips ordinary `go test` unless invoked with its qualification environment.
+
+The [workload report](workload-validation.md) gives full commands and the recorded
+envelope of 5,000 series per tenant. The harness default of 10,000 is the original
+target whose broad query exceeded the unchanged query allowance. Two dense hours
+plus one 24-hour sentinel series per tenant do not qualify 24 hours of dense data
+for the whole cohort. Use the report's explicit workload and pressure flags.
+
+The [catalog capacity report](catalog-capacity-validation.md) separately covers
+87,600 logical windows through the real SQLite API, with no blob I/O. Its
+publication rate is not archive throughput or PostgreSQL capacity evidence.
+Both reports retain their original revisions and dependency pins.
 
 ## CI evidence
 

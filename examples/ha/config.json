@@ -1,0 +1,31 @@
+{
+  "store": {
+    "type": "s3",
+    "endpoint": "https://s3.example.invalid",
+    "region": "us-east-1",
+    "bucket": "metrics-archive",
+    "prefix": "vmtier",
+    "requests_per_second": 80,
+    "max_concurrent_requests": 8,
+    "max_queued_requests": 64
+  },
+  "catalog": {
+    "type": "postgres",
+    "dsn_env": "VMTIER_POSTGRES_DSN",
+    "id": "metrics-catalog-001"
+  },
+  "tenants": ["1:2"],
+  "sources": [{"id": "hot", "url": "http://hot-vmselect.example:8481"}],
+  "archive_age": "48h",
+  "hot_retention": "168h",
+  "lateness": "1h",
+  "safety_margin": "6h",
+  "window": "6h",
+  "lateness_enforced": true,
+  "coverage_start_ms": 1793404800000,
+  "service": {
+    "archive_interval": "30s",
+    "archive_lease_ttl": "30s",
+    "max_replicas": 2
+  }
+}

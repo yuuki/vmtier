@@ -148,99 +148,162 @@ func Build(r io.Reader, tenant Tenant, start, end int64, limits Limits) (*Index,
 		return nil, nil, errors.New("coverage must satisfy start < end")
 	}
 	lr := &io.LimitedReader{R: r, N: l.MaxInputBytes + 1}
-	header := make([]byte, 16)
-	if _, err := io.ReadFull(lr, header); err != nil {
-		return nil, nil, fmt.Errorf("native header: %w", err)
+	if err := readNativeHeader(lr, start, end); err != nil {
+		return nil, nil, err
 	}
-	if encoding.UnmarshalInt64(header) != start || encoding.UnmarshalInt64(header[8:]) != end-1 {
-		return nil, nil, errors.New("native export header differs from requested [start,end)")
+	b := packBuilder{
+		idx:       &Index{Version: FormatVersion, VMVersion: VMVersion, VMRevision: VMRevision, Tenant: tenant, Start: start, End: end, Series: []Series{}},
+		seriesIDs: make(map[string]int),
+		limits:    l,
 	}
-	idx := &Index{Version: FormatVersion, VMVersion: VMVersion, VMRevision: VMRevision, Tenant: tenant, Start: start, End: end, Series: []Series{}}
-	var data []byte
-	seriesIDs := make(map[string]int)
-	blockCount := 0
-	var indexBudget int64
 	for {
-		mnBytes, err := readFrame(lr, l.MaxMetricNameBytes, true)
+		mnBytes, payload, err := readNativeRecord(lr, l)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("native metric name: %w", err)
-		}
-		payload, err := readFrame(lr, l.MaxBlockBytes, false)
-		if err != nil {
-			return nil, nil, fmt.Errorf("native block: %w", err)
-		}
-		if lr.N <= 0 {
-			return nil, nil, errors.New("native export exceeds input limit")
-		}
-		blockCount++
-		if blockCount > l.MaxBlocks {
-			return nil, nil, errors.New("native export exceeds block limit")
-		}
-		pb, err := decodePortable(payload)
-		if err != nil {
-			return nil, nil, fmt.Errorf("portable block: %w", err)
-		}
-		if pb.ts[len(pb.ts)-1] < start || pb.ts[0] >= end {
-			continue
-		}
-		lo := sort.Search(len(pb.ts), func(i int) bool { return pb.ts[i] >= start })
-		if lo == len(pb.ts) || pb.ts[lo] >= end {
-			continue
-		}
-		var mn storage.MetricName
-		if err := mn.UnmarshalNoAccountIDProjectID(mnBytes); err != nil {
-			return nil, nil, fmt.Errorf("metric name: %w", err)
-		}
-		labels := map[string]string{"__name__": string(mn.MetricGroup)}
-		for _, tag := range mn.Tags {
-			k, v := string(tag.Key), string(tag.Value)
-			if k == "" {
-				return nil, nil, errors.New("empty label key in native metric name")
-			}
-			if _, exists := labels[k]; exists {
-				return nil, nil, errors.New("duplicate label key in native metric name")
-			}
-			labels[k] = v
-		}
-		canonical, err := json.Marshal(labels)
-		if err != nil {
 			return nil, nil, err
 		}
-		key := string(canonical)
-		si, ok := seriesIDs[key]
-		if !ok {
-			if len(idx.Series) >= l.MaxSeries {
-				return nil, nil, errors.New("pack exceeds series limit")
-			}
-			indexBudget += int64(len(canonical) + len(mnBytes)*2)
-			si = len(idx.Series)
-			seriesIDs[key] = si
-			idx.Series = append(idx.Series, Series{Labels: labels, NativeName: append([]byte(nil), mnBytes...)})
-		} else if !bytes.Equal(idx.Series[si].NativeName, mnBytes) {
-			return nil, nil, errors.New("inconsistent native name ordering for identical labels")
+		if err := b.add(mnBytes, payload); err != nil {
+			return nil, nil, err
 		}
-		indexBudget += 256
-		if indexBudget > l.MaxIndexBytes {
-			return nil, nil, errors.New("pack exceeds index budget")
-		}
-		if int64(len(data))+int64(len(payload)) > l.MaxPackBytes {
-			return nil, nil, errors.New("pack exceeds payload limit")
-		}
-		idx.Series[si].Blocks = append(idx.Series[si].Blocks, BlockRef{Offset: int64(len(data)), Length: int64(len(payload)), MinTimestamp: pb.ts[0], MaxTimestamp: pb.ts[len(pb.ts)-1], Rows: len(pb.ts), SHA256: Sum(payload)})
-		data = append(data, payload...)
 	}
 	if lr.N <= 0 {
 		return nil, nil, errors.New("native export exceeds input limit")
 	}
-	idx.Size = int64(len(data))
-	idx.SHA256 = Sum(data)
-	if _, err := MarshalIndex(idx, l); err != nil {
+	b.idx.Size = int64(len(b.data))
+	b.idx.SHA256 = Sum(b.data)
+	if _, err := MarshalIndex(b.idx, l); err != nil {
 		return nil, nil, err
 	}
-	return idx, data, nil
+	return b.idx, b.data, nil
+}
+
+// readNativeHeader requires the native export header to declare exactly the
+// requested logical window [start,end).
+func readNativeHeader(r io.Reader, start, end int64) error {
+	var header [16]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return fmt.Errorf("native header: %w", err)
+	}
+	if encoding.UnmarshalInt64(header[:]) != start || encoding.UnmarshalInt64(header[8:]) != end-1 {
+		return errors.New("native export header differs from requested [start,end)")
+	}
+	return nil
+}
+
+// readNativeRecord reads the metric name and block of the next native record.
+// It returns io.EOF only at a record boundary.
+func readNativeRecord(lr *io.LimitedReader, l Limits) (name, payload []byte, err error) {
+	name, err = readFrame(lr, l.MaxMetricNameBytes, true)
+	if err == io.EOF {
+		return nil, nil, err
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("native metric name: %w", err)
+	}
+	payload, err = readFrame(lr, l.MaxBlockBytes, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("native block: %w", err)
+	}
+	if lr.N <= 0 {
+		return nil, nil, errors.New("native export exceeds input limit")
+	}
+	return name, payload, nil
+}
+
+// packBuilder accumulates the single pack of Build. Unlike rotatingBuilder, it
+// fails instead of starting a new pack when a bound is exceeded.
+type packBuilder struct {
+	idx         *Index
+	data        []byte
+	seriesIDs   map[string]int
+	blockCount  int
+	indexBudget int64
+	limits      Limits
+}
+
+// add appends one native record if it has rows in the logical window.
+func (b *packBuilder) add(mnBytes, payload []byte) error {
+	b.blockCount++
+	if b.blockCount > b.limits.MaxBlocks {
+		return errors.New("native export exceeds block limit")
+	}
+	pb, err := decodePortable(payload)
+	if err != nil {
+		return fmt.Errorf("portable block: %w", err)
+	}
+	start, end := b.idx.Start, b.idx.End
+	if pb.ts[len(pb.ts)-1] < start || pb.ts[0] >= end {
+		return nil
+	}
+	lo := sort.Search(len(pb.ts), func(i int) bool { return pb.ts[i] >= start })
+	if lo == len(pb.ts) || pb.ts[lo] >= end {
+		return nil
+	}
+	labels, err := nativeLabels(mnBytes)
+	if err != nil {
+		return err
+	}
+	canonical, err := json.Marshal(labels)
+	if err != nil {
+		return err
+	}
+	si, err := b.series(string(canonical), labels, mnBytes)
+	if err != nil {
+		return err
+	}
+	b.indexBudget += 256
+	if b.indexBudget > b.limits.MaxIndexBytes {
+		return errors.New("pack exceeds index budget")
+	}
+	if int64(len(b.data))+int64(len(payload)) > b.limits.MaxPackBytes {
+		return errors.New("pack exceeds payload limit")
+	}
+	b.idx.Series[si].Blocks = append(b.idx.Series[si].Blocks, BlockRef{Offset: int64(len(b.data)), Length: int64(len(payload)), MinTimestamp: pb.ts[0], MaxTimestamp: pb.ts[len(pb.ts)-1], Rows: len(pb.ts), SHA256: Sum(payload)})
+	b.data = append(b.data, payload...)
+	return nil
+}
+
+// series returns the dictionary position of the series with the canonical
+// label encoding key, adding it within the series limit if it is new.
+func (b *packBuilder) series(key string, labels map[string]string, mnBytes []byte) (int, error) {
+	si, ok := b.seriesIDs[key]
+	if ok {
+		if !bytes.Equal(b.idx.Series[si].NativeName, mnBytes) {
+			return 0, errors.New("inconsistent native name ordering for identical labels")
+		}
+		return si, nil
+	}
+	if len(b.idx.Series) >= b.limits.MaxSeries {
+		return 0, errors.New("pack exceeds series limit")
+	}
+	b.indexBudget += int64(len(key) + len(mnBytes)*2)
+	si = len(b.idx.Series)
+	b.seriesIDs[key] = si
+	b.idx.Series = append(b.idx.Series, Series{Labels: labels, NativeName: append([]byte(nil), mnBytes...)})
+	return si, nil
+}
+
+// nativeLabels decodes the labels of a native metric name, rejecting empty
+// and duplicate keys.
+func nativeLabels(mnBytes []byte) (map[string]string, error) {
+	var mn storage.MetricName
+	if err := mn.UnmarshalNoAccountIDProjectID(mnBytes); err != nil {
+		return nil, fmt.Errorf("metric name: %w", err)
+	}
+	labels := map[string]string{"__name__": string(mn.MetricGroup)}
+	for _, tag := range mn.Tags {
+		k, v := string(tag.Key), string(tag.Value)
+		if k == "" {
+			return nil, errors.New("empty label key in native metric name")
+		}
+		if _, exists := labels[k]; exists {
+			return nil, errors.New("duplicate label key in native metric name")
+		}
+		labels[k] = v
+	}
+	return labels, nil
 }
 
 func readFrame(r io.Reader, max int64, eofOK bool) ([]byte, error) {
@@ -331,26 +394,9 @@ func ValidateIndex(idx *Index, limits Limits) error {
 	var blocks []BlockRef
 	var budget int64
 	for _, s := range idx.Series {
-		if int64(len(s.NativeName)) > l.MaxMetricNameBytes {
-			return errors.New("native name exceeds name limit")
-		}
-		if _, err := s.metricName(idx.Tenant); err != nil {
+		lb, err := validateSeries(s, idx.Tenant, l)
+		if err != nil {
 			return err
-		}
-		if len(s.Labels) == 0 {
-			return errors.New("empty series labels")
-		}
-		if _, ok := s.Labels["__name__"]; !ok {
-			return errors.New("series missing metric name")
-		}
-		for k := range s.Labels {
-			if k == "" {
-				return errors.New("empty label key")
-			}
-		}
-		lb, _ := json.Marshal(s.Labels)
-		if int64(len(lb)) > l.MaxMetricNameBytes*6 {
-			return errors.New("series labels exceed name limit")
 		}
 		if seen[string(lb)] {
 			return errors.New("duplicate series dictionary entry")
@@ -364,12 +410,58 @@ func ValidateIndex(idx *Index, limits Limits) error {
 			return errors.New("invalid block count")
 		}
 		for _, b := range s.Blocks {
-			if b.Offset < 0 || b.Length < 1 || b.Length > l.MaxBlockBytes || b.Offset > idx.Size || b.Length > idx.Size-b.Offset || b.Rows < 1 || b.Rows > maxRows || b.MinTimestamp > b.MaxTimestamp || b.MaxTimestamp < idx.Start || b.MinTimestamp >= idx.End || !validSum(b.SHA256) {
+			if !validBlockRef(b, idx, l) {
 				return errors.New("invalid block directory entry")
 			}
 			blocks = append(blocks, b)
 		}
 	}
+	return validateBlockLayout(blocks, idx.Size)
+}
+
+// validateSeries checks one series dictionary entry against its native name
+// and returns the JSON encoding of its labels.
+func validateSeries(s Series, tenant Tenant, l Limits) ([]byte, error) {
+	if int64(len(s.NativeName)) > l.MaxMetricNameBytes {
+		return nil, errors.New("native name exceeds name limit")
+	}
+	if _, err := s.metricName(tenant); err != nil {
+		return nil, err
+	}
+	if len(s.Labels) == 0 {
+		return nil, errors.New("empty series labels")
+	}
+	if _, ok := s.Labels["__name__"]; !ok {
+		return nil, errors.New("series missing metric name")
+	}
+	for k := range s.Labels {
+		if k == "" {
+			return nil, errors.New("empty label key")
+		}
+	}
+	lb, _ := json.Marshal(s.Labels)
+	if int64(len(lb)) > l.MaxMetricNameBytes*6 {
+		return nil, errors.New("series labels exceed name limit")
+	}
+	return lb, nil
+}
+
+// validBlockRef reports whether a block lies within the pack, has a bounded
+// row count and physical extent that overlaps the logical window, and has a
+// well-formed checksum.
+func validBlockRef(b BlockRef, idx *Index, l Limits) bool {
+	if b.Offset < 0 || b.Length < 1 || b.Length > l.MaxBlockBytes || b.Offset > idx.Size || b.Length > idx.Size-b.Offset {
+		return false
+	}
+	if b.Rows < 1 || b.Rows > maxRows || b.MinTimestamp > b.MaxTimestamp || b.MaxTimestamp < idx.Start || b.MinTimestamp >= idx.End {
+		return false
+	}
+	return validSum(b.SHA256)
+}
+
+// validateBlockLayout requires every byte of a pack of the given size to
+// belong to exactly one block.
+func validateBlockLayout(blocks []BlockRef, size int64) error {
 	// Every byte belongs to exactly one block; reject aliasing, holes and tails.
 	sort.Slice(blocks, func(i, j int) bool { return blocks[i].Offset < blocks[j].Offset })
 	var end int64
@@ -379,7 +471,7 @@ func ValidateIndex(idx *Index, limits Limits) error {
 		}
 		end += b.Length
 	}
-	if end != idx.Size {
+	if end != size {
 		return errors.New("pack size differs from block directory")
 	}
 	return nil

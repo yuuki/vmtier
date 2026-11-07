@@ -1,7 +1,8 @@
 # Legacy JSON v2 deployment
 
 The separate-process JSON v2 runtime is retained for regression testing and
-migration. New deployments should start with the [SQLite service](serve.md).
+migration. New deployments should start with the [SQLite service](serve.md) or
+[PostgreSQL service](postgres-catalog.md).
 For offline migration, follow [catalog import](sqlite-catalog.md#import-json-v2).
 
 ## Commands

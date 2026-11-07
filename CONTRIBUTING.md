@@ -15,6 +15,15 @@ protocol, or operational decisions in an ADR. Explain the workload or failure th
 requires additional machinery; avoid speculative HA, storage abstractions, and
 configuration switches without a concrete use case.
 
+## Reporting a problem
+
+Use [GitHub issues](https://github.com/yuuki/vmtier/issues) for reproducible bugs
+and proposals. Include the vmtier commit, VictoriaMetrics version, catalog backend,
+configuration with credentials removed, reproduction steps, expected and actual
+behavior, and relevant logs or test results. For query discrepancies, include the
+expression, time bounds, tenant, and a small reproducible dataset when possible.
+Keep private metric data, credentials, and access tokens out of public reports.
+
 ## Development and validation
 
 Use the pinned source and [build instructions](docs/getting-started.md#build-from-source). Do not edit
@@ -25,11 +34,28 @@ For runtime changes, run relevant unit tests and the repository checks:
 
 ```sh
 make build test race vet vulncheck
+python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
+
+Use `make GO=/path/to/go ...` when Go is outside `PATH`.
+
+The Code Complexity workflow (`.github/workflows/complexity.yml`) measures the
+Cognitive and Cyclomatic Complexity of the Go code without its tests with
+[cccc](https://github.com/moznion/cccc), configured by `cccc.toml`, and tracks
+them with [octocov](https://github.com/k1LoW/octocov) (`.octocov.complexity.yml`):
+a comment on each pull request compares them with `main`, the job summary lists
+the 20 most complex functions, and each push to `main` stores a report in the
+`octocov` branch. A function, method or closure with a Cognitive Complexity over
+30 (`max-cognitive` in `cccc.toml`) fails the job, with an annotation on it: split
+it rather than raise the limit. To see the numbers locally:
+`cccc --table --top-cognitive 20 cmd internal`, which also exits non-zero over the
+limit.
 
 Run stock-VM differential suites for changes to archive contents, publication,
 query results, RPC, or S3 behavior. [Testing](docs/testing.md) describes their setup
-and assertions. Test observable behavior and meaningful failure boundaries rather
+and assertions. Run the recovery or migration suites for changes to those paths,
+and use the qualification fixtures for capacity or memory claims.
+Test observable behavior and meaningful failure boundaries rather
 than mirroring private implementation details. For documentation-only changes,
 check links, commands against current behavior, and planned versus measured claims;
 performance benchmarks need not be rerun.

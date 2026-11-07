@@ -81,6 +81,10 @@
       "license": "BSD-3-Clause AND Apache-2.0 AND MIT",
       "notices_sha256": "a2d7d1dc9c6bd2b97a9443783cba96615b7fbd4a02e6f9a515c1613f9886284f"
     },
+    "github.com/lib/pq": {
+      "license": "MIT",
+      "notices_sha256": "c572a3b1c3a3331832f04a173dd5dfb7bdafd60811c31b5a46bcb25501ff0e7b"
+    },
     "github.com/mattn/go-sqlite3": {
       "license": "MIT AND blessing",
       "notices_sha256": "6e8f92304ca6eab55c014eac923cd59c9459ae935bf3602a70a26a4b68cec39f"

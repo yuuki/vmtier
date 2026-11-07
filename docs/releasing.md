@@ -5,7 +5,7 @@ commit in a digest-pinned container. Two independent builds have to match
 byte for byte. The packaged binary then has to pass the stock-VM differential
 suites, and the workflow publishes signed provenance and SBOM attestations. The
 release workflow saves a **draft**; publishing it is a separate maintainer action.
-[ADR 0004](adr/0004-release-artifacts.md) records why the pipeline is shaped
+[ADR 0005](adr/0005-release-artifacts.md) records why the pipeline is shaped
 this way.
 
 No release has been published, and the release workflow has not yet run on
@@ -19,20 +19,21 @@ so far been checked only locally, with a builder image equivalent to
 | --- | --- |
 | Platform | Linux on x86-64 (`GOAMD64=v1`), statically linked against musl; no glibc version requirement |
 | VictoriaMetrics | OSS `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c` only ([compatibility](compatibility.md)) |
-| Runtime | One `vmtier serve` owner with a local SQLite catalog ([limits](limits.md)) |
-| Evidence | Local differential, recovery, workload, and catalog reports in the [evidence index](evidence.md), plus the release run's `release-e2e-evidence` artifact |
+| Runtime | `vmtier serve` with one SQLite owner, or with a PostgreSQL catalog, multiple Cold read gateways, and one leased archiver ([limits](limits.md), [HA deployment](ha-deployment.md)) |
+| Evidence | Local differential, recovery, workload, catalog, and PostgreSQL HA reports in the [evidence index](evidence.md), plus the release run's `release-e2e-evidence` artifact |
 
 The following remain unqualified: real Sakura Object Storage (#15), natural Hot
 retention expiry (#16), and enforced ingress lateness (#17). HA, GC, Cold TTL,
 backfill, other VM versions, and other platforms are outside the first-release
-scope. Until those issues close with recorded evidence, tag releases as
+scope. PostgreSQL database HA and old-primary fencing remain operator
+responsibilities. Until those issues close with recorded evidence, tag releases as
 pre-releases (`v0.1.0-rc.1`) and do not describe them as production-supported.
 
 ## Release contents
 
 | Asset | Contents |
 | --- | --- |
-| `vmtier-VERSION-linux-amd64.tar.gz` | `vmtier`, `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `examples/serve-sakura.json`, `BUILD.json`, `sbom.cdx.json`, `go-version-m.txt`, and `licenses/` |
+| `vmtier-VERSION-linux-amd64.tar.gz` | `vmtier`, `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `examples/serve-sakura.json` and `examples/serve-postgres.json`, `BUILD.json`, `sbom.cdx.json`, `go-version-m.txt`, and `licenses/` |
 | `vmtier-VERSION-linux-amd64.build.json` | Build record: commit, `SOURCE_DATE_EPOCH`, builder digest, Alpine package versions, Go environment, exact build command, binary SHA-256, every linked module with its `go.sum` hash, SPDX license expression, notice files, and requirements, and the C libraries compiled into modules |
 | `vmtier-VERSION-linux-amd64.cdx.json` | CycloneDX 1.6 SBOM of the binary: linked Go modules with their requirement graph, SQLite and zstd (with CPEs), the Go standard library, musl, and libgcc |
 | `SHA256SUMS` | SHA-256 of the three files above |
@@ -136,7 +137,7 @@ python3 scripts/release.py compare /path/to/downloaded /tmp/vmtier-rebuild
    | --- | --- |
    | `build (first)`, `build (second)` | Check that the tagged commit is on `main`, then build the archive in the pinned builder on separate runners; the first also runs `go test` with release tags and static musl linking; both smoke-test the archive |
    | `reproducibility` | Hashes both builds, requires identical `SHA256SUMS`, and outputs the SHA-256 of that list before any later job runs test dependencies or the binary |
-   | `qualify` | Installs the packaged binary as `.bin/vmtier`, scans it with `govulncheck -mode=binary`, and runs the workload smoke, JSON v2, `serve`, and recovery suites against stock VM |
+   | `qualify` | Installs the packaged binary as `.bin/vmtier`, scans it with `govulncheck -mode=binary`, and runs the workload smoke, JSON v2, `serve`, recovery, PostgreSQL HA, and SQLite-to-PostgreSQL migration suites against stock VM |
    | `publish` | Runs in the `release` environment: accepts only files whose `SHA256SUMS` has the recorded SHA-256, without executing them, then attests provenance and SBOM and creates the draft release with generated notes |
 
 6. Review the draft: notes and support scope, the four assets, the attestation

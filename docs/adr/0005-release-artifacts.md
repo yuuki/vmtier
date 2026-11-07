@@ -1,4 +1,4 @@
-# ADR 0004: Reproducible static release artifacts
+# ADR 0005: Reproducible static release artifacts
 
 ## Status
 

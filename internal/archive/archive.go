@@ -148,8 +148,8 @@ func Run(ctx context.Context, blobs objectstore.BlobStore, catalogs catalog.Stor
 	if err = validateTopology(m, cfg); err != nil {
 		return nil, err
 	}
+	run := archiveRun{blobs: blobs, catalogs: catalogs, cfg: cfg, now: now, runStart: time.Now(), m: m, generation: generation, out: out}
 	window := cfg.Window.Milliseconds()
-	runStart := time.Now()
 	for start := cfg.StartMS; start < cfg.EndMS; {
 		end := start + window
 		if end < start || end > cfg.EndMS {
@@ -164,53 +164,91 @@ func Run(ctx context.Context, blobs objectstore.BlobStore, catalogs catalog.Stor
 			start = end
 			continue
 		}
-		if err = cfg.validateTime(start, end, now.Add(time.Since(runStart))); err != nil {
-			return out, err
-		}
-		// Re-evaluate wall time for a long-running archive. Tests use a fixed initial
-		// clock plus real elapsed duration, rather than a way to bypass retention.
-		entries := make([]catalog.Entry, 0, len(cfg.Sources)*len(cfg.Tenants))
-		slog.Info("archive window selected", "start_ms", start, "end_ms", end, "sources", len(cfg.Sources), "tenants", len(cfg.Tenants))
-		for _, tn := range cfg.Tenants {
-			tenant, _ := pack.ParseTenant(tn)
-			for _, source := range cfg.Sources {
-				if err = ctx.Err(); err != nil {
-					return out, err
-				}
-				idx, data, samples, e := verifiedExport(ctx, cfg, source, tenant, start, end)
-				if e != nil {
-					return out, e
-				}
-				ref, e := uploadPack(ctx, blobs, cfg, idx, data)
-				if e != nil {
-					return out, e
-				}
-				entry := catalog.Entry{Tenant: tenant.String(), Start: start, End: end, SourceID: source.ID, IndexKey: ref.IndexKey, DataKey: ref.DataKey, IndexSHA256: ref.IndexSHA256, SourceFingerprint: pack.Sum([]byte(strings.TrimRight(source.URL, "/")))}
-				entries = append(entries, entry)
-				out.Samples += samples
-				out.Bytes += ref.DataBytes + ref.IndexBytes
-			}
-		}
-		if start <= now.Add(time.Since(runStart)).UnixMilli()-cfg.Retention.Milliseconds()+cfg.SafetyMargin.Milliseconds() {
-			return out, errors.New("retention safety margin elapsed before commit")
-		}
-		if err = hook(cfg, "verified"); err != nil {
-			return out, err
-		}
-		m.Entries = append(m.Entries, entries...)
-		generation, err = catalog.Commit(ctx, catalogs, m, generation)
-		if err != nil {
-			return out, fmt.Errorf("catalog commit: %w", err)
-		}
-		out.CommittedWindows++
-		out.Entries += len(entries)
-		slog.Info("archive window committed", "start_ms", start, "end_ms", end, "generation", m.Generation)
-		if err = hook(cfg, "committed"); err != nil {
+		if err = run.commitWindow(ctx, start, end); err != nil {
 			return out, err
 		}
 		start = end
 	}
 	return out, nil
+}
+
+// archiveRun carries the catalog state and result of one Run across windows.
+type archiveRun struct {
+	blobs      objectstore.BlobStore
+	catalogs   catalog.Store
+	cfg        Config
+	now        time.Time
+	runStart   time.Time
+	m          *catalog.Manifest
+	generation uint64
+	out        *Result
+}
+
+// clock re-evaluates wall time for a long-running archive. Tests use a fixed
+// initial clock plus real elapsed duration, rather than a way to bypass retention.
+func (r *archiveRun) clock() time.Time { return r.now.Add(time.Since(r.runStart)) }
+
+// commitWindow verifies and uploads every tenant/source stream of one window,
+// then publishes them in a single catalog commit.
+func (r *archiveRun) commitWindow(ctx context.Context, start, end int64) error {
+	if err := r.cfg.validateTime(start, end, r.clock()); err != nil {
+		return err
+	}
+	entries, err := r.uploadWindow(ctx, start, end)
+	if err != nil {
+		return err
+	}
+	if start <= r.clock().UnixMilli()-r.cfg.Retention.Milliseconds()+r.cfg.SafetyMargin.Milliseconds() {
+		return errors.New("retention safety margin elapsed before commit")
+	}
+	if err = hook(r.cfg, "verified"); err != nil {
+		return err
+	}
+	r.m.Entries = append(r.m.Entries, entries...)
+	r.generation, err = catalog.Commit(ctx, r.catalogs, r.m, r.generation)
+	if err != nil {
+		return fmt.Errorf("catalog commit: %w", err)
+	}
+	r.out.CommittedWindows++
+	r.out.Entries += len(entries)
+	slog.Info("archive window committed", "start_ms", start, "end_ms", end, "generation", r.m.Generation)
+	return hook(r.cfg, "committed")
+}
+
+// uploadWindow returns the catalog entries of the verified and uploaded packs
+// of every tenant/source stream of one window.
+func (r *archiveRun) uploadWindow(ctx context.Context, start, end int64) ([]catalog.Entry, error) {
+	cfg := r.cfg
+	entries := make([]catalog.Entry, 0, len(cfg.Sources)*len(cfg.Tenants))
+	slog.Info("archive window selected", "start_ms", start, "end_ms", end, "sources", len(cfg.Sources), "tenants", len(cfg.Tenants))
+	for _, tn := range cfg.Tenants {
+		tenant, _ := pack.ParseTenant(tn)
+		for _, source := range cfg.Sources {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			entry, err := r.uploadStream(ctx, source, tenant, start, end)
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, entry)
+		}
+	}
+	return entries, nil
+}
+
+func (r *archiveRun) uploadStream(ctx context.Context, source Source, tenant pack.Tenant, start, end int64) (catalog.Entry, error) {
+	idx, data, samples, err := verifiedExport(ctx, r.cfg, source, tenant, start, end)
+	if err != nil {
+		return catalog.Entry{}, err
+	}
+	ref, err := uploadPack(ctx, r.blobs, r.cfg, idx, data)
+	if err != nil {
+		return catalog.Entry{}, err
+	}
+	r.out.Samples += samples
+	r.out.Bytes += ref.DataBytes + ref.IndexBytes
+	return catalog.Entry{Tenant: tenant.String(), Start: start, End: end, SourceID: source.ID, IndexKey: ref.IndexKey, DataKey: ref.DataKey, IndexSHA256: ref.IndexSHA256, SourceFingerprint: pack.Sum([]byte(strings.TrimRight(source.URL, "/")))}, nil
 }
 
 func hook(c Config, stage string) error {
@@ -435,71 +473,105 @@ func verifyRaw(ctx context.Context, c Config, s Source, t pack.Tenant, start, en
 
 func verifyCounts(ctx context.Context, c Config, s Source, t pack.Tenant, start, end int64, want map[string]count) error {
 	for _, mode := range []string{"count_over_time", "stale_samples_over_time"} {
-		expr := fmt.Sprintf(`%s({__name__!=""}[%dms]) keep_metric_names`, mode, end-start)
-		q := url.Values{"query": {expr}, "time": {seconds(end - 1)}, "deny_partial_response": {"1"}, "nocache": {"1"}}
-		resp, e := request(ctx, c, endpoint(s, t, "query", q))
+		got, err := queryCounts(ctx, c, s, t, start, end, mode)
+		if err != nil {
+			return err
+		}
+		if err := compareCounts(mode, want, got); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// countResponse is the instant vector returned by a verification count query.
+type countResponse struct {
+	Status    string   `json:"status"`
+	IsPartial bool     `json:"isPartial"`
+	Warnings  []string `json:"warnings"`
+	Data      struct {
+		ResultType string        `json:"resultType"`
+		Result     []countSeries `json:"result"`
+	} `json:"data"`
+}
+
+type countSeries struct {
+	Metric map[string]string `json:"metric"`
+	Value  []json.RawMessage `json:"value"`
+}
+
+// queryCounts returns the per-series counts that a complete source reports for
+// mode over [start,end), keyed by encoded labels.
+func queryCounts(ctx context.Context, c Config, s Source, t pack.Tenant, start, end int64, mode string) (map[string]int, error) {
+	expr := fmt.Sprintf(`%s({__name__!=""}[%dms]) keep_metric_names`, mode, end-start)
+	q := url.Values{"query": {expr}, "time": {seconds(end - 1)}, "deny_partial_response": {"1"}, "nocache": {"1"}}
+	resp, e := request(ctx, c, endpoint(s, t, "query", q))
+	if e != nil {
+		return nil, e
+	}
+	b, e := io.ReadAll(io.LimitReader(resp.Body, 16<<20+1))
+	resp.Body.Close()
+	if e != nil {
+		return nil, e
+	}
+	if len(b) > 16<<20 {
+		return nil, errors.New("verification response too large")
+	}
+	var v countResponse
+	if e = json.Unmarshal(b, &v); e != nil {
+		return nil, fmt.Errorf("incomplete verification JSON: %w", e)
+	}
+	if v.Status != "success" || v.IsPartial || len(v.Warnings) > 0 || v.Data.ResultType != "vector" {
+		return nil, errors.New("verification query did not return complete success vector")
+	}
+	got := map[string]int{}
+	for _, r := range v.Data.Result {
+		n, e := r.count(c.MaxSamples)
 		if e != nil {
-			return e
+			return nil, e
 		}
-		b, e := io.ReadAll(io.LimitReader(resp.Body, 16<<20+1))
-		resp.Body.Close()
-		if e != nil {
-			return e
+		key, _ := json.Marshal(r.Metric)
+		if _, ok := got[string(key)]; ok {
+			return nil, errors.New("duplicate verification series")
 		}
-		if len(b) > 16<<20 {
-			return errors.New("verification response too large")
+		got[string(key)] = n
+	}
+	return got, nil
+}
+
+// count decodes the sample count of a vector element, a whole number between
+// zero and maxSamples.
+func (r countSeries) count(maxSamples int) (int, error) {
+	if len(r.Value) != 2 {
+		return 0, errors.New("invalid verification sample")
+	}
+	var value string
+	if e := json.Unmarshal(r.Value[1], &value); e != nil {
+		return 0, e
+	}
+	n, e := strconv.ParseFloat(value, 64)
+	if e != nil || n < 0 || n > float64(maxSamples) || n != float64(int(n)) {
+		return 0, errors.New("invalid verification count")
+	}
+	return int(n), nil
+}
+
+// compareCounts requires the oracle counts of mode to equal the native counts
+// of every series, and the oracle to report no other series with samples.
+func compareCounts(mode string, want map[string]count, got map[string]int) error {
+	for key, n := range want {
+		expected := n.normal
+		if mode == "stale_samples_over_time" {
+			expected = n.stale
 		}
-		var v struct {
-			Status    string   `json:"status"`
-			IsPartial bool     `json:"isPartial"`
-			Warnings  []string `json:"warnings"`
-			Data      struct {
-				ResultType string `json:"resultType"`
-				Result     []struct {
-					Metric map[string]string `json:"metric"`
-					Value  []json.RawMessage `json:"value"`
-				} `json:"result"`
-			} `json:"data"`
+		if got[key] != expected {
+			return fmt.Errorf("source completeness mismatch for %s: native=%d oracle=%d", mode, expected, got[key])
 		}
-		if e = json.Unmarshal(b, &v); e != nil {
-			return fmt.Errorf("incomplete verification JSON: %w", e)
-		}
-		if v.Status != "success" || v.IsPartial || len(v.Warnings) > 0 || v.Data.ResultType != "vector" {
-			return errors.New("verification query did not return complete success vector")
-		}
-		got := map[string]int{}
-		for _, r := range v.Data.Result {
-			if len(r.Value) != 2 {
-				return errors.New("invalid verification sample")
-			}
-			var value string
-			if e = json.Unmarshal(r.Value[1], &value); e != nil {
-				return e
-			}
-			n, e := strconv.ParseFloat(value, 64)
-			if e != nil || n < 0 || n > float64(c.MaxSamples) || n != float64(int(n)) {
-				return errors.New("invalid verification count")
-			}
-			key, _ := json.Marshal(r.Metric)
-			if _, ok := got[string(key)]; ok {
-				return errors.New("duplicate verification series")
-			}
-			got[string(key)] = int(n)
-		}
-		for key, n := range want {
-			expected := n.normal
-			if mode == "stale_samples_over_time" {
-				expected = n.stale
-			}
-			if got[key] != expected {
-				return fmt.Errorf("source completeness mismatch for %s: native=%d oracle=%d", mode, expected, got[key])
-			}
-			delete(got, key)
-		}
-		for _, n := range got {
-			if n != 0 {
-				return fmt.Errorf("source completeness mismatch: oracle includes series absent from native %s", mode)
-			}
+		delete(got, key)
+	}
+	for _, n := range got {
+		if n != 0 {
+			return fmt.Errorf("source completeness mismatch: oracle includes series absent from native %s", mode)
 		}
 	}
 	return nil

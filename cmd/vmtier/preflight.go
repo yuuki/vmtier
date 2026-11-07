@@ -25,7 +25,7 @@ func runPreflightCommand(args []string) error {
 
 func preflightCommand(ctx context.Context, args []string, output io.Writer, now time.Time) error {
 	fs := flag.NewFlagSet("preflight", flag.ContinueOnError)
-	file := fs.String("config", "", "candidate SQLite service configuration (catalog need not exist)")
+	file := fs.String("config", "", "candidate SQLite or PostgreSQL service configuration (catalog need not exist)")
 	start := fs.Int64("start", 0, "inclusive epoch milliseconds of one representative complete window")
 	end := fs.Int64("end", 0, "exclusive epoch milliseconds")
 	tenant := fs.String("tenant", "", "configured tenant (required when more than one)")
@@ -40,8 +40,8 @@ func preflightCommand(ctx context.Context, args []string, output io.Writer, now 
 	if err != nil {
 		return err
 	}
-	if c.Catalog.Type != "sqlite" {
-		return errors.New("preflight sizes the SQLite service rotating-pack pipeline; use a candidate SQLite configuration")
+	if c.Catalog.Type != "sqlite" && c.Catalog.Type != "postgres" {
+		return errors.New("preflight sizes the rotating-pack pipeline; use a candidate SQLite or PostgreSQL configuration")
 	}
 	if err := c.ValidateArchiveRange(*start, *end); err != nil {
 		return err

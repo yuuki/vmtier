@@ -180,7 +180,7 @@ func TestSQLiteMultiPackFailedAttemptNeverPublishes(t *testing.T) {
 			// Discard retry deadlines as on service restart. Previously staged keys
 			// remain orphans; a successful retry publishes a complete fresh set.
 			cfg.Hook = nil
-			restarted := &SQLiteArchiver{Store: a.Store, Catalog: a.Catalog, Config: cfg}
+			restarted := &Archiver{Store: a.Store, Catalog: a.Catalog, Config: cfg}
 			result, err = restarted.RunPass(ctx, testNow.Add(time.Minute))
 			if err != nil || result.CommittedWindows != 1 || result.Samples != 3 {
 				t.Fatalf("restart retry failed: %+v %v", result, err)

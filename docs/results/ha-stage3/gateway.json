@@ -1,0 +1,625 @@
+{
+  "architecture": "PostgreSQL catalog; two fenced serve candidates; two HAProxy gateways behind a stable L4 fixture",
+  "archiver_takeover": {
+    "fencing_token_after": 2,
+    "fencing_token_before": 1,
+    "generation_after": 6,
+    "generation_before": 3,
+    "lease_ttl_seconds": 3,
+    "seconds_to_complete_remaining_windows": 2.9131936949997908
+  },
+  "catalog": {
+    "coverage": [
+      {
+        "end_ms": 1793966400000,
+        "source_id": "hot",
+        "tenant": "1:2"
+      },
+      {
+        "end_ms": 1793966400000,
+        "source_id": "hot",
+        "tenant": "7:9"
+      }
+    ],
+    "generation": 6,
+    "packs": 6,
+    "windows": 6
+  },
+  "checks": [
+    "SIGKILL lease holder during partial coverage; standby acquires expired lease and commits remaining windows exactly once",
+    "both read gateways return exact Cold results from the same catalog through independent RPC connections",
+    "stock-vmselect reconnects to the surviving gateway at the unchanged Cold endpoint; coverage is unchanged",
+    "loss of one HAProxy instance recovers through the second proxy behind the stable L4 fixture",
+    "360 exact Cold/Hot/boundary queries and both tenants metadata match full-data reference after gateway/proxy failover",
+    "both candidates S3 retries pass transport admission; summed admitted attempts equal observed failed GETs and aggregate observed rate/concurrency stay within stated bounds"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance or partial results",
+  "differential_checks": 360,
+  "fixture": {
+    "archive_age_ms": 12571694,
+    "boundary_ms": 1793966400000,
+    "created_at_ms": 1793980771694,
+    "end_ms": 1793973600000,
+    "next_eligible_at_ms": 1793982571694,
+    "start_ms": 1793955600000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "vm_storage_replicas": 2,
+    "window_ms": 3600000
+  },
+  "gateway_failover": {
+    "http_failures_before_recovery": 1,
+    "seconds": 5.317541851999977
+  },
+  "haproxy_version": "HAProxy version 3.0.11-1+deb13u4 2026/10/15 - https://haproxy.org/",
+  "limitations": [
+    "single PostgreSQL server, no DB promotion in this harness",
+    "outer L4 fixture is single; production needs a redundant managed LB or fenced VIP",
+    "loopback Moto; no real Sakura/provider qualification"
+  ],
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "f7d52efaae90c90585832893f926422b457a643722e55c4e13cffbc22a739685",
+      "vmselect": "a1f8fc3b7efd708c734f1817a1eea777319bfb4baae50292994336ded1f9998c",
+      "vmstorage": "4fd7f1fe6fa9e32af350ecbec5517c5a0d7633637b031e4b61fbaad862544131",
+      "vmtier": "76d24b84cf2caf4a70fd5a6994ded91425505ff6d1a8074909004ffc8e0eafb9"
+    },
+    "executor_hostname": "739806f90676",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "cac1e49c92cf6227292f95dda43bec23306d062809a4f95ce3a490a7f9910591",
+    "harness_sha256": {
+      "e2e.py": "a2c2ecb432a254f60f00e3a3dd8a93372f7bfac6afa88db5d27b5e65b64cc237",
+      "e2e_postgres.py": "d5e2af5acfb7cbf2c75f380380f746effe05a4660036603122699eda9d964ee4",
+      "e2e_serve.py": "eafda54f1dad9678b534413b5c836930a04448f2a7d8f9807447539cd479db3a",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    }
+  },
+  "proxy_failover": {
+    "http_failures_before_recovery": 1,
+    "seconds": 5.317898584000432
+  },
+  "recorded_at_utc": "2026-11-06T16:02:01.642847+00:00",
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "/workspace/tools/moto-venv/bin/moto_server",
+          "-H",
+          "127.0.0.1",
+          "-p",
+          "50703"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "moto-s3",
+        "pid": 31554
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:44739",
+          "-vminsertAddr=127.0.0.1:59537",
+          "-vmselectAddr=127.0.0.1:47617",
+          "-storageDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 31558
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:47635",
+          "-vminsertAddr=127.0.0.1:57463",
+          "-vmselectAddr=127.0.0.1:56731",
+          "-storageDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/reference-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-1-full",
+        "pid": 31565
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:47965",
+          "-storageNode=127.0.0.1:59537,127.0.0.1:57463",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 31572
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:48911",
+          "-storageNode=127.0.0.1:47617,127.0.0.1:56731",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 31579
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:44241",
+          "-vminsertAddr=127.0.0.1:46129",
+          "-vmselectAddr=127.0.0.1:37427",
+          "-storageDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 31586
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:51709",
+          "-vminsertAddr=127.0.0.1:43163",
+          "-vmselectAddr=127.0.0.1:46743",
+          "-storageDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/hot-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-1-full",
+        "pid": 31593
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:59735",
+          "-storageNode=127.0.0.1:46129,127.0.0.1:43163",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 31601
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:34311",
+          "-storageNode=127.0.0.1:37427,127.0.0.1:46743",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 31608
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "catalog-init",
+          "-backend",
+          "postgres",
+          "-config",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/config.json",
+          "-id",
+          "ha-e2e"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-init"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/config.json",
+          "-listen",
+          "127.0.0.1:45319",
+          "-http",
+          "127.0.0.1:42019"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -9,
+        "kind": "managed",
+        "name": "serve-0",
+        "pid": 31639
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/config.json",
+          "-listen",
+          "127.0.0.1:42357",
+          "-http",
+          "127.0.0.1:40919"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-1",
+        "pid": 31649
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/config.json",
+          "-listen",
+          "127.0.0.1:45319",
+          "-http",
+          "127.0.0.1:42019"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -9,
+        "kind": "managed",
+        "name": "serve-0-restarted",
+        "pid": 31740
+      },
+      {
+        "command": [
+          "/workspace/tools/haproxy/root/usr/sbin/haproxy",
+          "-db",
+          "-f",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/haproxy-edge-0.cfg"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -9,
+        "kind": "managed",
+        "name": "haproxy-edge-0",
+        "pid": 31750
+      },
+      {
+        "command": [
+          "/workspace/tools/haproxy/root/usr/sbin/haproxy",
+          "-db",
+          "-f",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/haproxy-edge-1.cfg"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -15,
+        "kind": "managed",
+        "name": "haproxy-edge-1",
+        "pid": 31751
+      },
+      {
+        "command": [
+          "/workspace/tools/haproxy/root/usr/sbin/haproxy",
+          "-db",
+          "-f",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/haproxy-l4-fixture.cfg"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -15,
+        "kind": "managed",
+        "name": "haproxy-l4-fixture",
+        "pid": 31752
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:50615",
+          "-storageNode=127.0.0.1:60713",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-search.maxLabelsAPIDuration=30s",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/cold-only-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-only-select",
+        "pid": 31756
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:58493",
+          "-storageNode=127.0.0.1:45319",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-search.maxLabelsAPIDuration=30s",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/direct-select-0"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "direct-select-0",
+        "pid": 31770
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:47385",
+          "-storageNode=127.0.0.1:42357",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-search.maxLabelsAPIDuration=30s",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/direct-select-1"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "direct-select-1",
+        "pid": 31782
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/ha-e2e-20261106-fourth/config.json",
+          "-listen",
+          "127.0.0.1:45319",
+          "-http",
+          "127.0.0.1:42019"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-0-reader-returned",
+        "pid": 31827
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:44241",
+          "-vminsertAddr=127.0.0.1:46129",
+          "-vmselectAddr=127.0.0.1:37427",
+          "-storageDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/hot-storage-0-recent-only",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-recent-only",
+        "pid": 31836
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:51709",
+          "-vminsertAddr=127.0.0.1:43163",
+          "-vmselectAddr=127.0.0.1:46743",
+          "-storageDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/hot-storage-1-recent-only",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-1-recent-only",
+        "pid": 31843
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:59735",
+          "-storageNode=127.0.0.1:46129,127.0.0.1:43163",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-recent-only",
+        "pid": 31850
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:34311",
+          "-storageNode=127.0.0.1:37427,127.0.0.1:46743",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/hot-select-recent-only"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-recent-only",
+        "pid": 31857
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:51321",
+          "-storageNode=127.0.0.1:37427,127.0.0.1:46743,127.0.0.1:60713",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-search.maxLabelsAPIDuration=30s",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/ha-e2e-20261106-fourth/tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "tiered-select",
+        "pid": 31866
+      }
+    ],
+    "selected_GOMAXPROCS": "2",
+    "selection": "default"
+  },
+  "s3_budget": {
+    "cluster": {
+      "max_concurrent_requests": 8,
+      "max_queued_requests": 64,
+      "requests_per_second": 80
+    },
+    "max_attempts_in_sliding_second": 24,
+    "max_replicas": 2,
+    "measurement_tolerance": "2 handler completions for concurrency; concurrency+2 arrivals for one-second transport jitter",
+    "observed_http_attempts": 2822,
+    "outage_attempts_per_process_including_retries": [
+      3.0,
+      3.0
+    ],
+    "outage_queries": [
+      {
+        "error_body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:45319: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:45319\\\": Cold search: operation error S3: GetObject, exceeded maximum number of attempts, 3, https response error StatusCode: 503, RequestID: , HostID: , api error VMTierInjectedBlobOutage: vmtier test S3 proxy\"}",
+        "http_status": 422,
+        "vmtier_object_get_requests_total_delta": 3.0,
+        "vmtier_query_errors_total_delta": 1.0,
+        "vmtier_query_requests_total_delta": 1.0
+      },
+      {
+        "error_body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:42357: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:42357\\\": Cold search: operation error S3: GetObject, exceeded maximum number of attempts, 3, https response error StatusCode: 503, RequestID: , HostID: , api error VMTierInjectedBlobOutage: vmtier test S3 proxy\"}",
+        "http_status": 422,
+        "vmtier_object_get_requests_total_delta": 3.0,
+        "vmtier_query_errors_total_delta": 1.0,
+        "vmtier_query_requests_total_delta": 1.0
+      }
+    ],
+    "peak_proxy_inflight": 1,
+    "per_process": {
+      "max_concurrent_requests": 4,
+      "max_queued_requests": 32,
+      "requests_per_second": 40
+    },
+    "proxy_failed_gets": 6,
+    "scope": "observed workload bounds, not a saturation proof; static allocation is also covered by config tests"
+  },
+  "s3_compatibility_proxy": {
+    "bad_content_md5": 0,
+    "conditional_requests_rejected": 0,
+    "etag_headers_removed": 2816,
+    "put_content_md5": 12,
+    "put_requests": 12,
+    "range_requests": 2428,
+    "requests": 2822,
+    "unavailable_get_requests": 6,
+    "unavailable_requests": 6
+  },
+  "started_at_utc": "2026-11-06T15:59:30.320799+00:00",
+  "status": "passed"
+}

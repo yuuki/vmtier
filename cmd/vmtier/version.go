@@ -53,8 +53,9 @@ func resolveBuild(version, commit string, info *debug.BuildInfo) buildMetadata {
 }
 
 func writeVersion(w io.Writer, b buildMetadata) {
-	fmt.Fprintf(w, "vmtier %s (commit %s, %s %s); JSON catalog v%d; SQLite schema %d; VM %s %s\n",
-		b.Version, b.Commit, b.GoVersion, b.Platform, catalog.Version, catalog.SQLiteSchemaVersion, pack.VMVersion, pack.VMRevision)
+	fmt.Fprintf(w, "vmtier %s (commit %s, %s %s); JSON catalog v%d; SQLite schema %d; PostgreSQL schema %d; VM %s %s\n",
+		b.Version, b.Commit, b.GoVersion, b.Platform, catalog.Version, catalog.SQLiteSchemaVersion,
+		catalog.PostgreSQLSchemaVersion, pack.VMVersion, pack.VMRevision)
 }
 
 // vmtier_build_info identifies the running artifact; its labels are fixed for

@@ -140,7 +140,8 @@ class FileTest(unittest.TestCase):
 
     def test_notice_files_include_nested_licenses_but_not_hidden_trees(self):
         module = self.root / 'module'
-        for name in ('LICENSE', 'NOTICE.txt', 'zstd/COPYING', '.github/workflows/license-check.yml', 'README.md'):
+        for name in ('LICENSE', 'NOTICE.txt', 'zstd/COPYING', '.github/workflows/license-check.yml', 'README.md',
+                     'notice.go', 'notice_test.go', 'license.h'):
             (module / name).parent.mkdir(parents=True, exist_ok=True)
             (module / name).write_text(name)
         self.assertEqual([p.as_posix() for p in release.notice_files(module)], ['LICENSE', 'NOTICE.txt', 'zstd/COPYING'])

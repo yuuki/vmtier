@@ -35,11 +35,14 @@ SEMVER = re.compile(r'^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)'
 DEV_VERSION = re.compile(r'^v0\.0\.0-dev\.g[0-9a-f]{12}$')
 NOTICE_NAME = re.compile(r'^(licen[cs]e|copying|notice|patents)([.-][a-z0-9.-]*)?$', re.IGNORECASE)
 ROOT_LICENSE = re.compile(r'^(licen[cs]e|copying)([.-][a-z0-9.-]*)?$', re.IGNORECASE)
+# Source files such as lib/pq's notice.go match NOTICE_NAME but are code, not notices.
+SOURCE_SUFFIXES = {'.c', '.cc', '.cpp', '.go', '.h', '.java', '.js', '.json', '.mod', '.py', '.rs', '.s', '.sh',
+                   '.sum', '.toml', '.ts', '.yaml', '.yml'}
 TOP_LEVEL_FILES = ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'README.md')
 TOOLCHAIN_NOTICES = {'licenses/go/LICENSE': 'go-LICENSE', 'licenses/go/PATENTS': 'go-PATENTS',
                      'licenses/go/runtime-memmove_amd64.s-NOTICE': 'go-memmove_amd64-NOTICE'}
 MUSL_NOTICE = 'licenses/musl/COPYRIGHT'
-EXAMPLE = 'examples/serve-sakura.json'
+EXAMPLES = ('examples/serve-sakura.json', 'examples/serve-postgres.json')
 REPRODUCIBILITY_SCOPE = (
     'Identical bytes require the same commit, release/Dockerfile base digest, the Alpine package '
     'versions listed under builder.packages, and the module versions in go.sum. Alpine mirrors keep '
@@ -269,7 +272,8 @@ def notice_files(module_dir):
     found = []
     for path in sorted(Path(module_dir).rglob('*')):
         rel = path.relative_to(module_dir)
-        if path.is_file() and NOTICE_NAME.match(path.name) and not any(p.startswith('.') for p in rel.parts):
+        if (path.is_file() and NOTICE_NAME.match(path.name) and path.suffix.lower() not in SOURCE_SUFFIXES
+                and not any(p.startswith('.') for p in rel.parts)):
             found.append(rel)
     if not any(len(rel.parts) == 1 and ROOT_LICENSE.match(rel.name) for rel in found):
         raise ReleaseError(f'no root license file in {module_dir}')
@@ -536,7 +540,8 @@ def package(version, commit, source_date_epoch, base_image, src, out, modcache, 
     for name in TOP_LEVEL_FILES:
         shutil.copyfile(src / name, stage / name)
     (stage / 'examples').mkdir()
-    shutil.copyfile(src / EXAMPLE, stage / EXAMPLE)
+    for example in EXAMPLES:
+        shutil.copyfile(src / example, stage / example)
     shutil.copyfile(out / 'go-version-m.txt', stage / 'go-version-m.txt')
     for target, name in TOOLCHAIN_NOTICES.items():
         (stage / target).parent.mkdir(parents=True, exist_ok=True)
@@ -656,7 +661,7 @@ def smoke(args):
         build_record = json.loads((root / 'BUILD.json').read_text())
         if build_record != published:
             raise ReleaseError('packaged BUILD.json differs from the published build record')
-        required = [*TOP_LEVEL_FILES, EXAMPLE, 'sbom.cdx.json', 'go-version-m.txt', *build_record['notices'],
+        required = [*TOP_LEVEL_FILES, *EXAMPLES, 'sbom.cdx.json', 'go-version-m.txt', *build_record['notices'],
                     *(n for m in build_record['modules'] for n in m['notices'])]
         missing = [name for name in required if not (root / name).is_file()]
         if missing:
