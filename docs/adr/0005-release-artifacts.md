@@ -3,7 +3,10 @@
 ## Status
 
 Accepted. The builder, packaging script, CI check, and tag workflow are
-implemented but have not run on GitHub, and no release has been published. The
+implemented. The CI check and the build and reproducibility jobs of a tagless
+run of the tag workflow have passed on GitHub, and a rebuild outside GitHub
+reproduced the hosted bytes
+([release validation](../release-validation.md)); no tag has been released. The
 procedure and support scope are in [releases](../releasing.md). This addresses
 the artifact part of #19.
 

@@ -22,6 +22,7 @@ Raw artifacts remain under [`results/`](results/) at their existing paths.
 | [recovery-validation.md](recovery-validation.md) | Offline recovery and JSON v2 cutover |
 | [foundation-validation.md](foundation-validation.md) | Foundation checks |
 | [ci-evidence-validation.md](ci-evidence-validation.md) | CI evidence packaging |
+| [release-validation.md](release-validation.md) | Hosted and cross-environment reproducible release builds, release workflow without a tag, systemd deployment example |
 | [validation.md](validation.md) | Historical JSON v2 MVP baseline |
 
 The [all-S3 v1 reports](results/legacy-v1/README.md) belong to a superseded

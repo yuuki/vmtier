@@ -1,0 +1,64 @@
+# Example unit for `vmtier serve` installed from a release archive.
+# Follow docs/getting-started.md#install-a-release-archive: it creates the
+# vmtier user, /etc/vmtier/serve.json and /etc/vmtier/vmtier.env, and
+# initializes the catalog before the first start. Adjust the listeners and
+# paths to the deployment; keep both listeners on a trusted network.
+[Unit]
+Description=vmtier Cold tier for VictoriaMetrics
+Documentation=https://github.com/yuuki/vmtier/blob/main/docs/serve.md
+Wants=network-online.target
+After=network-online.target
+# Startup refuses missing or mismatched state and a second SQLite owner;
+# restarting cannot fix those, so stop retrying after a few attempts.
+StartLimitIntervalSec=10min
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=vmtier
+Group=vmtier
+# S3 credentials and, for PostgreSQL, the DSN variable named by catalog.dsn_env.
+EnvironmentFile=/etc/vmtier/vmtier.env
+# Relative paths in serve.json resolve here; prefer absolute paths.
+WorkingDirectory=/var/lib/vmtier
+ExecStart=/usr/local/bin/vmtier serve -config /etc/vmtier/serve.json \
+    -listen 127.0.0.1:8489 -http 127.0.0.1:8490
+# SIGTERM cancels archive and read work, drains the listeners, then releases
+# the catalog lock. An interrupted attempt never advances coverage.
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+Restart=on-failure
+RestartSec=10s
+LimitNOFILE=65536
+
+# The catalog directory is the only writable path. Add the store path to
+# ReadWritePaths= for a local object store (development only).
+StateDirectory=vmtier
+StateDirectoryMode=0700
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

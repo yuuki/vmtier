@@ -28,6 +28,54 @@ vendor tree. No VM source is patched. Do not edit generated dependencies.
 SQLite is bundled through CGO; no separate SQLite server is required. If Go is
 outside `PATH`, use `make GO=/path/to/go bootstrap build test stock`.
 
+## Install a release archive
+
+A release archive holds a static `linux/amd64` binary that needs no Go, C
+compiler, or shared libraries. Download every asset of one release into an empty
+directory, [verify them](releasing.md#verify-a-release-archive), and read that
+release's [support scope](releasing.md#support-scope); a pre-release such as
+`v0.1.0-rc.1` is not production-supported. Stock VictoriaMetrics, S3, and the
+query frontend come from your existing deployment.
+
+As root, install the binary, a service user, the configuration templates, and
+the [example systemd unit](../examples/systemd/vmtier.service) from the archive:
+
+```sh
+VERSION=v0.1.0-rc.1
+tar -xzf vmtier-$VERSION-linux-amd64.tar.gz
+cd vmtier-$VERSION-linux-amd64
+install -m 0755 vmtier /usr/local/bin/vmtier
+useradd --system --home-dir /var/lib/vmtier --shell /usr/sbin/nologin vmtier
+install -d -m 0700 -o vmtier -g vmtier /var/lib/vmtier
+install -d -m 0750 -g vmtier /etc/vmtier
+install -m 0640 -g vmtier examples/serve-sakura.json /etc/vmtier/serve.json
+install -m 0600 examples/systemd/vmtier.env /etc/vmtier/vmtier.env
+install -m 0644 examples/systemd/vmtier.service /etc/systemd/system/vmtier.service
+```
+
+Edit `/etc/vmtier/serve.json` as in [configure an existing Hot cluster](#configure-an-existing-hot-cluster),
+with an absolute catalog path under `/var/lib/vmtier`, and put the S3 credentials
+in `/etc/vmtier/vmtier.env`. Run [capacity preflight](preflight.md), then
+initialize the catalog as the service user and start the unit:
+
+```sh
+runuser -u vmtier -- /usr/local/bin/vmtier catalog-init -backend sqlite \
+  -config /etc/vmtier/serve.json -path /var/lib/vmtier/catalog-sqlite -id sakura-serve-001
+systemctl daemon-reload
+systemctl enable --now vmtier
+curl --fail http://127.0.0.1:8490/health
+journalctl -u vmtier
+```
+
+The unit runs `serve` as `vmtier` with the file system read-only except
+`/var/lib/vmtier`. `systemctl stop` sends SIGTERM, which drains work and releases
+the catalog lock; stop the unit before offline `inspect`, `verify`, or backup and
+restore, which take the same lock. A local object store outside `/var/lib/vmtier`
+(development only) also needs its directory in `ReadWritePaths=`. For PostgreSQL,
+start from `examples/serve-postgres.json`, set the variable named by
+`catalog.dsn_env` in the environment file, and run `catalog-init -backend postgres`
+with that variable set instead. Then [connect the query frontend](#connect-the-query-frontend).
+
 ## Run a disposable demo
 
 Build the pinned stock VM binaries and run the SQLite local-backend harness:

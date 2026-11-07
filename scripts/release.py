@@ -42,7 +42,8 @@ TOP_LEVEL_FILES = ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'README.md')
 TOOLCHAIN_NOTICES = {'licenses/go/LICENSE': 'go-LICENSE', 'licenses/go/PATENTS': 'go-PATENTS',
                      'licenses/go/runtime-memmove_amd64.s-NOTICE': 'go-memmove_amd64-NOTICE'}
 MUSL_NOTICE = 'licenses/musl/COPYRIGHT'
-EXAMPLES = ('examples/serve-sakura.json', 'examples/serve-postgres.json')
+EXAMPLES = ('examples/serve-sakura.json', 'examples/serve-postgres.json', 'examples/systemd/vmtier.service',
+            'examples/systemd/vmtier.env')
 REPRODUCIBILITY_SCOPE = (
     'Identical bytes require the same commit, release/Dockerfile base digest, the Alpine package '
     'versions listed under builder.packages, and the module versions in go.sum. Alpine mirrors keep '
@@ -539,8 +540,8 @@ def package(version, commit, source_date_epoch, base_image, src, out, modcache, 
     shutil.copy2(out / 'vmtier', stage / 'vmtier')
     for name in TOP_LEVEL_FILES:
         shutil.copyfile(src / name, stage / name)
-    (stage / 'examples').mkdir()
     for example in EXAMPLES:
+        (stage / example).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src / example, stage / example)
     shutil.copyfile(out / 'go-version-m.txt', stage / 'go-version-m.txt')
     for target, name in TOOLCHAIN_NOTICES.items():
@@ -701,12 +702,17 @@ def notes(args):
     build_record = json.loads((dist / f'{base}.build.json').read_text())
     sums = read_checksums(dist)
     checksum_lines = ''.join(f'{digest}  {name}\n' for name, digest in sorted(sums.items()))
+    docs = f"https://github.com/yuuki/vmtier/blob/{build_record['commit']}/docs"
+    stage = ('\n\nThis is a pre-release for evaluation, not a production-supported release.'
+             if '-' in build_record['version'] else '')
     print(f"""## vmtier {build_record['version']}
 
 Static `linux/amd64` build of commit `{build_record['commit']}` for
 VictoriaMetrics OSS `v1.155.0-cluster` only. Read the
-[support scope](https://github.com/yuuki/vmtier/blob/{build_record['commit']}/docs/releasing.md#support-scope)
-before deploying: provider, retention, and ingress qualification are tracked separately.
+[support scope]({docs}/releasing.md#support-scope) before deploying: it lists the
+qualified deployments, their [evidence]({docs}/evidence.md), and the unqualified and
+excluded areas.{stage} To install, follow
+[install a release archive]({docs}/getting-started.md#install-a-release-archive).
 
 ### Verify
 
