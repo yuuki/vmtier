@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"regexp"
+	"regexp/syntax"
 	"strings"
 	"testing"
 
@@ -17,7 +18,9 @@ type fuzzFilter struct {
 
 // expected evaluates f with plain Go semantics: an anchored regexp, missing
 // labels as empty values, and VM's rewrite of a negative ".*" matcher into
-// "label is absent or empty". ok is false where the reference does not apply.
+// "label is absent or empty". ok is false where the reference does not apply:
+// VM simplifies regexps without keeping zero-width assertions, so "0^" matches
+// "0" in stock vmstorage and in the gateway, but in no plain Go regexp.
 func (f fuzzFilter) expected(labels map[string]string) (matched, ok bool) {
 	key := f.key
 	if key == "" {
@@ -31,7 +34,7 @@ func (f fuzzFilter) expected(labels map[string]string) (matched, ok bool) {
 		// VM's literal fast paths treat '.' as any byte, as its Hot index
 		// matcher does; plain Go regexps do not match newlines with '.'.
 		re, err := regexp.Compile("^(?:" + f.value + ")$")
-		if err != nil || strings.Contains(value, "\n") {
+		if err != nil || strings.Contains(value, "\n") || hasZeroWidthAssertion(f.value) {
 			return false, false
 		}
 		matched = re.MatchString(value)
@@ -39,6 +42,30 @@ func (f fuzzFilter) expected(labels map[string]string) (matched, ok bool) {
 		matched = value == f.value
 	}
 	return matched != f.negative, true
+}
+
+// hasZeroWidthAssertion reports whether expr contains an anchor or a word
+// boundary, which VM's regexp simplification drops or treats differently.
+func hasZeroWidthAssertion(expr string) bool {
+	re, err := syntax.Parse(expr, syntax.Perl)
+	if err != nil {
+		return true
+	}
+	var walk func(*syntax.Regexp) bool
+	walk = func(re *syntax.Regexp) bool {
+		switch re.Op {
+		case syntax.OpBeginLine, syntax.OpEndLine, syntax.OpBeginText, syntax.OpEndText,
+			syntax.OpWordBoundary, syntax.OpNoWordBoundary:
+			return true
+		}
+		for _, sub := range re.Sub {
+			if walk(sub) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(re)
 }
 
 // FuzzMatcher checks that the two matching paths of a Cold query agree: the
@@ -57,6 +84,7 @@ func FuzzMatcher(f *testing.F) {
 		{"http_requests_total", "code", "500", fuzzFilter{"", "http_.*", false, true}, fuzzFilter{"code", "5..|404", false, true}, false},
 		{"x", "env", "prod\nnext", fuzzFilter{"env", ".*prod.*", false, true}, fuzzFilter{"env", "", true, false}, true},
 		{"x", "k", "v", fuzzFilter{"__graphite__", "x", false, false}, fuzzFilter{"k", "(", false, true}, false},
+		{"0", "0", "0", fuzzFilter{"0", "0", true, true}, fuzzFilter{"0", "0^", false, true}, true},
 	} {
 		f.Add(seed.name, seed.labelKey, seed.labelValue, seed.a.key, seed.a.value, seed.a.negative, seed.a.isRegexp, seed.b.key, seed.b.value, seed.b.negative, seed.b.isRegexp, seed.or)
 	}
