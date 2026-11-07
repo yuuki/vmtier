@@ -10,8 +10,9 @@ this way.
 
 No release has been published. The CI `release-check` job has reproduced the
 archive on GitHub-hosted runners, a rebuild outside GitHub matched it byte for
-byte, and the release workflow has run without a tag; [release
-validation](release-validation.md) records the runs and checksums. Each
+byte, and a tagless run of the release workflow passed every gate except
+`publish`; [release validation](release-validation.md) records the runs and
+checksums. Each
 release's notes must state the support scope below.
 
 ## Support scope

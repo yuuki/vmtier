@@ -60,15 +60,39 @@ A `workflow_dispatch` run of `release.yml` on `main` exercises every gate except
 
 | Run | Commit | Jobs |
 | --- | --- | --- |
-| [42369091732](https://github.com/yuuki/vmtier/actions/runs/42369091732) | `e498b19` (2026-11-07 11:39 UTC) | `build (first)`, `build (second)`, `reproducibility`: success; `qualify`: running when this was written |
+| [42369091732](https://github.com/yuuki/vmtier/actions/runs/42369091732) | `e498b19` (2026-11-07 11:39–11:59 UTC) | `build (first)`, `build (second)`, `reproducibility`, `qualify`: success; `publish`: skipped (no tag) |
 
 The two builds ran on separate runners. `reproducibility` reported
 `reproducible: 3 artifacts match`. Both uploaded builds (`dist-first`, ID
 `13572947735`; `dist-second`, ID `13572659572`) were downloaded and compared with
 the local rebuild: all three files match, and `SHA256SUMS` again has SHA-256
 `aa484f1f…dcaf3f`. Five builds of `e498b19` in three kinds of environment have
-therefore produced the same bytes. `qualify` installed the verified binary and
-passed `govulncheck -mode=binary` before the stock-VM suites started.
+therefore produced the same bytes.
+
+`qualify` installed the verified binary, passed `govulncheck -mode=binary`, and
+ran the stock-VM suites against it. Artifact `release-e2e-evidence` (ID
+`13573313601`, ZIP SHA-256
+`f43c8668dba0891bdf5020d1a2f0c030c8510f3da5bc25b5bbad290ae07fc99f`, inner
+`e2e-evidence.tar.gz` SHA-256
+`23894324220a633e3a56d95a11e769989fa06c5a3ebbf51484c7a12b69da32c5`) was
+downloaded and extracted with the safety checks of
+[CI evidence packaging](ci-evidence-validation.md). Every report says `passed`,
+and every report's provenance records vmtier binary SHA-256 `6f15664c…d6a893`,
+the packaged binary:
+
+| Suite | Exact comparisons | Report SHA-256 |
+| --- | ---: | --- |
+| `ci-workload` (workload qualification smoke) | 40 | `fa2cdd8cbd504d84b3a3e0bc0c31ee513d0dd04e4e4e9176c403de1112850795` |
+| `ci-local` (JSON v2, local) | 360 | `096a9c74b209abe1d3ff26fa701cf989cc5a44209c9bec5b9bd74b7855a759a2` |
+| `ci-s3` (JSON v2, S3 test double, 2 replicas) | 360 | `b8c0e1fa864a0560b992bcd787f84cc70cf4728dcc077d85c473b9242e57fe36` |
+| `ci-serve-local` (SQLite `serve`, local) | 360 | `618de4aa25e6f84784534120437c33ea62b49c06295400a5f6e52e56bb4c0ef0` |
+| `ci-serve-s3` (SQLite `serve`, S3 test double, 2 replicas) | 360 | `c5af66c686673c25fb6d134a63d092cc94a95da4ec20094671775a92d69ac3c3` |
+| `ci-recovery-local` (offline recovery and JSON v2 cutover) | 480 | `8f93e0045108ef65c790ae8483c76a69149b8b7ae5e81b77eef42c999725deff` |
+| `ci-postgres-ha` (PostgreSQL, fenced archivers, gateway failover) | 360 | `28743735c644f0c8770ab0c2db6aa168e9094e78721c608f8a881990ca02c40b` |
+| `ci-postgres-migration` (stopped SQLite to PostgreSQL) | 360 | `888aa767555bfabca6f99905f3e23360f287dc25fb412308f58e6a90113b356b` |
+
+The S3 suites use a local Moto server behind a compatibility proxy; they are not
+a provider qualification. The artifact is retained until 2027-02-05.
 
 ## Archive contents
 
@@ -115,7 +139,7 @@ stock VM.
 | Supported platform and pinned inputs (Go, C toolchain, CGO, SQLite, VM revision) | [Support scope](releasing.md#support-scope), [build inputs](releasing.md#build-inputs), build record | Met |
 | Clean repeatable builds, checksums, build recipe, limitations | Hosted `release-check`, the cross-environment rebuild above, retained build record, [reproducibility limits](releasing.md#reproducibility-limits) | Met |
 | License, upstream notices, linked dependency information | Archive contents above; `release/licenses.json` gate | Met |
-| Smoke test, maintainer procedure, deployment example | `smoke` in every build job, [maintainer procedure](releasing.md#maintainer-procedure), systemd example above | Met |
+| Smoke test, maintainer procedure, deployment example | `smoke` in every build job, stock-VM suites against the packaged binary in `qualify`, [maintainer procedure](releasing.md#maintainer-procedure), systemd example above | Met |
 | Evidence before claiming release support; excluded areas | [Evidence index](evidence.md), this report; Sakura (#15), natural retention (#16), and enforced ingress lateness (#17) remain open | Not met: pre-releases only |
 
 The first tagged release, its attestations, and its publication remain
