@@ -63,6 +63,11 @@ make build
 Bootstrap downloads checksum-pinned stock VM sources into `.deps/`, verifies
 the committed Go modules, and regenerates `vendor/`. CI uses Go 1.27.3 and Python 3.15.2 on Linux amd64.
 
+Release archives are static `linux/amd64` binaries built in a digest-pinned
+container and reproduced byte for byte by a second build. Each archive ships
+with licenses, a CycloneDX SBOM, and signed provenance. See [releases](docs/releasing.md)
+for verification and the support scope; no release has been published yet.
+
 Follow [getting started](docs/getting-started.md) to run a disposable SQLite demo
 or configure a service for an existing Hot cluster. It covers prerequisites,
 capacity preflight, explicit catalog initialization, and query frontend setup.
@@ -96,7 +101,7 @@ See [guarantees and limits](docs/limits.md) before deployment.
 - [PostgreSQL catalog](docs/postgres-catalog.md), [HA deployment](docs/ha-deployment.md),
   and [HA validation](docs/postgres-ha-validation.md).
 - [Architecture and source map](docs/architecture.md).
-- [Testing](docs/testing.md) and [contributing](CONTRIBUTING.md).
+- [Testing](docs/testing.md), [releases](docs/releasing.md), and [contributing](CONTRIBUTING.md).
 - [Legacy JSON v2 deployment](docs/legacy-json-v2.md).
 
 Licensed under [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) and

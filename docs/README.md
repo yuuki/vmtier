@@ -30,6 +30,7 @@ tests; older VM revisions do not qualify the current dependency set.
 | Archive format and bounds | [Archive packing](archive-packs.md) |
 | Work budgets, memory lifetimes, and metrics | [Memory accounting](query-memory.md) |
 | Build checks, differential suites, and CI artifacts | [Testing](testing.md) |
+| Release artifacts, verification, and maintainer procedure | [Releases](releasing.md) |
 | Contribution and documentation conventions | [Contributing](../CONTRIBUTING.md) |
 
 ## Design and evidence
@@ -38,7 +39,8 @@ tests; older VM revisions do not qualify the current dependency set.
 - Architecture decisions: [native gateway](adr/0001-native-gateway.md),
   [independent catalog](adr/0002-independent-catalog.md),
   [first-release scope](adr/0003-first-release-scope.md),
-  [PostgreSQL HA](adr/0004-postgresql-catalog.md).
+  [PostgreSQL HA](adr/0004-postgresql-catalog.md),
+  [release artifacts](adr/0005-release-artifacts.md).
 - [Related implementations](prior-art.md) and [third-party notices](../THIRD_PARTY_NOTICES.md).
 - [Validation evidence index](evidence.md): scoped reports and retained raw results.
 

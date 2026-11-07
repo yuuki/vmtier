@@ -13,7 +13,7 @@ a C compiler with CGO enabled, make, curl, tar, and sha256sum. Allow enough disk
 space for Go module/build caches and disposable test data. Bootstrap needs network
 access to GitHub source archives and the Go module proxy; S3 test setup also needs
 Python package repositories. Docker and a real S3 account are not required for
-the disposable demos.
+the disposable demos; Docker is needed only to build [release archives](releasing.md).
 
 ```sh
 ./scripts/bootstrap.sh

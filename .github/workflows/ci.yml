@@ -2,6 +2,9 @@ name: test
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   mvp:
     runs-on: ubuntu-24.04
@@ -23,12 +26,14 @@ jobs:
     env:
       VMTIER_TEST_POSTGRES_DSN: postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-go@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/setup-python@v7.1.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.15.2'
       - run: python -m unittest discover -s scripts -p 'test_*.py'
@@ -49,7 +54,7 @@ jobs:
       - name: Package E2E evidence
         if: always()
         run: python scripts/package_evidence.py
-      - uses: actions/upload-artifact@v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: e2e-evidence
@@ -57,3 +62,26 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           compression-level: 0
+
+  # Keeps the release path green between tags: the pinned builder, license
+  # record, static linking, packaging, and byte-for-byte repeatability.
+  release-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15.2'
+      - run: python scripts/release.py build --unit-tests --output .cache/release/first
+      - run: python scripts/release.py build --output .cache/release/second
+      - run: python scripts/release.py compare .cache/release/first .cache/release/second
+      - run: python scripts/release.py smoke .cache/release/first
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-snapshot
+          path: .cache/release/first/
+          if-no-files-found: error
+          retention-days: 7

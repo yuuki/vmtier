@@ -33,7 +33,7 @@ binaries unmodified and record the revision when evaluating an upgrade.
 For runtime changes, run relevant unit tests and the repository checks:
 
 ```sh
-make build test race vet
+make build test race vet vulncheck
 python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
@@ -72,10 +72,15 @@ runtime changes small enough to review and diagnose. Examples must not contain
 credentials or assume access to a contributor's environment. Real-provider tests
 require an explicitly configured disposable target.
 
-Before distributing binaries, preserve the licenses and notices described in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), record linked dependencies, and
-verify a clean build. Local test success does not imply a published release or
-hosted CI run. Publication and deployment are separate maintainer actions.
+Distribute binaries only from the [release workflow](docs/releasing.md). It builds
+a tag twice in the pinned builder and requires identical checksums. It also
+qualifies the packaged binary, attaches licenses, notices, an SBOM, and signed
+provenance, and saves a draft release. The CI `release-check` job fails when a
+change links a new module, drops one, or changes a module's license files, until
+`release/licenses.json` records the reviewed license and digest. Update
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) by hand in the same pull request;
+no check reads it. Local test success does not imply a published
+release or hosted CI run. Publication and deployment are separate maintainer actions.
 
 ## Documentation changes
 
@@ -87,4 +92,4 @@ operational procedures in `docs/operations.md`, and legacy-only procedures in
 Keep design proposals separate from implemented behavior. Add measured reports to
 `docs/evidence.md`; preserve existing result bytes, paths, revisions, and caveats.
 When changing commands or defaults, check `cmd/vmtier`, `internal/config`, examples,
-and CI together. Check relative links and heading anchors after moving content.
+CI, and the release smoke test in `scripts/release.py` together. Check relative links and heading anchors after moving content.

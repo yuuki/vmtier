@@ -15,6 +15,7 @@ import (
 	"github.com/yuuki/vmtier/internal/catalog"
 	"github.com/yuuki/vmtier/internal/config"
 	"github.com/yuuki/vmtier/internal/gateway"
+	"github.com/yuuki/vmtier/internal/pack"
 	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
@@ -111,6 +112,7 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 		"vmtier_go_heap_objects_bytes ", "vmtier_go_heap_alloc_bytes_total ",
 		"vmtier_archive_verifier_bytes 0\n", "vmtier_archive_pack_bytes 0\n",
 		"vmtier_cache_evictions_total 0\n", "vmtier_query_work_peak_bytes 0\n",
+		"vmtier_build_info{version=", "vm_version=\"" + pack.VMVersion + "\"} 1\n",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing %q in %s", want, output)

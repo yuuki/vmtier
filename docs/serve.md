@@ -265,6 +265,7 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_s3_attempts_total`, `vmtier_s3_waited_requests_total`, `vmtier_s3_wait_seconds_total` | Budget admissions and queue/pacing waits |
 | `vmtier_s3_rejected_requests_total`, `vmtier_s3_canceled_requests_total` | Queue refusals and canceled waits |
 | `vmtier_s3_in_flight_requests`, `vmtier_s3_queued_requests` | Current budget occupancy |
+| `vmtier_build_info{version,commit,go_version,vm_version}` | Constant 1; identifies the running build, as `vmtier version` does |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
 RPC endpoints on a trusted network with suitable access controls/TLS termination.

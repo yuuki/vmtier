@@ -47,7 +47,7 @@ func run(args []string) error {
 	case "catalog", "catalog-init":
 		return runCatalog(args)
 	case "version":
-		fmt.Printf("vmtier; JSON catalog v%d; SQLite schema %d; PostgreSQL schema %d; VM %s %s\n", catalog.Version, catalog.SQLiteSchemaVersion, catalog.PostgreSQLSchemaVersion, pack.VMVersion, pack.VMRevision)
+		writeVersion(os.Stdout, currentBuild())
 		return nil
 	case "archive", "gateway", "inspect", "verify":
 		return runConfigured(args)

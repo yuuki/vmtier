@@ -1,0 +1,17 @@
+# Categories for GitHub-generated release notes (gh release create --generate-notes).
+changelog:
+  exclude:
+    labels: [skip-changelog]
+  categories:
+    - title: Compatibility and format changes
+      labels: [breaking-change, compatibility]
+    - title: Features
+      labels: [enhancement]
+    - title: Fixes
+      labels: [bug]
+    - title: Documentation
+      labels: [documentation]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ['*']

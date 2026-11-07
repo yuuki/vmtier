@@ -1,0 +1,150 @@
+{
+  "comment": "Reviewed licenses of everything statically linked into the release binary. scripts/release.py fails when the linked module set, a module's license files (notices_sha256), an embedded C library, or a toolchain notice no longer matches this record. Read the changed files before updating an entry.",
+  "modules": {
+    "github.com/VictoriaMetrics/VictoriaMetrics": {
+      "license": "Apache-2.0",
+      "notices_sha256": "5df108834fd84937c71ed7a5407ca61ff73fb3de83708ee8986b69703502d94e"
+    },
+    "github.com/VictoriaMetrics/easyproto": {
+      "license": "Apache-2.0",
+      "notices_sha256": "485898f3f6fc12bced06db6709db639eae3ef29fbe97193a152bb8ed3f89e8f2"
+    },
+    "github.com/VictoriaMetrics/fastcache": {
+      "license": "MIT",
+      "notices_sha256": "c2f8e2ceabdffc3af44d0e7671275e2f95c1983df699e2fd77cd24c6f43ddfa1"
+    },
+    "github.com/VictoriaMetrics/metrics": {
+      "license": "MIT",
+      "notices_sha256": "f522a7c459f2b43efc7af95ad840ce5a15df27598f64f8bb716c0d00eb8afbf8"
+    },
+    "github.com/VictoriaMetrics/metricsql": {
+      "license": "Apache-2.0",
+      "notices_sha256": "23d8070d80973db107879ff559f827ed6f093335a20660b4de6293490e8d6a69"
+    },
+    "github.com/aws/aws-sdk-go-v2": {
+      "license": "Apache-2.0 AND BSD-3-Clause",
+      "notices_sha256": "8768678c7f57b48c8453be37989baf22581c32307ca72e8e870445327982d058"
+    },
+    "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/credentials": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/internal/configsources": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/internal/v4a": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/service/internal/checksum": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/service/internal/s3shared": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/aws-sdk-go-v2/service/s3": {
+      "license": "Apache-2.0",
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25"
+    },
+    "github.com/aws/smithy-go": {
+      "license": "Apache-2.0 AND BSD-3-Clause",
+      "notices_sha256": "a4171d1c1e12fe5807613890d4a549e287bfa3d94f5a8e12f46a73f328f4d9ef"
+    },
+    "github.com/cespare/xxhash/v2": {
+      "license": "MIT",
+      "notices_sha256": "1983783e6f4a42c0fbdf48c90eee5d63a9b9a1496144ec43cf9a76db3ccd8385"
+    },
+    "github.com/golang/snappy": {
+      "license": "BSD-3-Clause",
+      "notices_sha256": "4e8772b64cfd0ac9bf7680b7552e74ccc14a479278c1277bfcf601f182c8af99"
+    },
+    "github.com/klauspost/compress": {
+      "license": "BSD-3-Clause AND Apache-2.0 AND MIT",
+      "notices_sha256": "a2d7d1dc9c6bd2b97a9443783cba96615b7fbd4a02e6f9a515c1613f9886284f"
+    },
+    "github.com/lib/pq": {
+      "license": "MIT",
+      "notices_sha256": "c572a3b1c3a3331832f04a173dd5dfb7bdafd60811c31b5a46bcb25501ff0e7b"
+    },
+    "github.com/mattn/go-sqlite3": {
+      "license": "MIT AND blessing",
+      "notices_sha256": "6e8f92304ca6eab55c014eac923cd59c9459ae935bf3602a70a26a4b68cec39f"
+    },
+    "github.com/valyala/bytebufferpool": {
+      "license": "MIT",
+      "notices_sha256": "b0e840da82fa2b3848eb186a53a7b272dc4d441af12c0983a816fe9e506131e3"
+    },
+    "github.com/valyala/fastrand": {
+      "license": "MIT",
+      "notices_sha256": "d4c3e41321c442942be51c511001b155e2cbeaa4260d8afcdfd03f4b7adbec4f"
+    },
+    "github.com/valyala/gozstd": {
+      "license": "MIT AND (BSD-3-Clause OR GPL-2.0-only)",
+      "notices_sha256": "4a9aaa887ca7f29212825881229cb3f0a881741de0b02612fa2f41ba59bdee68"
+    },
+    "github.com/valyala/histogram": {
+      "license": "MIT",
+      "notices_sha256": "1613753d77e61265755e94dbf2e3335dd8ed74eeba318869f8f81f2e88d10d1b"
+    },
+    "github.com/valyala/quicktemplate": {
+      "license": "MIT",
+      "notices_sha256": "5dde477e2cdbaeaecf2d99ccc55120aade4324c56ffbcff9727e9d5a224b92b4"
+    },
+    "golang.org/x/sys": {
+      "license": "BSD-3-Clause",
+      "notices_sha256": "2281e21a4229aa20e9ecb05d5350a71a65fe6ab079f992a56b3d769712ef3f66"
+    }
+  },
+  "embedded": {
+    "sqlite": {
+      "module": "github.com/mattn/go-sqlite3",
+      "license": "blessing",
+      "purl": "pkg:generic/sqlite@{version}",
+      "cpe": "cpe:2.3:a:sqlite:sqlite:{version}:*:*:*:*:*:*:*"
+    },
+    "zstd": {
+      "module": "github.com/valyala/gozstd",
+      "license": "(BSD-3-Clause OR GPL-2.0-only) AND MIT",
+      "purl": "pkg:github/facebook/zstd@v{version}",
+      "cpe": "cpe:2.3:a:facebook:zstandard:{version}:*:*:*:*:*:*:*",
+      "notice": {
+        "module_version": "v1.27.0",
+        "path": "release/notices/gozstd-v1.27.0-zstd-NOTICE"
+      }
+    }
+  },
+  "toolchain": {
+    "go": {
+      "license": "BSD-3-Clause AND MIT",
+      "notice": "GOROOT LICENSE and PATENTS, and the Inferno notice of runtime/memmove_amd64.s"
+    },
+    "musl": {
+      "version": "1.2.6",
+      "license": "MIT",
+      "notice": "release/notices/musl-1.2.6-COPYRIGHT"
+    },
+    "libgcc": {
+      "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "notice": "none required for code compiled under the GCC Runtime Library Exception"
+    }
+  }
+}

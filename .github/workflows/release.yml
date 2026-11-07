@@ -1,0 +1,210 @@
+name: release
+# A pushed version tag builds the archive twice on separate runners, requires
+# identical checksums, qualifies the packaged binary with the stock-VM suites,
+# attests provenance and the SBOM, and saves a draft release. Publishing the
+# draft is a separate maintainer action (docs/releasing.md). workflow_dispatch
+# runs the same gates without attesting or creating a release.
+#
+# The reproducibility job fixes the SHA-256 of SHA256SUMS before any job runs
+# test dependencies or the release binary; publish accepts only those bytes and
+# never executes anything from them.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: build (${{ matrix.attempt }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [first, second]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the tagged commit to be on main
+        if: github.event_name == 'push'
+        run: git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15.2'
+      - name: Build release archive in the pinned builder
+        env:
+          ATTEMPT: ${{ matrix.attempt }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          args=()
+          # A commit can carry both an -rc tag and the final tag; name the pushed one.
+          if [[ "$REF_TYPE" == tag ]]; then args+=(--version "$REF_NAME"); fi
+          # Unit tests use the release libc and linker mode; they do not change outputs.
+          if [[ "$ATTEMPT" == first ]]; then args+=(--unit-tests); fi
+          python scripts/release.py build --output dist "${args[@]}"
+      - name: Smoke-test packaged binary
+        run: python scripts/release.py smoke dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  reproducibility:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      sums: ${{ steps.compare.outputs.sums }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15.2'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-first
+          path: first
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-second
+          path: second
+      - name: Compare both builds and record the reviewed checksum list
+        id: compare
+        run: |
+          python scripts/release.py compare first second
+          echo "sums=$(sha256sum first/SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+  qualify:
+    # After reproducibility, so test dependencies cannot replace the artifact first.
+    needs: [build, reproducibility]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: vmtier
+          POSTGRES_PASSWORD: vmtier
+          POSTGRES_DB: vmtier_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vmtier -d vmtier_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      VMTIER_TEST_POSTGRES_DSN: postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15.2'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-first
+          path: dist
+      - name: Build unmodified stock VM for differential suites
+        run: make bootstrap stock
+      - name: Install the verified release binary as .bin/vmtier
+        run: python scripts/release.py smoke dist --install-to .bin/vmtier
+      - name: Scan the release binary for known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -mode=binary .bin/vmtier
+      - run: python -m pip install -r scripts/requirements-e2e.txt
+      - run: sudo apt-get update && sudo apt-get install -y haproxy postgresql-client
+      - name: Exercise workload qualification harness
+        run: python scripts/qualify_workload.py --tenants 2 --series 1000 --history-hours 4 --dense-hours 2 --replicas 2 --workdir .cache/ci-workload
+      - run: python scripts/e2e.py --backend local --workdir .cache/ci-local
+      - run: python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/ci-s3
+      - run: python scripts/e2e_serve.py --backend local --workdir .cache/ci-serve-local
+      - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-serve-s3
+      - run: python scripts/e2e_recovery.py --workdir .cache/ci-recovery-local
+      - run: python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-postgres-ha
+      - run: python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir .cache/ci-postgres-migration
+      - name: Package E2E evidence
+        if: always()
+        run: python scripts/package_evidence.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: release-e2e-evidence
+          path: .cache/e2e-evidence.tar.gz
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [reproducibility, qualify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write # create the draft release and upload its assets
+      id-token: write # request the Sigstore certificate that signs attestations
+      attestations: write # store provenance and SBOM attestations
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15.2'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-first
+          path: dist
+      - name: Accept only the compared and qualified bytes
+        id: dist
+        env:
+          TAG: ${{ github.ref_name }}
+          SUMS: ${{ needs.reproducibility.outputs.sums }}
+        run: |
+          # Hash checks only: this job can sign, so it never runs the release binary.
+          python scripts/release.py verify dist --sums-sha256 "$SUMS"
+          base="vmtier-${TAG}-linux-amd64"
+          test -f "dist/${base}.tar.gz"
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - name: Attest SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/${{ steps.dist.outputs.base }}.tar.gz
+          sbom-path: dist/${{ steps.dist.outputs.base }}.cdx.json
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/release.py notes dist > release-notes.md
+          args=(--draft --verify-tag --generate-notes --title "vmtier ${TAG}" --notes-file release-notes.md)
+          if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$TAG" "${args[@]}" dist/*
