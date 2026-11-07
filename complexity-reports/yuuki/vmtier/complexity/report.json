@@ -1,9 +1,9 @@
 {
   "repository": "yuuki/vmtier/complexity",
   "ref": "refs/heads/main",
-  "commit": "e498b19364b5e115ce57990004e98a55bff35dc9",
+  "commit": "966c94e963e6e9d50c669bd3d7f3ffcf4cfb6f45",
   "base_ref": "refs/heads/main",
-  "timestamp": "2026-11-07T11:33:59.732893814Z",
+  "timestamp": "2026-11-07T13:39:37.606212788Z",
   "custom_metrics": [
     {
       "key": "code_complexity",
