@@ -1,7 +1,7 @@
 # Historical v1 validation procedure
 
 This document records the procedure for the former all-S3 catalog architecture.
-Its prose has been translated into English. The current checkout provides SQLite
+Its prose has been translated into English. The current checkout provides SQLite/PostgreSQL
 `serve` and retained JSON v2 commands, so the commands below do not reproduce the
 v1 results with current sources. See the
 [current testing guide](../../testing.md) for the supported procedure.

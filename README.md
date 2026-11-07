@@ -1,112 +1,103 @@
 # vmtier
 
 Archive older VictoriaMetrics samples to S3-compatible storage and query Hot and
-Cold data through an unmodified stock vmselect.
+Cold data through an unmodified stock vmselect. vmtier is an independent,
+Apache-2.0-licensed project, not an official VictoriaMetrics product.
 
-vmtier is an independent, Apache-2.0-licensed project, not an official
-VictoriaMetrics product. It is **under development**: the SQLite service works
-end to end in local differential tests, with scoped workload and recovery
-measurements. Real S3 providers and production deployment conditions still need
-qualification.
-
-## How it works
-
-`vmtier serve` runs an age-based archiver, a SQLite catalog, and a vmstorage-compatible
-read gateway in one process. Stock vmselect evaluates MetricsQL across Hot
-vmstorage and the Cold gateway.
+**Status: under development.** `vmtier serve` supports a single-owner SQLite
+deployment or a PostgreSQL catalog with multiple Cold read gateways and one
+leased, fenced archiver. Local differential, recovery, and HA tests are available;
+real Sakura Object Storage, natural retention expiry, and release qualification remain open.
+See [validation evidence](docs/evidence.md) for measured scope and provenance.
 
 Compatibility is pinned to **VictoriaMetrics OSS v1.155.0-cluster**, commit
 [`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/cab3d5fbeeedd5d0374c1dabde93939af4c2499c).
-Other versions and single-node VictoriaMetrics are outside the validated scope.
-Existing catalogs and packs with the previous VM pin cannot be opened by this
-version; follow the [upgrade procedure](docs/compatibility.md#codec-and-upgrades)
+Other versions' native codecs and read RPCs are unsupported; single-node VM
+integration is out of scope. Catalogs and packs from the previous VM pin cannot
+be opened by this version. Follow the [upgrade procedure](docs/compatibility.md#codec-and-upgrades)
 before changing a deployment.
+
+## How it works
+
+The SQLite deployment shares one process-local S3 request budget:
 
 ```mermaid
 flowchart LR
-  W[vminsert] --> H[stock vmstorage: Hot]
-  H --> E[Hot-only stock vmselect]
-  E -->|native export| A
-  subgraph Service[vmtier serve]
-    A[Archiver] -->|verified publication| C[(SQLite catalog)]
-    G[Cold read gateway] --> C
-    A --> B[Shared S3 request budget]
-    G --> B
+  Ingest[Stock vminsert] --> Hot[Stock vmstorage: Hot]
+  Query[Stock vmselect: query frontend] --> Hot
+  Query --> Gateway
+  Export[Hot-only stock vmselect] --> Hot
+  subgraph Service[One vmtier serve process]
+    Archive[Archive scheduler and verifier] --> Catalog[(SQLite catalog)]
+    Gateway[Cold read RPC gateway] --> Catalog
+    Archive --> Budget[Shared S3 request budget]
+    Gateway --> Budget
   end
-  B --> S[S3: native packs and indexes]
-  Q[stock vmselect: query frontend] --> H
-  Q --> G
+  Archive --> Export
+  Budget --> S3[S3: immutable native packs and indexes]
 ```
 
-The archiver checks native exports against an independent raw-data query and
-verifies uploaded objects before publishing coverage. SQLite on persistent local
-storage is the authority for committed windows. S3 needs ordinary PUT, GET, and
-Range GET; conditional PUT, ETags, and LIST are not required. The gateway decodes,
-clips, and rebuilds blocks for stock vmselect on reads. SQLite archive windows
-can span multiple bounded packs; the reader uses LRU caching, shared concurrent
-reads, adjacent Range GETs, and bounded query admission.
+The archiver verifies exported samples against an independent raw response and
+reads uploaded objects back before publishing coverage. Stock vmselect evaluates
+MetricsQL; the gateway reads native packs, decodes and clips samples, and rebuilds
+wire blocks. SQLite stores authoritative publication state on persistent local
+disk. S3 needs ordinary PUT, GET, and Range GET; conditional PUT and ETags are not
+required.
+
+With a [PostgreSQL catalog](docs/postgres-catalog.md), gateways share authoritative
+metadata and the active archiver holds a database lease. An operator-managed
+PostgreSQL HA endpoint and redundant Cold endpoint provide deployment redundancy;
+see [HA deployment](docs/ha-deployment.md) for fencing and aggregate S3 budgets.
 
 ## Get started
 
-On Linux with Go, Python 3, a C toolchain, and curl installed:
+Build from the repository root with Go 1.27.3, CGO and a C compiler,
+Python 3.15.2, curl, and standard Linux build tools:
+
 ```sh
-git clone https://github.com/yuuki/vmtier.git
-cd vmtier
-make bootstrap build
+./scripts/bootstrap.sh
+make build
 .bin/vmtier version
 ```
 
-See [Getting started](docs/getting-started.md) for exact prerequisites and a
-self-contained local demo with disposable stock VM processes. For an existing
-cluster, follow the [service guide](docs/serve.md) and [configuration examples](examples/README.md).
-Run [capacity preflight](docs/preflight.md) on representative busy windows before
-initializing the catalog. Configuration requires an explicit coverage origin and
-an externally enforced lateness policy before startup. `inspect` and `verify`
-support SQLite as offline commands; stop `serve` before using them or the
-[catalog maintenance commands](docs/sqlite-catalog.md). Standalone `archive` and
-`gateway` commands remain JSON v2 tools and reject SQLite configurations.
+Bootstrap downloads checksum-pinned stock VM sources into `.deps/`, verifies
+the committed Go modules, and regenerates `vendor/`. CI uses Go 1.27.3 and Python 3.15.2 on Linux amd64.
 
-## Operating boundaries
+Follow [getting started](docs/getting-started.md) to run a disposable SQLite demo
+or configure a service for an existing Hot cluster. It covers prerequisites,
+capacity preflight, explicit catalog initialization, and query frontend setup.
+The [configuration example guide](examples/README.md) explains which template to
+use and which deployment values to supply.
+For PostgreSQL, follow the [catalog guide](docs/postgres-catalog.md) or
+[stopped-SQLite migration procedure](docs/postgres-migration.md).
 
-- Run one service owner with persistent local SQLite state. There is no HA or
-  automatic failover. Catalog loss cannot be repaired from an S3 listing alone;
-  [offline backup and restore](docs/sqlite-catalog.md) are provided.
-- Enforce bounded lateness on every ingestion path. With archive age H, lateness L,
-  Hot retention R, and window width W, require `H > L >= 0` and
-  `R > H + safety_margin + W`. vmtier does not shorten Hot retention or prevent
-  data loss during an unbounded outage.
-- Tenants, sources, coverage origin, and window policy are fixed by the catalog.
-  Guaranteed history begins at `coverage_start_ms`; missing required Cold coverage
-  fails the query. Hot and Cold are complementary nodes, so both must participate
-  in queries with partial responses disabled.
-- Pack rotation keeps objects bounded; whole-window input, physical sample counts,
-  and query work still have limits. Query admission is logical accounting, not a
-  process RSS ceiling. See [architecture and limits](docs/architecture.md),
-  [memory accounting](docs/query-memory.md), and the [measured local workload](docs/workload-validation.md).
-- Compaction, GC, Cold TTL, backfill, deletion, multipart upload, and downsampling
-  are not implemented.
-- Keep RPC and HTTP endpoints on trusted networks. Restrict mutation APIs upstream.
-  S3 request limits cover a bucket only when the service is its sole client.
+## Operational boundaries
 
-Local and Moto-backed tests cover exact query results, metadata, restart,
-publication, and failure behavior. Separate local runs cover offline recovery,
-87,600 catalog windows, and a conditional ten-tenant/5,000-series-per-tenant
-workload with two dense hours and two Hot replicas; the larger 10,000-series
-target exceeded the default query budget.
-These measurements do not establish real Sakura/AWS compatibility, universal
-production throughput, or natural retention-expiry behavior.
-[Validation records](docs/README.md#validation-records) identify each tested revision
-and its limits.
+- Use one SQLite service owner, or PostgreSQL gateways with one leased archiver.
+  Both require fixed tenants and sources and 1 ms deduplication.
+- Enforce ingestion lateness externally. Archive age, lateness, and retention must
+  satisfy the [time contract](docs/limits.md); vmtier does not delete Hot data or
+  change Hot retention.
+- Preserve the catalog as well as object data. S3 listings cannot reconstruct
+  authoritative coverage. SQLite maintenance is offline; PostgreSQL requires
+  database-native backups and coordinated failover.
+- Missing required coverage and object errors fail queries. Hot and Cold are
+  complementary storage nodes, so the frontend must not skip either as a replica.
+- GC, Cold TTL deletion, compaction, downsampling, and backfill correction are
+  not implemented. Resource budgets are not process RSS guarantees.
+
+See [guarantees and limits](docs/limits.md) before deployment.
 
 ## Documentation and contributing
 
-- [Documentation index](docs/README.md) — guides, references, designs, and evidence.
-- [Service operation](docs/serve.md) — configuration, scheduling, monitoring, and shutdown.
-- [Architecture](docs/architecture.md) and [compatibility](docs/compatibility.md) — current implementation and protocol boundaries.
-- [Contributing](CONTRIBUTING.md) and [testing](docs/testing.md) — development setup, checks, and pull requests.
-- [First-release roadmap](docs/design.md) — remaining implementation and qualification work.
-- [Legacy JSON v2 operation](docs/operations.md) — retained separate-process commands and migration context.
+- [Documentation index](docs/README.md): guides, reference, design, and evidence.
+- [Service guide](docs/serve.md) and [operations](docs/operations.md).
+- [Catalog backup, restore, and migration](docs/sqlite-catalog.md).
+- [PostgreSQL catalog](docs/postgres-catalog.md), [HA deployment](docs/ha-deployment.md),
+  and [HA validation](docs/postgres-ha-validation.md).
+- [Architecture and source map](docs/architecture.md).
+- [Testing](docs/testing.md) and [contributing](CONTRIBUTING.md).
+- [Legacy JSON v2 deployment](docs/legacy-json-v2.md).
 
-The project uses the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) and
-[third-party notices](THIRD_PARTY_NOTICES.md) for attribution and redistribution
-requirements. Repository documentation and code comments are written in English.
+Licensed under [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) and
+[third-party notices](THIRD_PARTY_NOTICES.md) for dependency attribution.

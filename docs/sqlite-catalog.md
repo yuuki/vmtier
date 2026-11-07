@@ -1,7 +1,8 @@
 # SQLite catalog, maintenance, and migration
 
-[Documentation index](README.md) · [Service guide](serve.md) ·
-[Compatibility](compatibility.md)
+For a stopped SQLite-to-PostgreSQL cutover preserving existing S3 objects, follow
+the [PostgreSQL migration guide](postgres-migration.md). The source directory must
+remain offline during import and its old supervisor must stay disabled afterward.
 
 SQLite is the catalog backend for the single-owner [`serve` runtime](serve.md).
 The service owns the repository, archive scheduler, and read RPC gateway for its
@@ -14,12 +15,11 @@ and `verify`. Standalone `archive` and `gateway` reject SQLite configurations; t
 remain part of the legacy JSON v2 deployment. The catalog HTTP service also remains
 a JSON v2 tool. SQLite has no public catalog HTTP API.
 
-The [SQLite foundation report](sqlite-catalog-validation.md) and
-[service integration report](serve-validation.md) preserve the original checks.
-Later evidence includes [catalog capacity](catalog-capacity-validation.md),
-[archive/reader integration](implementation-validation.md), and
-[offline recovery](recovery-validation.md). The [first-release design](design.md)
-tracks remaining qualification.
+The [stage 1 validation](sqlite-catalog-validation.md) records the original repository
+and offline-command checks. The [evidence index](evidence.md) links subsequent
+implementation and recovery reports at their recorded revisions; older reports
+do not qualify a new VM dependency pin. Remaining qualification and acceptance
+work is tracked in the [first-release design](design.md).
 
 ## Choose an operation
 
@@ -31,10 +31,12 @@ tracks remaining qualification.
 | Scrub every referenced index and payload | `verify -config FILE` | Required |
 | Migrate a stopped local JSON v2 catalog | `catalog-import` | Required to validate indexes |
 | Create or restore a consistent backup | `catalog-backup`, `catalog-restore` | None |
+| Migrate stopped SQLite state to PostgreSQL | [`catalog-import-postgres`](postgres-migration.md) | None; metadata-only import |
 
-All commands are offline. For a live service, use `/ready` and `/metrics` instead.
-The examples below run from the repository root. Relative paths resolve from the
-current working directory, including paths inside configuration files.
+These commands require an offline SQLite directory. For a live SQLite service,
+use `/ready` and `/metrics` instead. The examples below run from the repository
+root. Relative paths resolve from the current working directory, including paths
+inside configuration files.
 
 ## Build and initialization
 
@@ -42,9 +44,9 @@ Catalogs and packs also pin the VM release and revision. A dependency upgrade to
 new VM pin requires the [VM upgrade procedure](compatibility.md#codec-and-upgrades);
 SQLite backup/restore or JSON import does not change that compatibility contract.
 
-Follow [Getting started](getting-started.md) to build. Bootstrap downloads and
-verifies the pinned `go-sqlite3 v1.14.53` module through the committed Go module
-checksums and regenerates vendor files. CGO compiles bundled SQLite 3.54.1, so a C
+Use normal bootstrap/build commands. Bootstrap downloads and verifies the pinned
+`go-sqlite3 v1.14.53` module through the committed Go module checksums and
+regenerates vendor files. CGO compiles bundled SQLite 3.54.1, so a C
 compiler is required. The default build needs no separate SQLite service or system
 SQLite library. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 
@@ -118,9 +120,9 @@ old 10,000-entry archive lifetime limit.
 Stop the old archiver and catalog service, retaining their state and objects for
 rollback. The importer reads the local v2 directory, not its HTTP API. Configuration
 `catalog.id` pins the source identity, and the configured policy must match it.
-In this example, `legacy.json` is the old deployment's complete configuration,
-not the new SQLite configuration. The destination must not exist; its parent
-must already exist. Import requires a new catalog ID distinct from the source ID.
+Here `legacy.json` is the source's complete configuration, not the new SQLite
+configuration. The destination must not exist, its parent must already exist,
+and its new ID must differ from the source ID.
 
 ```sh
 mkdir -p .state
@@ -222,7 +224,10 @@ VM or independently prove that an empty publication represents an empty source.
 
 This is a single-host component requiring correct local filesystem locks and sync.
 A directory lock does not exclude another host or directory targeting the same
-bucket. HA, distributed fencing, online backups, and automatic restore are absent.
+bucket. This SQLite backend has no HA, distributed fencing, online backups, or
+automatic restore. Use the [PostgreSQL service](postgres-catalog.md) for renewable
+archiver ownership and multiple gateways, and the [stopped-writer importer](postgres-migration.md)
+to preserve existing metadata and objects when moving between backends.
 
 The repository and reader support multiple packs and independent streams. The
 SQLite archiver publishes independently per tenant/source/window, rotates bounded

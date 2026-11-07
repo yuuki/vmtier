@@ -1,81 +1,53 @@
-# Legacy JSON v2 deployment, operation, and recovery
+# Operations and recovery
 
-The command procedures on this page describe the retained **JSON v2 MVP**, which uses separate archiver, catalog, and gateway processes. For the current SQLite runtime, use the [`serve` guide](serve.md) and [SQLite maintenance and migration guide](sqlite-catalog.md). The lateness, retention, immutable-object, and trusted-network requirements apply to both runtimes. See the [first-release design](design.md) for implemented stages and remaining work, and [compatibility](compatibility.md) for protocol coverage.
+This runbook covers shared service behavior and the backend-specific maintenance
+boundaries. Start with [getting started](getting-started.md), the
+[SQLite service](serve.md), or the [PostgreSQL service](postgres-catalog.md).
+For multiple gateways, database failover, and archiver fencing, follow
+[HA deployment](ha-deployment.md).
+Separate catalog/archiver/gateway commands and manual JSON state recovery belong
+to the [legacy JSON v2 guide](legacy-json-v2.md).
 
-## Commands and configuration
+## Deployment requirements
 
-Build from source using [Getting started](getting-started.md). The examples below
-use [config.json](../examples/config.json), which selects an S3-compatible endpoint
-and an HTTP JSON v2 catalog. Copy it to `config.json` in the repository root, then
-set the object location, sources, tenants, timing policy, coverage origin, and
-lateness assertion for your deployment. See the [example guide](../examples/README.md).
+For SQLite, use persistent local catalog storage and one owner for the bucket.
+Its directory lock only excludes owners using that directory on the same host.
+For PostgreSQL, use a stable writable-primary endpoint, shared S3, and one logical
+redundant Cold RPC endpoint. The database lease fences archiver publication; the
+operator must separately enforce database-primary fencing and the maximum number
+of S3 clients sharing the configured budget. Keep RPC and HTTP listeners on a
+trusted network with access controls and TLS termination as appropriate. Neither
+service backend exposes a catalog HTTP mutation API.
 
-```sh
-.bin/vmtier catalog-init -path .state/catalog -id demo-v2
-.bin/vmtier catalog -path .state/catalog -id demo-v2 -http 127.0.0.1:8491
-# Keep the catalog running and use another shell for these commands.
-.bin/vmtier archive -config config.json
-.bin/vmtier gateway -config config.json -listen 127.0.0.1:8489 -http 127.0.0.1:8490
-# While the gateway is running, use another shell for inspection/verification.
-.bin/vmtier inspect -config config.json
-.bin/vmtier verify -config config.json
-```
+Archive sources must be Hot-only stock vmselect endpoints covering all Hot shards.
+Keep tenant IDs, source IDs/URLs, and shard topology stable. Enforce the lateness
+bound on every ingestion path before setting `lateness_enforced=true`. Block
+mutation APIs at the query frontend. Validate the [time and coverage contract](limits.md)
+and run [preflight](preflight.md) before initializing a catalog.
 
-`catalog-init` defaults to the JSON backend. The HTTP client configuration must use
-`{"type":"http","url":"http://127.0.0.1:8491","id":"demo-v2"}`. For same-host
-development without the HTTP service, use
-`{"type":"local","path":".state/catalog","id":"demo-v2"}` instead.
-`catalog.type: "local"` is JSON v2, not SQLite.
+## Maintenance and backup
 
-`archive` is a one-shot command for an external scheduler. Optional
-`-start <epoch-ms> -end <epoch-ms>` bounds select a half-open interval `[start,end)`;
-both bounds must be window-aligned and satisfy age and retention checks.
-Without bounds it selects incomplete eligible windows from committed coverage.
-The standalone `archive` and `gateway` commands do not accept SQLite configs.
+For SQLite, stop `serve` before inspection, payload verification, import, backup,
+or restore.
+Use the [offline catalog commands](sqlite-catalog.md); they acquire the same lock
+and refuse a live owner. Allow enough Hot retention headroom for downtime and
+catch-up. Copy complete backups to another failure domain. Do not copy only the
+main file of a live SQLite database: committed state can still be in the WAL.
 
-## Initial deployment
+Restore into a fresh directory with a new catalog ID, preserve the saved contract
+and blob locator, and isolate the old owner before restarting. The scheduler
+rearchives missing windows only while Hot still retains them. Metadata backups
+cannot recover missing object bytes or expired source data. Compare Cold-only
+and Hot/Cold boundary queries before cutover; see [recovery evidence](recovery-validation.md)
+for the tested scenarios and their limits.
 
-1. Pin stock VM to the supported version and inventory every tenant, export source, shard, and replica. Use a Hot-only export endpoint, never the combined query frontend.
-2. Confirm Hot retention and verify that the oldest unarchived window can still be queried and exported. Do not shorten retention during deployment or commit a lost interval as empty.
-3. Enforce the lateness bound L on every ingestion, import, and backfill path. Restrict direct access to vminsert and VM. Include clock error, queues, and retries in the bound; without this contract, age alone cannot establish that a window is immutable.
-4. Require `H > L` and `R > H + safety_margin + window`, where H is archive age and R is Hot retention. Recovery must complete within the available headroom. Run one writer. `lateness_enforced` acknowledges this external contract; it does not implement enforcement. Use Go duration syntax, such as `720h`, not `30d`.
-5. Give the archive a dedicated S3 prefix and least-privilege access. The adapter uses ordinary PUT with Content-MD5, GET, and Range GET; it does not require conditional PUT, ETags, or LIST. Read-back SHA-256 verification precedes publication. Use a storage class that permits immediate reads.
-6. Explicitly initialize the catalog on persistent storage, start its service, and connect all clients to the same catalog ID. Run `vmtier archive -config FILE`, verify packs and indexes, and inspect tenants, sources, and coverage. The catalog must not advance until every source is complete. Schedule subsequent runs with a single-writer external scheduler.
-7. Register Hot and the Cold gateway with the query vmselect. Set `replicationFactor=1`, `globalReplicationFactor=1`, `skipSlowReplicas=false`, `denyPartialResponse=true`, `disableCache=true`, and `dedup.minScrapeInterval=1ms` using the flags in the [service guide](serve.md#connect-stock-vmselect).
-8. In an isolated environment, compare Cold-only and boundary queries with a complete reference VM and confirm that a missing Cold object produces an error before deciding to use the deployment.
-
-Set `coverage_start_ms` to the start of the guaranteed history, in epoch milliseconds, aligned to a window boundary. Do not move it forward merely to pass readiness. Earlier history is outside Cold's completeness guarantee.
-
-Without explicit bounds, `archive -config FILE` selects the minimum contiguous coverage across all configured tenants and sources, initially `coverage_start_ms`, through `floor((now-H)/window)*window`. It is a no-op when all currently required windows are committed. Because the catalog is the checkpoint, the same command can resume after process restart. Explicit `-start <ms> -end <ms>` bounds remain subject to alignment, age, and retention checks.
-
-For example, a dedicated host can use cron with a fixed working directory and writer lock. Choose the interval to fit the window size and safety margin.
-
-```cron
-*/5 * * * * cd /srv/vmtier && flock -n /srv/vmtier/archive.lock .bin/vmtier archive -config /etc/vmtier.json >> /var/log/vmtier-archive.log 2>&1
-```
-
-vmtier does not install this schedule. Monitor exit codes and structured logs, distinguishing a skipped lock acquisition from an archive failure.
-
-Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`; do not put them in configuration files, logs, or Git. The client reads these variables directly; AWS profiles and instance-role discovery are not supported. Keep TLS verification enabled. The local backend is for development and does not provide S3 durability guarantees.
-
-## Catalog initialization and placement
-
-```sh
-.bin/vmtier catalog-init -path /srv/vmtier/catalog -id cluster-a-catalog-001
-.bin/vmtier catalog -path /srv/vmtier/catalog -id cluster-a-catalog-001 -http 127.0.0.1:8491
-```
-
-`catalog-init` only creates new state and refuses an existing catalog. Normal startup rejects missing state and ID mismatches; it does not recover by creating an empty catalog. The ID is not a secret, but must be stable and unique to distinguish authorities and recovery instances.
-
-The configuration uses `type`, `url`, and `id` for HTTP access, or `type`, `path`, and `id` for local development. The first commit fixes the contract: coverage origin, window size, deduplication at 1 ms, archive age H, allowed lateness L, tenant set, and source IDs/URL hashes. Subsequent changes are rejected, including moving the coverage origin forward to hide a gap.
-
-Changing H or L can reopen an archived window for writes. For example, changing `H=3h,L=30m` to `H=6h,L=5h` permits writes into previously sealed history. Archive, query, and readiness reject this configuration mismatch. Such a change needs a separate migration that preserves old windows; the MVP does not provide it. Contract validation does not prove that ingestion actually enforces L.
-
-The catalog API is intended for a trusted network. Set the same optional `VMTIER_CATALOG_TOKEN` on server and clients for bearer authentication. Use a TLS proxy and network access controls outside loopback. Do not embed the token in configuration, URLs, or logs. Commit authorization does not replace trust in the writer's export-completeness checks.
-
-Use persistent local storage that correctly supports file and directory fsync, atomic rename, and flock. Do not store authority state in an ephemeral container layer. NFS and other shared filesystems are unverified. There is no HA or automatic failover, and an empty replacement authority on another host is not a recovery mechanism. Queries fail while the catalog is unavailable.
-
-For deployment, initialize immediately below a pre-existing, durable parent directory. Initialization syncs the catalog directory and its immediate parent, not every newly created ancestor in a nested path. Initialization and commit behavior under actual power loss have not been tested.
+PostgreSQL `inspect` and `verify` can run online. Reserve an S3 budget share for
+verification; it checks the initially observed coverage while archiving can
+continue. Use PostgreSQL native backups and WAL/PITR, test restoration, and fence
+the old authority before promoting or switching databases. Database replication
+is not a backup, and a metadata restore cannot restore missing payloads. For
+SQLite-to-PostgreSQL cutover, use the [stopped-writer migration](postgres-migration.md);
+a stale SQLite catalog cannot resume after PostgreSQL publication advances.
 
 ## Sakura Object Storage
 
@@ -84,6 +56,12 @@ The deployment requirement assumes conditional PUT is unavailable on Sakura Obje
 The adapter sends Content-MD5 in line with the checksum scope in the [official API documentation](https://manual.sakura.ad.jp/cloud/objectstorage/api.html). It independently verifies stored content with read-back GET and SHA-256. The [April 9, 2026 announcement](https://cloud.sakura.ad.jp/news/2026/04/09/objectstorage-checksum/) reports removal of earlier SDK checksum compatibility restrictions; an older AWS SDK is not a deployment requirement.
 
 The documented bucket limits are 100 requests/second and 100 concurrent requests for the [standard plan](https://manual.sakura.ad.jp/cloud/objectstorage/about.html), and 10 requests/second with one concurrent request for the [archive plan](https://manual.sakura.ad.jp/cloud/objectstorage/archiveplan.html). The legacy separate-process MVP cannot share a bucket request budget across gateways and archivers. The SQLite `serve` runtime now shares one paced budget across archival, reads, metadata, verification, and every SDK retry attempt, defaulting to 80 requests/second, eight in flight, and 64 queued requests. An archive-plan candidate is eight requests/second, one in flight, and 64 queued; it remains unqualified on the actual provider. All clients using the bucket must fit the aggregate provider limits; a dedicated prefix alone does not isolate them.
+
+For PostgreSQL, the configured S3 totals are aggregate budgets divided by
+`service.max_replicas`. Include rolling replacements and online verification in
+that maximum; static allocation does not discover or exclude extra clients. See
+[budget allocation](ha-deployment.md#static-s3-budget-allocation) for rounding, pacing,
+and failure behavior.
 
 No actual Sakura bucket or credentials have been used to validate connectivity, SigV4, visibility after PUT, Range GET, quotas, recovery, or performance. The local Moto backend and proxy that rejects conditional requests and removes ETags approximate these API constraints; they are not service certification. See the [SQLite service example](../examples/serve-sakura.json), [service budget metrics](serve.md), and [legacy JSON v2 example](../examples/sakura.json).
 
@@ -103,18 +81,55 @@ The gateway exposes `/health`, `/ready`, and `/metrics`. `/ready` returns HTTP 5
 | `vmtier_object_get_requests_total`, `vmtier_object_range_requests_total`, `vmtier_object_download_bytes_total`, `vmtier_object_put_requests_total` | Per-process object-store I/O. |
 | `vmtier_cache_hits_total`, `vmtier_cache_misses_total` | Immutable index and block cache activity. |
 
-For the legacy one-shot archiver, an external scheduler collects structured JSON logs, exit code, and standard output. The SQLite service exposes archive metrics directly. Metrics also consult the catalog. Monitor catalog health, persistent-disk capacity and I/O errors, and backup status separately.
+For the legacy one-shot archiver, an external scheduler collects structured JSON
+logs, exit code, and standard output. Both service backends expose archive metrics
+directly; PostgreSQL also exposes `vmtier_archive_leader` for local lease ownership.
+Metrics also consult the catalog. Monitor catalog health, persistent-disk capacity
+and I/O errors, and backup status separately.
 
 Retention headroom is the finite time until the oldest unarchived sample can no longer be queried or exported. An alert does not extend it. VM can exclude samples through its retention filter even while their physical parts remain on disk, so physical file existence is not extra recovery time.
 
 ### Service capacity and failure accounting
 
-The current [service capacity and failure reference](serve.md#service-capacity-and-failure-accounting)
-documents SQLite catalog totals, failed-window counters, cache accounting, and
-query admission/refusals. Cache and query-admission metrics also apply to the
-legacy JSON v2 gateway; catalog capacity and failed-window metrics are SQLite only.
-See [catalog capacity measurements](catalog-capacity-validation.md) for scrape
-costs and [query memory accounting](query-memory.md) for component limits.
+Both service backends expose cache, query admission, and failed-window signals.
+Catalog size/count/committed-byte observations below are implemented for SQLite
+only; PostgreSQL reports `vmtier_catalog_capacity_available=0` and omits those
+unavailable catalog gauges. Use PostgreSQL monitoring for its storage usage.
+These observations do not list the blob backend:
+
+| Metric | Accounting |
+| --- | --- |
+| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
+| `vmtier_catalog_committed_object_bytes{kind="data\|index"}` | Sum of byte lengths in committed pack descriptors, retained across restart. Excludes unreferenced/failed attempts, other prefixes, provider versions, and provider overhead; this is **not measured bucket usage**. |
+| `vmtier_catalog_windows`, `vmtier_catalog_packs` | Committed logical windows (including empty windows) and immutable pack references. |
+| `vmtier_catalog_capacity_available` | One only when the current bounded observation succeeds. Capacity gauges are omitted on failure, rather than reporting stale values or false zeroes. |
+| `vmtier_cache_used_bytes`, `vmtier_cache_limit_bytes`, `vmtier_cache_entries`, `vmtier_cache_inflight_reads` | Retained immutable raw bytes plus keys and a conservative per-entry bookkeeping allowance; excludes allocator/GC overhead, transient parsed indexes and active-query allocations. In-flight shared reads are bounded separately. |
+| `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
+| `vmtier_query_limit_refusals_total{reason=...}` | Resource refusals with a fixed reason vocabulary: `memory_admission`, `shared_reads`, `read_bytes`, `decoded_bytes`, `catalog_plan`, `blocks`, `series`, or `response_bytes`. Other backend failures and cancellations do not masquerade as limit refusals. |
+| `vmtier_archive_failed_windows_total{tenant=...,source=...,reason=...}` | Errored attempts for configured tenant/source pairs only; reasons are `error`, `timeout`, and `canceled`. A retry increments again; skipped/backoff windows do not. Shutdown cancellation is counted if a window was attempted. No timestamp or error-message labels are used. |
+
+Attempt/refusal counters and cache/admission state start over on process restart;
+committed totals are read afresh from SQLite. An errored attempt is not necessarily
+a new missing window: failure after commit acknowledgement can leave the window
+committed, so interpret failures together with coverage and lag. The service does
+not estimate orphan bytes or perform automatic GC. Use provider accounting for
+actual bucket growth and host monitoring for disk availability and peak RSS.
+Each capacity scrape aggregates the complete `packs` and `windows` tables on
+the catalog's single SQLite connection. The shared five-second scrape context
+bounds the observation time, not the number of rows scanned. Large catalogs or
+frequent scrapes can therefore contend with publication and query selection;
+include scrape load when sizing the deployment. The
+[catalog-capacity report](catalog-capacity-validation.md) records scan and
+selection contention for its 87,600-window fixture at the reported revision.
+Compare rising failed-window/refusal rates with declining retention headroom
+before increasing workloads or resource limits. These signals do not extend the
+time available to recover an unarchived suffix.
+
+Cache and query-admission/refusal metrics are also available in the retained
+JSON v2 gateway. Catalog capacity totals describe SQLite only; failed-window
+metrics also describe the active PostgreSQL archiver. The SQL capacity totals use
+a constant-memory scan of committed descriptors under the scrape timeout; they
+do not add an in-memory catalog mirror.
 
 ## Failure and restart behavior
 
@@ -123,34 +138,22 @@ costs and [query memory accounting](query-memory.md) for component limits.
 | Export timeout, missing source, or interrupted native stream | Do not advance the catalog. Restore the source and retry while Hot can still export the data. |
 | Native export truncated at a record boundary, or a missing conflicting-timestamp block | EOF and counts alone do not establish completeness. The independent raw JSON matrix comparison checks every series, timestamp, and value and rejects mismatches. |
 | Upload or read-back verification failure | Uncommitted objects are invisible to queries. Retry the archive. |
-| Catalog generation conflict | Stop the duplicate writer, inspect identity, generation, and coverage, then retry. Do not replace CAS with an unconditional catalog overwrite. |
+| Catalog generation conflict | Reload identity, generation, and coverage and reconcile the attempted window. Investigate unintended writers if conflicts persist. Do not replace CAS with an unconditional catalog overwrite. |
+| PostgreSQL archiver lease expires or renewal fails | Cancel that owner's archive attempt; committed reads remain available. A successor must acquire a new fencing token before publication. |
+| PostgreSQL primary unavailable or endpoint points to a standby | Fail authoritative reads and writes. Restore routing to an eligible writable primary using the deployment's fencing and promotion procedure. |
 | Process stops just after commit | Reload the authoritative catalog. Do not infer coverage from the presence or absence of a success log. |
 | Missing or corrupt object, or GET failure | Fail the query. Restore the original bytes, verify them, and retest; do not replace the failure with an empty result. |
 | Hot retention deadline exceeded | Do not commit an empty window as success. Missing data needs another complete recovery copy. |
 
-Published object keys are never reused. A new attempt uses a fresh nonce and keys, so a lost PUT response or generation conflict can leave orphan objects. Queries read only catalog references. After a lost commit response, reload the authority before deciding what remains to publish. The MVP supports bounded, single-PUT objects; multipart abort and cleanup are out of scope.
-
-## Catalog backup, restore, and older formats
-
-For SQLite, use the implemented offline `catalog-backup`, `catalog-restore`, and
-JSON v2 `catalog-import` commands described in [catalog maintenance](sqlite-catalog.md).
-Stop `serve` first; its lifetime state lock rejects concurrent maintenance. After
-restore to a new path and ID, `serve` can catch up from Hot while retention permits.
-The manual authority handling below applies to legacy JSON v2 state.
-
-The catalog is the authority for committed coverage, not a disposable index reconstructible from an S3 listing. Stop the writer and quiesce commits before copying its state. Record the catalog ID, generation, contract, and referenced objects. Do not race a raw file copy with a commit. The MVP has no online backup or automatic restore command.
-
-A live HTTP client rejects decreasing generations and changed content within one generation. After all clients restart, however, they have no previous observation. Do not resume from an older backup under the same ID. Isolate the old writer, use a new catalog ID, audit missing commits and references against independent records or a complete source, and explicitly switch every client. If Hot no longer has the data and the required metadata cannot be recovered, vmtier cannot establish completeness on its own.
-
-The current implementation does not automatically import the former S3 `catalog.json`; an old object at that path is never used as the new authority. A manual migration requires stopping the old writer, preserving its catalog and all objects, auditing the contract, coverage, sources, and codec, and running differential checks with a new ID before switching. There is no conversion command, and hand-editing JSON is not a validated migration. Re-archiving into a new prefix from a source that still holds the full history is the reproducible MVP path.
+Published object keys are never reused. A new attempt uses a fresh nonce and keys, so a lost PUT response or generation conflict can leave orphan objects. Queries read only catalog references. After a lost commit response, reload the authority before deciding what remains to publish. vmtier supports bounded, single-PUT objects; multipart abort and cleanup are out of scope.
 
 ## Late writes, backfill, and deletion
 
 The `H > L` contract assumes accepted writes arrive before a window is archived. If an older sample is written to Hot afterward, vmtier does not guarantee that it will survive in Cold once Hot retention removes it. A read gateway cannot detect or reject violations on a direct write path.
 
-There are no deltas, overlap re-exports, backfill updates, or tombstones in the MVP. Treat committed windows as immutable. If exceptional backfill is necessary, rebuild the complete archive under a **new prefix** from an isolated source holding the corrected full history, compare it with the reference, and switch to a new gateway with VM result caching disabled. This is a manual migration approach, not a tested automatic backfill command.
+There are no deltas, overlap re-exports, backfill updates, or tombstones in vmtier. Treat committed windows as immutable. If exceptional backfill is necessary, rebuild the complete archive under a **new prefix** from an isolated source holding the corrected full history, compare it with the reference, and switch to a new gateway with VM result caching disabled. This is a manual migration approach, not a tested automatic backfill command.
 
-Although the gateway rejects delete, write, and administration RPCs, a delete sent through the top-level vmselect can modify Hot before Cold returns an error. Block the read frontend's HTTP mutation APIs at the access-control layer too. Deleting a series only from Hot can make it reappear from Cold. Environments requiring deletion need tombstones or a safe archive rebuild; the MVP does not provide deletion management.
+Although the gateway rejects delete, write, and administration RPCs, a delete sent through the top-level vmselect can modify Hot before Cold returns an error. Block the read frontend's HTTP mutation APIs at the access-control layer too. Deleting a series only from Hot can make it reappear from Cold. Environments requiring deletion need tombstones or a safe archive rebuild; vmtier does not provide deletion management.
 
 ## Retention changes and rollback
 
@@ -160,7 +163,7 @@ If Hot still holds the entire history, removing the Cold node restores a Hot-onl
 
 ## GC, Cold retention, and upgrades
 
-The MVP performs no GC or Cold TTL deletion. Its append-only catalog retains existing entries, and it deletes neither referenced objects nor orphans. This avoids deletion races but allows storage usage to grow. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
+vmtier performs no GC or Cold TTL deletion. Its append-only catalog retains existing entries, and it deletes neither referenced objects nor orphans. This avoids deletion races but allows storage usage to grow. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
 
 Any future deletion implementation must account for query lifetime and all readers that may still hold old references. That implementation is deferred; do not approximate it with an arbitrary lifecycle expiration.
 

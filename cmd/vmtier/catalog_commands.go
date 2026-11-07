@@ -27,7 +27,7 @@ func initializeSQLite(ctx context.Context, file, dir, id string) error {
 		return err
 	}
 	defer s.Close()
-	return printSQLiteStatus(ctx, s)
+	return printCatalogStatus(ctx, s)
 }
 
 func sqliteConfiguration(c *config.Config) (catalog.Contract, catalog.BlobLocator) {
@@ -37,7 +37,7 @@ func sqliteConfiguration(c *config.Config) (catalog.Contract, catalog.BlobLocato
 	}
 }
 
-func printSQLiteStatus(ctx context.Context, s *catalog.SQLite) error {
+func printCatalogStatus(ctx context.Context, s catalog.Repository) error {
 	status, err := s.Status(ctx)
 	if err != nil {
 		return err
@@ -47,19 +47,21 @@ func printSQLiteStatus(ctx context.Context, s *catalog.SQLite) error {
 
 func runCatalogMaintenance(args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	backend := fs.String("backend", "sqlite", "catalog maintenance backend: sqlite or postgres")
 	path := fs.String("path", "", "SQLite catalog directory; a fresh destination for import/restore")
 	id := fs.String("id", "", "expected catalog ID, or a new ID for import/restore")
 	var configuration, from, out, backup, tenant string
+	fs.StringVar(&configuration, "config", "", "policy/blob configuration (required for PostgreSQL and v2 import)")
 	var start, end int64
 	var maxWindows, maxPacks int
 	switch args[0] {
 	case "catalog-import":
-		fs.StringVar(&configuration, "config", "", "v2 source policy/blob configuration (catalog.id pins the source identity)")
 		fs.StringVar(&from, "from", "", "stopped JSON v2 catalog directory")
 	case "catalog-backup":
 		fs.StringVar(&out, "out", "", "fresh backup directory")
 	case "catalog-restore":
 		fs.StringVar(&backup, "backup", "", "backup directory")
+	case "catalog-upgrade":
 	case "catalog-inspect":
 		fs.StringVar(&tenant, "tenant", "", "optional tenant for a bounded query plan")
 		fs.Int64Var(&start, "start", 0, "inclusive epoch milliseconds (requires -tenant and -end)")
@@ -71,6 +73,15 @@ func runCatalogMaintenance(args []string) error {
 	}
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
+	}
+	if *backend == "postgres" {
+		if fs.NArg() != 0 || *path != "" || configuration == "" {
+			return errors.New("PostgreSQL maintenance requires -backend postgres -config FILE, with no path")
+		}
+		return runPostgresCatalogCommand(args[0], configuration, *id, tenant, start, end, maxWindows, maxPacks)
+	}
+	if *backend != "sqlite" || args[0] == "catalog-upgrade" {
+		return errors.New("catalog-upgrade requires -backend postgres; SQLite has no schema upgrade")
 	}
 	if fs.NArg() != 0 || *path == "" || *id == "" {
 		return errors.New("catalog maintenance requires -path and -id, with no positional arguments")
@@ -92,7 +103,7 @@ func runCatalogMaintenance(args []string) error {
 			return err
 		}
 		defer s.Close()
-		return printSQLiteStatus(ctx, s)
+		return printCatalogStatus(ctx, s)
 	}
 	if args[0] == "catalog-backup" && out == "" {
 		return errors.New("catalog-backup requires -out")
@@ -126,7 +137,7 @@ func runCatalogMaintenance(args []string) error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(plan)
 	}
-	return printSQLiteStatus(ctx, s)
+	return printCatalogStatus(ctx, s)
 }
 
 func importSQLite(ctx context.Context, file, from, dest, id string) error {
@@ -166,5 +177,5 @@ func importSQLite(ctx context.Context, file, from, dest, id string) error {
 		return fmt.Errorf("import v2 catalog: %w", err)
 	}
 	defer s.Close()
-	return printSQLiteStatus(ctx, s)
+	return printCatalogStatus(ctx, s)
 }

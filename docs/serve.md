@@ -1,26 +1,25 @@
-# SQLite service guide
+# Run the SQLite service
 
-[Documentation index](README.md) · [Getting started](getting-started.md) ·
-[Catalog maintenance](sqlite-catalog.md) · [Compatibility](compatibility.md)
+For an external catalog with renewable archiver ownership, see the
+[PostgreSQL service guide](postgres-catalog.md). This guide remains specific to
+the SQLite single-owner deployment.
 
 `vmtier serve` runs the archiver, SQLite catalog, and Cold read gateway in one
 process. They share one blob-store client and its S3 request budget. The catalog
 is independent of S3: no conditional PUT, ETag CAS, or LIST-based discovery is used.
 
-The current service includes bounded pack rotation, incremental oracle verification,
+The service includes bounded pack rotation, incremental oracle verification,
 capacity preflight, LRU caching, adjacent-range reads, and query work admission.
-It remains under development. [Implementation validation](implementation-validation.md),
-[combined workload measurements](workload-validation.md), and
-[offline recovery validation](recovery-validation.md) record the scoped evidence.
-The [first-release design](design.md) tracks remaining provider, retention, ingress,
-and release qualification. The earlier [service validation](serve-validation.md)
-remains historical evidence for its recorded revision. GC and HA are outside the
-selected scope.
+It remains under development: the [first-release design](design.md) tracks workload,
+provider, retention, ingress, recovery, and release qualification. The
+[stage 2 validation](serve-validation.md) is historical evidence for its recorded
+revision; new implementation and focused tests do not replace that provenance.
+GC remains unimplemented. This SQLite deployment has no automatic failover;
+[PostgreSQL HA](ha-deployment.md) is the separate multi-instance option.
 
 ## Configuration and startup
 
-Build using [Getting started](getting-started.md). Run the commands below from the
-repository root. Copy [the Sakura configuration](../examples/serve-sakura.json)
+Build using [getting started](getting-started.md). Copy [the Sakura configuration](../examples/serve-sakura.json)
 and set the real bucket, fixed Hot-only source URLs, tenants, archive policy, and
 window-aligned `coverage_start_ms`. The example deliberately has an invalid coverage
 start and `lateness_enforced=false`; do not enable that assertion until all ingestion
@@ -54,10 +53,11 @@ The service settings are:
 }
 ```
 
-This fragment belongs in the full configuration, not in a standalone file. Initialize
-the authority explicitly, then start the service:
+This fragment belongs in the full configuration, not in a standalone file. Create
+the durable parent directory, initialize the authority explicitly, then start the service:
 
 ```sh
+mkdir -p .state
 .bin/vmtier catalog-init -backend sqlite -config serve.json \
   -path .state/catalog-sqlite -id sakura-serve-001
 .bin/vmtier serve -config serve.json \
@@ -80,6 +80,8 @@ Run only one owner for the bucket. No automatic failover is provided.
 Configuration is one JSON object; unknown fields and trailing data are rejected.
 Durations use Go syntax such as `30s`, `6h`, or `720h` (not `30d`) and must be whole
 milliseconds. Time intervals are half-open, `[start,end)`, in UTC epoch milliseconds.
+The table covers SQLite; PostgreSQL adds the catalog connection, lease, and replica
+settings in its [configuration guide](postgres-catalog.md#configuration-and-lifecycle).
 
 | Fields | Meaning and constraints |
 | --- | --- |
@@ -96,45 +98,35 @@ milliseconds. Time intervals are half-open, `[start,end)`, in UTC epoch millisec
 | `query_memory_bytes` | Shared query work reservations; omitted or zero uses 256 MiB. Must cover one effective `max_query_bytes` reservation, at most 8 GiB. See [query work admission](#query-work-admission). |
 | `max_pack_blocks` | Optional per-pack block limit, 1–100,000; omitted or zero uses 100,000. Changes packing, not window capacity or the immutable contract. See [archive packing](archive-packs.md). |
 | `service.archive_interval`, `service.archive_timeout` | Default `30s` and `2m`; each accepts 10 ms through 24 hours. See [scheduling](#scheduling-and-publication). |
-| `store.requests_per_second`, `store.max_concurrent_requests`, `store.max_queued_requests` | Shared S3 limits; see [Shared S3 budget](#shared-s3-budget). |
+| `store.requests_per_second`, `store.max_concurrent_requests`, `store.max_queued_requests` | Shared S3 limits; see [shared S3 budget](#shared-s3-budget). |
 
 Initialization pins the coverage start, window, archive age, lateness, tenant set,
 source IDs/URL fingerprints, 1 ms deduplication, and normalized blob location.
-Changing these requires a new catalog or an explicit migration; restarting with
-different values fails. Shard topology behind a source URL must also stay fixed,
-although the gateway cannot detect a topology change.
+Changing pinned values requires rebuilding under a new catalog and object prefix;
+backend import commands preserve the archive contract and object location.
+Restarting with different values fails. Shard topology behind a source URL must
+also stay fixed, although the gateway cannot detect a topology change.
 
 Cache/query budgets, `max_pack_blocks`, scheduling intervals, and S3 limits can
-change on restart.
-`hot_retention` and `safety_margin` are validated runtime settings rather than
-persisted contract fields; changes must still reflect the real Hot policy and
-leave enough time to archive and recover.
+change on restart. `hot_retention` and `safety_margin` are validated runtime
+settings rather than persisted contract fields; changes must still reflect the
+real Hot policy and leave enough time to archive and recover.
 
 ## Connect stock vmselect
 
-Use the [pinned cluster version](compatibility.md) with the gateway RPC address as
-a storage node alongside Hot. For one Hot storage node listening at port 8401:
-
-```sh
-.bin/vmselect -httpListenAddr=127.0.0.1:8482 \
-  -storageNode=127.0.0.1:8401,127.0.0.1:8489 \
-  -replicationFactor=1 -globalReplicationFactor=1 \
-  -search.skipSlowReplicas=false -search.denyPartialResponse=true \
-  -search.disableCache=true -dedup.minScrapeInterval=1ms
-```
-
-Replace the storage addresses with all relevant Hot nodes and the vmtier listener.
-Hot and Cold provide complementary coverage; the frontend must query both. Configure
-deduplication consistently across VM components. The archiver's source must be a
-separate Hot-only vmselect. Do not export from the combined frontend.
+Configure the [stock vmselect Hot/Cold frontend](getting-started.md#connect-the-query-frontend) with
+`-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false
+-search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`.
+The gateway RPC address is a storage node alongside Hot; the archiver's source must
+be a separate Hot-only vmselect. Do not export from the combined frontend.
 
 Label/series metadata uses the same validated block search as sample queries.
 [LRU caching, shared misses, and adjacent-range reads](reader-validation.md) reduce
 repeated object I/O while retaining payload validation and actual sample-time
 filtering. The earlier uncached S3 fixture exceeded stock vmselect's default
 five-second labels API deadline. The [before/after measurements](metadata-validation.md)
-now pass that deadline on the retained JSON and SQLite fixtures after the reader
-changes. The service E2E harness retains its configurable 30-second default; no
+record passing that deadline on their JSON and SQLite fixtures after the reader
+changes; their recorded revision does not validate a later VM upgrade. The service E2E harness retains its configurable 30-second default; no
 30-second override was needed for these measured final runs.
 No metadata-specific index-only shortcut is implemented.
 
@@ -157,8 +149,6 @@ source export, exact oracle comparison, upload/read-back, and publication. Its d
 is two minutes. A timeout fails that stream instead of canceling the rest of the pass.
 Both durations accept whole milliseconds from 10 ms through 24 hours. Increase a
 timeout only while retaining sufficient Hot retention headroom.
-An individual S3 operation also has a 30-second timeout and at most three SDK
-attempts; increasing `archive_timeout` does not remove that per-operation bound.
 
 The process publishes only after independent raw-data comparison and object
 verification. Publication and coverage update are one SQLite transaction per
@@ -183,9 +173,8 @@ Both `serve` and the retained JSON v2 `gateway` reserve the entire effective
 per query and 256 MiB shared, permitting two simultaneous searches. An explicit
 shared allowance must cover one query and cannot exceed 8 GiB. Increasing
 `max_query_bytes` beyond the shared allowance requires an explicit matching change
-to `query_memory_bytes`. The [combined workload measurements](workload-validation.md)
-retain these defaults for the scoped 5,000-series fixture; they do not establish
-a universal production memory envelope.
+to `query_memory_bytes`. These are provisional work limits, not a qualified
+production memory envelope.
 
 Excess work is refused immediately with a `Cold query memory admission limit
 exceeded` error. Admission adds no queue, and the upstream RPC concurrency gate
@@ -253,19 +242,14 @@ archive process or independent maintenance client against its bucket.
 
 ## Health, metrics, and shutdown
 
-With the default HTTP address, check the running process from another shell:
-
-```sh
-curl --fail http://127.0.0.1:8490/health
-curl --fail http://127.0.0.1:8490/ready
-curl --fail http://127.0.0.1:8490/metrics
-```
+See [operations](operations.md#monitoring) for shared gateway metrics, catalog
+capacity accounting, and failure handling.
 
 `/health` reports process liveness. `/ready` returns 503 until every configured stream
 has required coverage and catalog checks pass. It does not scrub all S3 payloads or
-prove that external ingestion/retention settings match the contract. A stream missing required
-coverage makes global readiness fail; another tenant's fully covered queries can
-still succeed. A stopped service can fail Hot-only queries as well because stock
+prove that external ingestion/retention settings match the contract. A stream
+missing required coverage makes global readiness fail; another tenant's fully
+covered queries can still succeed. A stopped service can fail Hot-only queries as well because stock
 vmselect fans out to both storage nodes and partial responses are disabled.
 
 `/metrics` retains the gateway, object-I/O, and tenant coverage metrics and adds:
@@ -282,9 +266,6 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_s3_rejected_requests_total`, `vmtier_s3_canceled_requests_total` | Queue refusals and canceled waits |
 | `vmtier_s3_in_flight_requests`, `vmtier_s3_queued_requests` | Current budget occupancy |
 
-The [memory accounting guide](query-memory.md#observability) describes query work,
-cache, archive buffer, and Go runtime metrics.
-
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
 RPC endpoints on a trusted network with suitable access controls/TLS termination.
 There is no online mutation or management API.
@@ -292,44 +273,6 @@ There is no online mutation or management API.
 SIGINT/SIGTERM cancels archive and read work, drains listeners/handlers, and then
 releases catalog ownership. The catalog remains locked while any owned work drains.
 Published windows survive restart; an interrupted attempt does not advance coverage.
-
-### Service capacity and failure accounting
-
-The SQLite service additionally exposes these capacity signals without listing
-the blob backend:
-
-| Metric | Accounting |
-| --- | --- |
-| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
-| `vmtier_catalog_committed_object_bytes{kind="data\|index"}` | Sum of byte lengths in committed pack descriptors, retained across restart. Excludes unreferenced/failed attempts, other prefixes, provider versions, and provider overhead; this is **not measured bucket usage**. |
-| `vmtier_catalog_windows`, `vmtier_catalog_packs` | Committed logical windows (including empty windows) and immutable pack references. |
-| `vmtier_catalog_capacity_available` | One only when the current bounded observation succeeds. Capacity gauges are omitted on failure, rather than reporting stale values or false zeroes. |
-| `vmtier_cache_used_bytes`, `vmtier_cache_limit_bytes`, `vmtier_cache_entries`, `vmtier_cache_inflight_reads` | Retained immutable raw bytes plus keys and a conservative per-entry bookkeeping allowance; excludes allocator/GC overhead, transient parsed indexes and active-query allocations. In-flight shared reads are bounded separately. |
-| `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
-| `vmtier_query_limit_refusals_total{reason=...}` | Resource refusals with a fixed reason vocabulary: `memory_admission`, `shared_reads`, `read_bytes`, `decoded_bytes`, `catalog_plan`, `blocks`, `series`, or `response_bytes`. Other backend failures and cancellations do not masquerade as limit refusals. |
-| `vmtier_archive_failed_windows_total{tenant=...,source=...,reason=...}` | Errored attempts for configured tenant/source pairs only; reasons are `error`, `timeout`, and `canceled`. A retry increments again; skipped/backoff windows do not. Shutdown cancellation is counted if a window was attempted. No timestamp or error-message labels are used. |
-
-Attempt/refusal counters and cache/admission state start over on process restart;
-committed totals are read afresh from SQLite. An errored attempt is not necessarily
-a new missing window: failure after commit acknowledgement can leave the window
-committed, so interpret failures together with coverage and lag. The service does
-not estimate orphan bytes or perform automatic GC. Use provider accounting for
-actual bucket growth and host monitoring for disk availability and peak RSS.
-Each capacity scrape aggregates the complete `packs` and `windows` tables on
-the catalog's single SQLite connection. The shared five-second scrape context
-bounds the observation time, not the number of rows scanned. Large catalogs or
-frequent scrapes can therefore contend with publication and query selection;
-include scrape load when sizing the deployment. The
-[catalog-capacity report](catalog-capacity-validation.md) records measured scan
-and selection contention for the 87,600-window fixture.
-Compare rising failed-window/refusal rates with declining retention headroom
-before increasing workloads or resource limits. These signals do not extend the
-time available to recover an unarchived suffix.
-
-Cache and query-admission/refusal metrics are also available in the retained
-JSON v2 gateway. Catalog capacity and failed-window metrics describe the SQLite
-service only. The SQL capacity totals use a constant-memory scan of committed
-descriptors under the scrape timeout; they do not add an in-memory catalog mirror.
 
 ### Troubleshooting
 
@@ -362,7 +305,5 @@ until validation completes; do not run both archivers concurrently.
 After restoring an older SQLite backup under a new ID, `serve` attempts the missing
 suffix from Hot. This succeeds only while that source history is still queryable
 outside the safety margin. Source expiry requires an external complete recovery
-copy. Restoring metadata alone is not lossless disaster recovery. The
-[recovery suite](recovery-validation.md) records local stock-VM import, older-backup
-catch-up, and pre/post-publication process-crash checks. Those tests make no
-real-provider, natural-retention, or physical power-loss claim.
+copy. Restoring metadata alone is not lossless disaster recovery. No real-provider
+or natural-retention recovery claim follows from the local tests.

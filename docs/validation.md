@@ -1,7 +1,7 @@
 # JSON v2 MVP validation (2026-11-06 UTC)
 
-This report records the original JSON v2 baseline. For the current SQLite runtime
-and later harness runs, see the [validation index](README.md#validation-records).
+This report records the original JSON v2 baseline. For current service backends
+and later harness runs, see the [validation index](evidence.md).
 The measurements and original result files below remain historical evidence.
 
 The implementation with an independent, persistent HTTP catalog authority and a

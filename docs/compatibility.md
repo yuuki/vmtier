@@ -1,21 +1,6 @@
 # VM compatibility and protocol boundaries
 
-[Documentation index](README.md) · [Service guide](serve.md) ·
-[Catalog maintenance](sqlite-catalog.md)
-
-The SQLite [`serve` runtime](serve.md) and legacy JSON v2 MVP both target **VictoriaMetrics OSS v1.155.0-cluster**, commit **`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) distinguishes implemented stages from remaining work.
-
-## Compatibility at a glance
-
-| Component | Current boundary |
-| --- | --- |
-| VictoriaMetrics | Pinned OSS cluster revision only; single-node VM integration is unsupported. |
-| Query evaluation | Stock vmselect evaluates MetricsQL; vmtier returns validated raw blocks over read RPC. |
-| Current runtime | `serve` with SQLite schema 1, one local state owner, pack/index format v1. |
-| Legacy runtime | Separate `archive`, `gateway`, and local/HTTP JSON v2 catalog; retained for regression and offline migration. |
-| Object storage | Ordinary PUT, GET, and single-range GET; no conditional PUT or ETag dependency. Real-provider qualification is pending. |
-| Mutations | No late updates to published windows, backfill, deletion, compaction, GC, or Cold TTL. |
-| Deduplication | 1 ms, configured consistently across VM components. Frontend result caching is disabled. |
+The SQLite and [PostgreSQL](postgres-catalog.md) `serve` backends and legacy JSON v2 MVP target **VictoriaMetrics OSS v1.155.0-cluster**, commit **`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) distinguishes implemented stages from remaining work.
 
 ## Pinned primary sources
 
@@ -58,31 +43,24 @@ A tenant is an accountID/projectID pair. Native exported metric names omit it, s
 
 The gateway uses the storage query's actual time range. VM evaluates `rate`, `increase`, rollups, offsets, subqueries, and `@`. Before sending results, vmtier validates query limits, tenant, codec, and checksums of all selected blocks. Missing, corrupt, or timed-out Cold data is an error rather than an empty result.
 
-The top-level vmselect requires `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false -search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`. Cold is not a replica of Hot. Consistency with the frontend result cache enabled is outside the current contract; immutable S3 block caching is independent and remains available. See the [frontend command](serve.md#connect-stock-vmselect).
+The top-level vmselect requires `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false -search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`. Cold is not a replica of Hot. Consistency with the frontend result cache enabled is outside the current contract; immutable S3 block caching is independent and remains available.
 
 Cold metadata is calculated from actual Cold data ranges. Upstream Hot metadata can return broader ranges because its index uses daily granularity; parity is evaluated per API in E2E tests. Support does not extend to Graphite, cross-tenant discovery, or administrative statistics.
 
-Metadata uses full validated block reads with LRU caching, shared cache misses,
-and adjacent-range coalescing. The [metadata measurements](metadata-validation.md)
-passed stock vmselect's five-second `-search.maxLabelsAPIDuration` default on the
-recorded JSON and SQLite S3 fixtures after the reader changes. The harness retains
-a configurable 30-second default, and larger ranges/cardinality can still time
-out. These results and the [combined workload measurements](workload-validation.md)
-are scoped observations, not a general metadata latency guarantee. See
-[service query configuration](serve.md#connect-stock-vmselect).
+Metadata uses full validated block reads, bounded caching, and adjacent-range
+coalescing. The current service and JSON v2 regression fixtures use stock
+vmselect's five-second `-search.maxLabelsAPIDuration` default; see
+[service query configuration](serve.md). Historical before/after measurements are
+recorded in [metadata validation](metadata-validation.md), with broader workload
+and recovery evidence in their separate reports. These fixture results do not
+establish a production latency guarantee or qualify every dependency version.
 
-The public RPC API passes a context with a deadline to the gateway. The gateway
-propagates it to Cold reads and applies its own maximum request duration. The
-upstream server constructs this context from a second-level RPC deadline and cancels
-it when the storage RPC connection closes. Immediate propagation of an HTTP client
-disconnect through stock vmselect has not been validated. Limits on concurrency,
-queueing, response bytes, and series/blocks produce explicit errors when exceeded.
-Both runtimes reserve logical query work before backend search, with 128 MiB per-query
-and 256 MiB shared defaults. The eight-request RPC ceiling and memory admission have
-no deliberate queue wait. S3 has its separate bounded queue. Limits on read/decoded
-work, catalog plans, response bytes, series, blocks, and shared reads produce explicit
-errors. [Memory accounting](query-memory.md) explains reservation lifetimes and why
-these budgets are not a process RSS limit.
+The public RPC API passes a context with a deadline to the gateway. The gateway propagates it to Cold reads and applies its own maximum request duration. The upstream server constructs this context from a second-level RPC deadline and cancels it when the storage RPC connection closes. Immediate propagation of an HTTP client disconnect through stock vmselect has not been validated. Limits on concurrency, queueing, response bytes, and series/blocks produce explicit errors when exceeded.
+
+Both service backends and the retained JSON v2 gateway reserve logical query work
+before backend search, without a deliberate admission queue. Configured S3 request
+budgets use a separate bounded queue. [Memory accounting](query-memory.md) explains the allowances and
+why they are not a process RSS limit.
 
 ## Codec and upgrades
 
@@ -114,8 +92,10 @@ source and query components to the pinned revision, initialize a new catalog ID,
 and archive into a separate state directory and object prefix. Verify the complete
 required coverage and compare queries before switching readers. If the source no
 longer contains that history, retain the old deployment to serve its old archives;
-do not switch it to this build or discard its objects. The JSON-to-SQLite import
-command does not translate VM codec pins.
+do not switch it to this build or discard its objects. The JSON-to-SQLite import,
+SQLite-to-PostgreSQL import, and PostgreSQL schema upgrade commands do not translate VM codec pins. A PostgreSQL schema-1-to-2
+upgrade applies only to a catalog already compatible with the running binary;
+it cannot make a v1.128.0 archive readable by this v1.155.0 build.
 
 The v1.155.0 API uses context-aware methods and serialized wire-block iterators.
 The gateway adapts to those interfaces without modifying upstream VM sources.
@@ -128,8 +108,6 @@ a collision containing only stale markers remains stale. vmtier uses upstream
 old release's stale-marker precedence and is another reason to rearchive and
 compare queries during an upgrade.
 
-
-
 ## S3 and catalog backends
 
 | Area | Implemented requirement |
@@ -138,20 +116,24 @@ compare queries during an upgrade.
 | Reads | GetObject and single-range GET with correct lengths/Content-Range; verify content with SHA-256. |
 | Conditional PUT / ETag | Not required, requested, sent, or used for checksums/CAS. |
 | LIST / multipart / DELETE | Not used in the normal path. Object discovery and GC are not provided. |
-| Commit / CAS | SQLite transaction per tenant/source/window in `serve`; generation CAS in the legacy JSON v2 HTTP service or local adapter. |
-| Catalog identity | Stable ID, fixed contract, append-only complete windows. SQLite additionally pins the blob locator and locks its state directory for the owner's lifetime. |
-| S3 request budget | SQLite service uses a shared rate, in-flight, and queue budget across archive/query traffic and retries; it covers the bucket only when this process is its sole client. |
+| Commit / CAS | SQLite or PostgreSQL transaction per tenant/source/window in `serve`; PostgreSQL also checks archiver fencing. Legacy JSON v2 uses generation CAS in its HTTP service or local adapter. |
+| Catalog identity | Stable ID, fixed contract, append-only complete windows. Both service backends pin the blob locator. SQLite locks its state directory; PostgreSQL uses DB-time archiver leases. |
+| S3 request budget | A process shares admission across archive/query traffic and retries. SQLite assumes a sole client; PostgreSQL divides explicit aggregate limits by the operator-enforced maximum client count. |
 | Old S3 catalog | No automatic compatibility or migration; initialize the independent authority explicitly. |
 
-SQLite schema 1 is used by `serve`; the retained JSON catalog format is v2. Both use
-pack/native format v1. Offline v2 import checks referenced indexes and copies
-metadata without rewriting objects; see [migration and recovery](sqlite-catalog.md).
-SQLite `inspect` and `verify` are offline and cannot open a live service's state.
-The standalone `archive` and `gateway` commands reject SQLite configurations.
-The SQLite writer can rotate several packs within one logical window and publishes
-zero packs for a verified empty window; the retained JSON v2 writer still emits
-one pack per window. [Capacity preflight](preflight.md) sizes the SQLite pipeline
-without opening the catalog or object store.
+The service supports SQLite schema 1 or PostgreSQL schema 2; the retained JSON
+catalog format is v2. All use pack/native format v1 with the pinned VM identity.
+Offline v2 import checks referenced indexes and copies metadata without rewriting
+objects; see [SQLite maintenance](sqlite-catalog.md). The
+[PostgreSQL importer](postgres-migration.md) copies a stopped SQLite catalog under
+a new ID without rewriting objects. SQLite `inspect` and `verify` are offline;
+PostgreSQL supports online inspection and verification with allocated S3 budget.
+Standalone `archive` and `gateway` reject both service catalog types.
+
+Both service writers rotate bounded packs within one logical window and publish
+zero packs for a verified empty window; the retained JSON v2 writer emits one pack
+per window. [Capacity preflight](preflight.md) sizes the shared service pipeline
+without opening a catalog or object store.
 
 The following HTTP API belongs only to the legacy JSON v2 catalog. `serve` has no
 catalog HTTP listener. Catalog HTTP is an internal API for trusted networks, not a
@@ -169,26 +151,23 @@ The target Sakura deployment assumes conditional PUT is unavailable; exhaustive 
 
 The catalog HTTP adapter remembers observed generations within its process and
 rejects generation rollback or changed content at the same generation. Rollback
-detection across complete restarts, consistency among multiple authorities, and HA
-are not guaranteed by either deployment. SQLite restore requires a new catalog ID.
-See [legacy operations](operations.md) for optional HTTP bearer authentication and
-TLS proxy deployment, and [service operation](serve.md) for shared S3 request limits.
+detection across complete restarts and consistency among independently restored
+authorities are not guaranteed. SQLite and JSON v2 do not provide automatic HA.
+PostgreSQL HA relies on the [configured replication, promotion, and fencing
+policy](ha-deployment.md); neither database replicas nor independent catalogs
+should be treated as interchangeable stale authorities. SQLite restore requires
+a new catalog ID. See [legacy operations](legacy-json-v2.md) for HTTP bearer
+authentication and TLS proxy deployment.
 
 ## Scope of executed validation
 
 The native pack-to-gateway-to-stock-vmselect spike and exact comparisons after rebuilding Hot with recent-only data succeeded in the original architecture. Historical all-S3 catalog results remain separate. The [MVP validation report](validation.md) records the legacy independent catalog and restricted S3 proxy results. The [SQLite foundation report](sqlite-catalog-validation.md) covers the original repository and offline tools; [service validation](serve-validation.md) records runtime checks separately. Earlier results do not establish that later implementations passed the same scenarios.
 
-Later [implementation validation](implementation-validation.md) records 1,440
-exact query comparisons across both runtimes and local/Moto backends. Separate
-reports cover [archive bounds](archive-validation.md),
-[reader behavior](reader-validation.md), [metadata latency](metadata-validation.md),
-[catalog scale](catalog-capacity-validation.md), [combined workload and memory](workload-validation.md),
-and [offline recovery](recovery-validation.md). Each report retains its own
-revision, fixture, and limitations; none establishes real-provider support.
-
 Differential tests normalize label/series ordering, compare timestamps and values without tolerance, disable result caches, and use 1ms deduplication on both sides. They provide evidence for the fixture, not every MetricsQL function, cardinality, or VM release. Local S3 test doubles and the restriction proxy do not establish real Sakura/AWS IAM, SigV4 authentication, consistency SLAs, durability, or performance.
 
-The [GitHub Actions workflow](../.github/workflows/ci.yml) defines automated checks.
-See [Testing](testing.md) for the commands and evidence layout. A recorded local
-run is distinct from a hosted CI result; consult the relevant run and its artifacts
-before making a CI claim.
+GitHub Actions workflows exercise build, repository, and differential checks; see
+[testing](testing.md) for commands and evidence locations.
+Evaluate hosted results against their exact commit; local runs and historical
+reports do not substitute for successful CI on a new dependency set. The
+[PostgreSQL HA report](postgres-ha-validation.md) retains earlier gateway,
+migration, and database-fault evidence with its original VM pin.

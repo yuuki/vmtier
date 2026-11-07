@@ -1,113 +1,131 @@
 # Getting started
 
-This guide builds vmtier and exercises the current SQLite `serve` runtime against
-disposable, unmodified VictoriaMetrics processes. For your own cluster, continue
-with the [service guide](serve.md). The [documentation index](README.md) links to
-architecture, development, and migration references.
-
-## Prerequisites
-
-The tested environment is Linux amd64. Install:
-
-- Go **1.27.3**, the version used by the checked-in CI workflow and recorded tests.
-  The module declares a minimum of **1.25.3**; other toolchains have not received
-  the same validation.
-- Python **3.12 or newer** with `venv` and `pip` for the S3 demo. Python is also
-  used to assemble the vendored Go dependencies during bootstrap.
-- A C compiler/toolchain: the SQLite driver and stock VM build require CGO.
-- Git, Bash, Make, curl, tar, and `sha256sum`.
-- Several GB of free disk space for source archives, build caches, binaries, and
-  demo data. The demos need permission to bind loopback TCP listeners.
-
-Docker and access to a real S3 account are not needed for these demos. Bootstrap
-requires access to GitHub source archives and the Go module proxy; installing the
-S3 test dependencies also requires access to Python package repositories.
+Choose SQLite for a single-owner local catalog or PostgreSQL for multiple
+gateways and fenced archiver failover. The walkthrough below uses SQLite; follow
+the [PostgreSQL setup](postgres-catalog.md) and [HA deployment](ha-deployment.md)
+for the external-catalog alternative. All commands run from the repository root. For supported behavior and outstanding qualification,
+read [limits](limits.md) and [compatibility](compatibility.md).
 
 ## Build from source
 
+Use Linux amd64, Go 1.27.3 and Python 3.15.2 (the pinned toolchains),
+a C compiler with CGO enabled, make, curl, tar, and sha256sum. Allow enough disk
+space for Go module/build caches and disposable test data. Bootstrap needs network
+access to GitHub source archives and the Go module proxy; S3 test setup also needs
+Python package repositories. Docker and a real S3 account are not required for
+the disposable demos.
+
 ```sh
-git clone https://github.com/yuuki/vmtier.git
-cd vmtier
-make bootstrap build
+./scripts/bootstrap.sh
+make build test
 .bin/vmtier version
 ```
 
-Run subsequent commands from the repository root. If Go is outside `PATH`, use
-`make GO=/path/to/go build` and the same override for other Make targets.
+Bootstrap downloads checksum-pinned stock VictoriaMetrics sources into `.deps/`,
+then runs `go mod download`, `go mod verify`, and `go mod vendor` using committed
+module versions. It regenerates `vendor/`; stock VM builds retain their own upstream
+vendor tree. No VM source is patched. Do not edit generated dependencies.
+SQLite is bundled through CGO; no separate SQLite server is required. If Go is
+outside `PATH`, use `make GO=/path/to/go bootstrap build test stock`.
 
-[bootstrap.sh](../scripts/bootstrap.sh) downloads checksum-pinned VictoriaMetrics
-sources and the SQLite driver, then generates `.deps/` and `vendor/`. The driver
-uses bundled SQLite; installing a separate SQLite server is unnecessary.
-`make build` creates `.bin/vmtier` with vendored dependencies. An ordinary
-`go install ...@latest` is not the documented build path for this source layout.
-Do not edit generated dependencies or patch stock VM to make a test pass.
+## Run a disposable demo
 
-## Run the local SQLite demo
-
-Build the stock `vmstorage`, `vminsert`, and `vmselect` binaries, then run the
-service integration harness:
+Build the pinned stock VM binaries and run the SQLite local-backend harness:
 
 ```sh
 make stock
 python3 scripts/e2e_serve.py --backend local --workdir .cache/demo-serve-local
 ```
 
-The harness creates its own configuration, local object directory, SQLite catalog,
-Hot cluster, reference cluster, and query frontend. It ingests a synthetic dataset,
-archives eligible windows, and compares exact results for Cold, Hot, and boundary
-queries. It also checks metadata, ownership, restart, recovery, and failures.
+The harness starts isolated VM processes, ingests synthetic data, archives it,
+reconstructs Hot with recent samples only, and runs 360 exact Cold/Hot/boundary
+query comparisons with a full-history reference. It creates its own configuration,
+SQLite state, and local objects. The host must permit local TCP listeners. Use a
+new or empty work directory; omitting `--workdir` creates a temporary directory.
+The harness stops its processes when finished and retains logs and `results.json`.
+This is an automated demonstration, not a long-running deployment or a natural
+retention-expiry test.
 
-On success, `.cache/demo-serve-local/results.json` records `"status": "passed"`
-and 360 exact query comparisons, plus scenario checks. Logs and fixture state stay
-in the work directory for inspection; the harness stops its processes on exit.
-Use a new or empty work directory on each run. Omitting `--workdir` creates a
-new temporary directory automatically. This is a test run, not a persistent demo
-server, and it does not use an existing production cluster.
-
-The fixture replaces Hot with a recent-only dataset to prove that older queries
-use Cold. It does not wait for natural Hot retention expiry. See
-[Testing](testing.md) for assertion details and additional checks.
-
-## Exercise S3 requests locally
-
-Install the pinned Moto test backend in an isolated Python environment:
+For S3 API testing using a disposable Moto backend:
 
 ```sh
-python3 -m venv .deps/e2e-venv
-. .deps/e2e-venv/bin/activate
+python3 -m venv .venv-e2e
+. .venv-e2e/bin/activate
 python -m pip install -r scripts/requirements-e2e.txt
 python scripts/e2e_serve.py --backend s3 --replicas 2 --workdir .cache/demo-serve-s3
 ```
 
-Keep that environment active when running S3 suites so `moto_server` is on `PATH`.
-The harness starts Moto behind a compatibility proxy that rejects conditional
-requests and strips ETags. It uses disposable test credentials and a local bucket;
-no cloud credentials are required. The S3 run also records 360 exact comparisons
-on success. These results test the request path, not a real provider's authentication,
-durability, quotas, or performance.
+The activated environment supplies `moto_server`. A local proxy rejects conditional
+requests and removes ETags to exercise the supported S3 API subset. These tests
+use disposable credentials and do not connect to an existing VM or real S3 bucket. See
+[testing](testing.md) for regression suites and interpretation of results.
 
-## Connect an existing cluster
+## Configure an existing Hot cluster
 
-Use the [service guide](serve.md) to prepare a full configuration, initialize a
-SQLite catalog, start `serve`, and register its RPC listener with a stock vmselect.
-The [example guide](../examples/README.md) identifies current and legacy configs.
-Before initializing state, establish:
+1. Copy [examples/serve-sakura.json](../examples/serve-sakura.json) to `serve.json`
+   (see the [example guide](../examples/README.md) for other backends).
+   Set the endpoint, region, existing bucket, prefix, tenants, and Hot-only
+   vmselect source URLs. Do not export from a combined Hot/Cold frontend.
+2. Choose archive age H, enforced lateness L, Hot retention R, safety margin, and
+   window width such that `H > L >= 0` and `R > H + safety_margin + window`.
+   Durations use Go syntax (`720h`, not `30d`). Set a positive, window-aligned
+   `coverage_start_ms` within retained source history. The example intentionally
+   uses zero and `lateness_enforced=false`; set the latter to true only after all
+   write paths enforce the lateness bound.
+3. Run [capacity preflight](preflight.md) on representative busy windows before
+   catalog initialization fixes the contract. It checks source completeness and
+   pipeline bounds without publishing data.
+4. Choose a durable local catalog path and unique ID. Keep the path and ID in the
+   configuration identical to the initialization arguments below. Create the
+   durable parent directory first.
 
-1. Fixed tenants and Hot-only export sources covering all required Hot shards.
-2. An externally enforced maximum write lateness and sufficient Hot retention for
-   archival, retries, and recovery.
-3. A positive, window-aligned coverage origin whose data is still available in Hot.
-4. Persistent local catalog storage and an object store that permits immediate reads.
+Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
+optionally `AWS_SESSION_TOKEN`, never through JSON. Actual Sakura connectivity
+and performance still require deployment-specific validation.
 
-The provided deployment configs intentionally fail validation until you choose
-`coverage_start_ms` and can truthfully set `lateness_enforced=true`. They are
-starting points, not ready-to-run production configurations. Preflight busy windows
-with the read-only [capacity preflight command](preflight.md) before binding the
-catalog's immutable policy. Preflight checks source completeness and archive limits;
-it does not measure uploads or concurrent query capacity. Use the
-[memory reference](query-memory.md) and [scoped workload measurements](workload-validation.md)
-to plan separate query and host-capacity checks.
+With the edited configuration and the example path/ID:
 
-For development checks, continue with [Contributing](../CONTRIBUTING.md). For an
-existing JSON v2 archive, use [offline migration](sqlite-catalog.md) rather than
-starting a second writer on the same objects.
+```sh
+mkdir -p .state
+.bin/vmtier catalog-init -backend sqlite -config serve.json \
+  -path .state/catalog-sqlite -id sakura-serve-001
+.bin/vmtier serve -config serve.json \
+  -listen 127.0.0.1:8489 -http 127.0.0.1:8490
+```
+
+The service refuses missing state and starts catch-up immediately after opening
+initialized state. Keep it running and check from another terminal:
+
+```sh
+curl --fail http://127.0.0.1:8490/health
+curl --fail http://127.0.0.1:8490/ready
+curl --fail http://127.0.0.1:8490/metrics
+```
+
+Readiness can return 503 while required windows are catching up. It checks catalog
+and coverage, not every object or the external ingestion contract.
+
+## Connect the query frontend
+
+For a Hot vmstorage read listener at `127.0.0.1:8401` and the gateway above:
+
+```sh
+.bin/vmselect -httpListenAddr=127.0.0.1:8482 \
+  -storageNode=127.0.0.1:8401,127.0.0.1:8489 \
+  -replicationFactor=1 -globalReplicationFactor=1 \
+  -search.skipSlowReplicas=false -search.denyPartialResponse=true \
+  -search.disableCache -dedup.minScrapeInterval=1ms
+```
+
+Replace the Hot address with all required Hot storage nodes. Configure 1 ms
+deduplication consistently on storage and vmselect. Hot and Cold are complementary,
+so replica skipping or partial responses can hide missing data. Keep listeners on
+a trusted network and block mutation APIs at the HTTP access-control layer.
+Compare Cold-only and boundary queries before changing any retention settings.
+
+Continue with [service scheduling and resource limits](serve.md),
+[operations and recovery](operations.md), and [offline catalog maintenance](sqlite-catalog.md).
+To move this deployment to PostgreSQL, use the [stopped-writer migration](postgres-migration.md);
+keep the same archive contract and S3 location, and present one redundant logical
+Cold endpoint to vmselect. Do not list complete gateway replicas as independent
+storage shards.

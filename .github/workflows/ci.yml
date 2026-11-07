@@ -6,6 +6,22 @@ jobs:
   mvp:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: vmtier
+          POSTGRES_PASSWORD: vmtier
+          POSTGRES_DB: vmtier_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vmtier -d vmtier_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      VMTIER_TEST_POSTGRES_DSN: postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -22,11 +38,14 @@ jobs:
       - name: Exercise catalog qualification harness
         run: python scripts/catalog_capacity.py --hours 24 --tenants 2 --repeats 1 --output .cache/ci-catalog/results.json --workdir .cache/ci-catalog/work
       - run: python -m pip install -r scripts/requirements-e2e.txt
+      - run: sudo apt-get update && sudo apt-get install -y haproxy postgresql-client
       - run: python scripts/e2e.py --backend local --workdir .cache/ci-local
       - run: python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/ci-s3
       - run: python scripts/e2e_serve.py --backend local --workdir .cache/ci-serve-local
       - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-serve-s3
       - run: python scripts/e2e_recovery.py --workdir .cache/ci-recovery-local
+      - run: python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-postgres-ha
+      - run: python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir .cache/ci-postgres-migration
       - name: Package E2E evidence
         if: always()
         run: python scripts/package_evidence.py

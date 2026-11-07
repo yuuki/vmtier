@@ -1,89 +1,87 @@
 # Contributing to vmtier
 
-Contributions to code, documentation, and reproducible bug reports are welcome.
-vmtier is an independent Apache-2.0 project. Start with the [README](README.md)
-and [getting started](docs/getting-started.md). The current runtime is
-[`vmtier serve`](docs/serve.md); the separate JSON v2 commands remain for regression
-testing and migration. The [first-release design](docs/design.md) distinguishes
-implemented behavior from planned work.
+vmtier is an independent Apache-2.0 project. Start with the [README](README.md),
+[architecture and source map](docs/architecture.md), and [documentation index](docs/README.md).
+The [first-release design](docs/design.md) distinguishes implementation from remaining qualification.
 
-## Reporting a problem or proposing a change
+## Language and scope
+
+Write repository documentation, code comments, commit/PR descriptions, and
+user-facing diagnostics in English. Test fixtures may contain other languages
+when exercising Unicode behavior. Preserve upstream license text and attribution.
+
+Prefer a small change that solves a demonstrated problem. Record material format,
+protocol, or operational decisions in an ADR. Explain the workload or failure that
+requires additional machinery; avoid speculative HA, storage abstractions, and
+configuration switches without a concrete use case.
+
+## Reporting a problem
 
 Use [GitHub issues](https://github.com/yuuki/vmtier/issues) for reproducible bugs
 and proposals. Include the vmtier commit, VictoriaMetrics version, catalog backend,
-relevant configuration with credentials removed, steps to reproduce, expected and
-actual behavior, and relevant logs or test results. For query discrepancies, include
-the expression, time bounds, tenant, and a small reproducible dataset when possible.
-Do not include private metric data, credentials, or access tokens in public reports.
+configuration with credentials removed, reproduction steps, expected and actual
+behavior, and relevant logs or test results. For query discrepancies, include the
+expression, time bounds, tenant, and a small reproducible dataset when possible.
+Keep private metric data, credentials, and access tokens out of public reports.
 
-For changes to storage formats, native RPC, the fixed catalog contract, or deployment
-scope, explain the workload or failure that motivates the change before implementing
-it. Record material format, protocol, or operational decisions in an
-[ADR](docs/adr/). Prefer a small change that solves a demonstrated problem.
+## Development and validation
 
-## Development setup
+Use the pinned source and [build instructions](docs/getting-started.md#build-from-source). Do not edit
+generated `vendor/` or `.deps/` files to make a test pass. Keep stock VictoriaMetrics
+binaries unmodified and record the revision when evaluating an upgrade.
 
-Follow the [build instructions](docs/getting-started.md) from a checkout of this
-repository. Bootstrap creates disposable `.deps/` and `vendor/` trees from pinned
-sources. Do not edit those generated files to make a test pass. Keep stock
-VictoriaMetrics binaries unmodified and record the revision when evaluating an
-upgrade.
-
-| Path | Responsibility |
-| --- | --- |
-| `cmd/vmtier/` | CLI commands, service ownership, scheduling, and shutdown |
-| `internal/archive/` | Native export, preflight, streaming verification, and publication |
-| `internal/catalog/` | SQLite and legacy JSON catalog state, coverage, and maintenance |
-| `internal/cold/`, `internal/gateway/` | Cold reads, caching, matchers, and native read RPC |
-| `internal/config/` | Configuration validation and defaults |
-| `internal/objectstore/`, `internal/pack/` | Blob storage, S3 request budget, pack/index encoding |
-| `scripts/` | Pinned build tools, E2E/recovery/qualification fixtures, and evidence packaging |
-| `docs/`, `examples/` | User/developer guides, recorded evidence, and configuration examples |
-
-For runtime changes, run relevant focused tests and the repository checks:
+For runtime changes, run relevant unit tests and the repository checks:
 
 ```sh
 make build test race vet
 python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
-Use `make GO=/path/to/go ...` when Go is outside `PATH`. Changes to archive
-contents, publication, query results, native RPC, or S3 behavior also need the
-stock-VM differential suites. [Testing](docs/testing.md) describes setup, the
-SQLite and JSON v2 suites, offline recovery, workload/catalog qualification, CI,
-and evidence interpretation. Run the recovery suite for migration or restore
-changes; use the qualification fixtures for capacity or memory claims. Test observable behavior
-and meaningful failure boundaries rather than mirroring private implementation
-details. For documentation-only changes, check links, commands against current
-behavior, and planned versus measured claims; benchmarks need not be rerun.
+Use `make GO=/path/to/go ...` when Go is outside `PATH`.
 
-## Documentation and code conventions
+The Code Complexity workflow (`.github/workflows/complexity.yml`) measures the
+Cognitive and Cyclomatic Complexity of the Go code without its tests with
+[cccc](https://github.com/moznion/cccc), configured by `cccc.toml`, and tracks
+them with [octocov](https://github.com/k1LoW/octocov) (`.octocov.complexity.yml`):
+a comment on each pull request compares them with `main`, the job summary lists
+the 20 most complex functions, and each push to `main` stores a report in the
+`octocov` branch. The numbers are a trend to watch: no threshold fails the job.
+To see them locally: `cccc --table --top-cognitive 20 cmd internal`.
 
-Write repository documentation, code comments, commit/PR descriptions, and
-user-facing diagnostics in English. Test fixtures may contain other languages
-when exercising Unicode behavior. Format Go changes with `gofmt`. Preserve upstream
-license text and attribution.
+Run stock-VM differential suites for changes to archive contents, publication,
+query results, RPC, or S3 behavior. [Testing](docs/testing.md) describes their setup
+and assertions. Run the recovery or migration suites for changes to those paths,
+and use the qualification fixtures for capacity or memory claims.
+Test observable behavior and meaningful failure boundaries rather
+than mirroring private implementation details. For documentation-only changes,
+check links, commands against current behavior, and planned versus measured claims;
+performance benchmarks need not be rerun.
 
-Keep the [documentation index](docs/README.md) current when adding or moving a guide.
-Put current usage in the user guides, future behavior in the design, and measured
-results in dated validation reports. Update configuration examples with related
-behavior changes; examples must not contain credentials or assume access to a
-contributor's environment.
-
-Preserve recorded result JSON and provenance. Editing documentation does not turn
-an earlier run into a new result. Store new measurements separately until the report
-is deliberately updated. A local S3 test double is not a live provider test; a
-recent-only Hot reconstruction is not a natural retention-expiry test. Real-provider
-tests require an explicitly configured disposable target.
+Preserve recorded result JSON and provenance. Translation or design work does not
+turn an earlier run into a new result. Store new measurements separately until the
+report is deliberately updated. A local S3 test double is not a live provider test;
+a recent-only Hot reconstruction is not a natural retention-expiry test.
 
 ## Pull requests and releases
 
-Explain the concrete problem, resulting behavior, tests, and limitations in the
-pull request. Include documentation updates for changed commands, configuration,
-compatibility, or operational behavior. Keep changes small enough to review and
-diagnose, and identify checks that were not run.
+Explain the concrete problem, resulting behavior, tests, and limitations. Keep
+runtime changes small enough to review and diagnose. Examples must not contain
+credentials or assume access to a contributor's environment. Real-provider tests
+require an explicitly configured disposable target.
 
 Before distributing binaries, preserve the licenses and notices described in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), record linked dependencies, and
 verify a clean build. Local test success does not imply a published release or
 hosted CI run. Publication and deployment are separate maintainer actions.
+
+## Documentation changes
+
+Keep the README focused on project purpose, status, and entry points. Put setup
+steps in `docs/getting-started.md`, current behavior in the service/reference guides,
+operational procedures in `docs/operations.md`, and legacy-only procedures in
+`docs/legacy-json-v2.md`. Add new pages to `docs/README.md`.
+
+Keep design proposals separate from implemented behavior. Add measured reports to
+`docs/evidence.md`; preserve existing result bytes, paths, revisions, and caveats.
+When changing commands or defaults, check `cmd/vmtier`, `internal/config`, examples,
+and CI together. Check relative links and heading anchors after moving content.

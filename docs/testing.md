@@ -1,23 +1,18 @@
-# Testing
+# Reproducing validation
 
-Run commands from the repository root. The current SQLite service and the retained
-JSON v2 runtime have separate E2E suites, using the same disposable stock-VM fixture.
-This guide describes how to run the current tests; recorded runs are linked under
-[validation reports](#validation-reports).
+Run commands from the repository root. Choose a suite for the runtime and behavior
+being changed; historical reports describe their recorded revisions, not the
+current checkout.
 
-## Setup and fast checks
-
-Follow [getting started](getting-started.md) to bootstrap dependencies and build
-vmtier. The tested environment is Linux amd64; CI uses Ubuntu 24.04, Go **1.27.3**,
-and Python **3.15.2**. The Go module requires at least 1.25.3. A C toolchain is needed
-for CGO, including the bundled SQLite driver. E2E tests require local TCP listeners;
-Docker and cloud credentials are not needed.
-
-The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
-and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
-their build, test, race, vet, and four E2E steps, but failed artifact upload because
-the action rejected colons in nested fixture paths. Those runs were not successful
-CI runs. Historical local result files remain unchanged.
+| Validation | Procedure |
+| --- | --- |
+| Go and harness regressions | [Setup and quick checks](#setup-and-quick-checks) |
+| SQLite service integration | [SQLite service](#sqlite-service) |
+| PostgreSQL repository, redundant gateways, migration, and database faults | [PostgreSQL repository and HA suites](#postgresql-repository-and-ha-suites) |
+| Retained JSON v2 runtime | [Legacy JSON v2 suite](#legacy-json-v2-suite) |
+| Stopped JSON-to-SQLite cutover, backup, restore, and process recovery | [Offline recovery and cutover](#offline-recovery-and-cutover) |
+| Workload and SQLite catalog smoke fixtures | [Workload and catalog qualification](#workload-and-catalog-qualification) |
+| Recorded results and limitations | [Evidence index](evidence.md) |
 
 ## Pinned environment
 
@@ -30,44 +25,111 @@ committed Go modules and regenerates vmtier's vendor tree independently of the
 stock VM vendor tree. Historical result files retain their original toolchains
 and VM revisions; they do not establish validation of an upgraded dependency set.
 The retained JSON v2 suite tests an independent persistent HTTP catalog authority and
-a blob store using ordinary PUT/GET/Range requests. The SQLite service has a separate
-harness described below. Evidence from the previous
+a blob store using ordinary PUT/GET/Range requests. SQLite and PostgreSQL service
+harnesses are described below. Evidence from the previous
 all-S3 catalog architecture is kept under [legacy-v1](results/legacy-v1/README.md)
 and is not included in current results.
+
+## Setup and quick checks
+
+Follow [getting started](getting-started.md#build-from-source) for prerequisites.
+From the repository root:
+
+```sh
+./scripts/bootstrap.sh
+make build test race vet stock
+python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 -m venv .venv-e2e
+. .venv-e2e/bin/activate
+python -m pip install -r scripts/requirements-e2e.txt
+```
+
+Use a fresh work directory for every suite. The commands below assume this setup,
+including the active virtual environment for S3 tests. For documentation-only
+changes, check links, CLI flags, and implementation claims; no benchmarks are needed.
+The Python regression tests use only the standard library and can run before
+building binaries or installing Moto. They cover fixture timing, subprocess
+provenance, fault assertions, measurements, and evidence packaging.
 
 ## SQLite service
 
 After building vmtier and the pinned stock VM binaries and installing the Python
-dependencies shown below, run:
+dependencies in the setup above, run:
 
 ```sh
-make build test race vet
-python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 scripts/e2e_serve.py --backend local --workdir .cache/serve-local-fresh
+MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e_serve.py \
+  --backend s3 --replicas 2 --pack-max-blocks 4 --workdir .cache/serve-s3-fresh
 ```
 
-The Python tests cover subprocess runtime provenance, fixture timing, blob-outage
-assertions, workload measurements, and evidence packaging. They use the standard
-library and can run before building the binaries or installing Moto.
+`--pack-max-blocks 4` forces multiple packs per nonempty fixture window while
+retaining the same coverage and exact query checks. Omit it to test default pack
+limits; see [archive packing](archive-packs.md) for the pipeline bounds.
 
-To prepare the E2E suites:
+This harness starts one SQLite `serve` process. It exercises automatic archive
+progress, a failed tenant alongside a healthy tenant, interrupted export and restart,
+exclusive ownership, configuration drift rejection, Hot absence, 360 exact query
+comparisons, metadata, cache behavior, corrupt objects, and offline maintenance.
+It uses the same strict S3 proxy and disposable VM fixture as the JSON v2 suite.
+The archive-age boundary is held between complete windows by a fixture-specific H;
+there is no runtime clock override or scheduler pause mode.
+
+The combined stock vmselect defaults to `-search.maxLabelsAPIDuration=30s` in
+the harness. The earlier uncached S3 metadata scan exceeded the stock five-second
+deadline. After the reader changes, [measured JSON and SQLite runs](metadata-validation.md)
+passed with `--labels-api-duration 5s`, while still validating full payload blocks.
+See [service validation](serve-validation.md) for results, preserved failure evidence,
+provenance, and unexecuted checks. Loopback timings do not qualify provider performance.
+
+## PostgreSQL repository and HA suites
+
+Use a disposable PostgreSQL 17 database and set `VMTIER_TEST_POSTGRES_DSN` before
+`make test race`; integration tests otherwise skip explicitly. Tests isolate
+themselves in temporary schemas. See [PostgreSQL setup](postgres-catalog.md#build-and-integration-tests).
+
+With HAProxy, `psql`, Moto, and the pinned stock VM binaries installed:
 
 ```sh
-make stock
-python3 -m venv .deps/e2e-venv
-. .deps/e2e-venv/bin/activate
-python -m pip install -r scripts/requirements-e2e.txt
+export VMTIER_TEST_POSTGRES_DSN='postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable'
+make build test race vet stock
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir .cache/postgres-gateways-fresh
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir .cache/postgres-migration-fresh
+python3 scripts/postgres_ha.py --postgres-bin /usr/lib/postgresql/17/bin \
+  --race --workdir .cache/postgres-faults-fresh
 ```
 
-`make stock` builds `.bin/vmstorage`, `.bin/vminsert`, and `.bin/vmselect` from the
-bootstrapped, unmodified **VictoriaMetrics OSS v1.155.0-cluster**, commit
-`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. Source downloads are SHA-256 pinned;
-builds use upstream vendored dependencies. Use `make GO=/path/to/go ...` for another
-Go binary. Set `GO_BIN=/path/to/go` for E2E commands if Go is outside `PATH`, so
-the report can record its version.
+The gateway harness exercises two candidates, archiver takeover, gateway/proxy
+loss, static S3 budget allocation, and exact stock-VM comparisons. The commands
+above force multiple packs per nonempty window. Migration mode
+first archives into SQLite and verifies a stopped-writer metadata cutover without
+object PUTs. The database fault harness initializes its own primary and synchronous
+standby and exercises commit-response loss, stale writers, transport failures,
+and explicitly fenced promotion. It runs as an unprivileged user and needs no
+existing database server. All work directories must be fresh.
 
-The activated environment makes `moto_server` available to S3 tests. Alternatively,
-set `MOTO_SERVER` to its executable path. The requirement pins Moto to **5.2.5**;
-the local backend does not use it.
+The [HA report](postgres-ha-validation.md) separates retained v1.128.0-cluster stage
+evidence from v1.155.0-cluster integration runs. Reproduction commands use the
+current checkout and pin; preserve new reports separately from earlier artifacts. These local
+suites do not qualify production HA controllers, multi-AZ partitions, the outer
+L4 endpoint, or actual S3 providers.
+
+## Legacy JSON v2 suite
+
+The current regression harness also sets `-search.maxLabelsAPIDuration=30s` on
+the combined frontend. Its uncached S3 metadata reads share the full-block cost
+described above, even without the SQLite service's request limiter. This setting
+is recorded in new reports; the historical MVP reports retain their original
+configuration. See [stage 2 validation](serve-validation.md) for the default-deadline
+failure and subsequent regression results.
+
+```sh
+python3 scripts/e2e.py --backend local --workdir .cache/v2-local-fresh
+MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e.py \
+  --backend s3 --replicas 2 --workdir .cache/v2-s3-fresh
+```
+
+`make e2e` and `make e2e-s3` are shortcuts for these JSON v2 suites. They build
+binaries first but do not install Python dependencies or run the service suites.
 
 `GO_BIN` selects the Go binary. `VM_SOURCE_DIR` selects where the verified pinned
 VM source is extracted; use a new directory or one already prepared by these
@@ -75,68 +137,201 @@ scripts. An arbitrary existing source tree is rejected. To validate only fixture
 `python3 scripts/e2e.py --vm-only`.
 
 Each run creates an isolated directory and starts dedicated processes on available
-loopback ports. Pass an **unused directory** to `--workdir PATH`; the suite does not
-reuse existing data. At exit it stops only the processes it started and leaves
+loopback ports. Pass a **new or empty directory** to `--workdir PATH`; nonempty
+directories are rejected. If omitted, a temporary directory is created. At exit
+the harness stops only the processes it started and leaves
 logs, configurations, `results.json`, and isolated VM data. It has no option to
 connect to an external VM or a real S3 service. S3 tests use Moto 5.2.5 and public,
 test-only credentials.
 
-## Run the SQLite service suites
+`scripts/s3_compat_proxy.py` sits in front of Moto. It rejects requests containing
+`If-*` or `x-amz-copy-source-if-*` headers with 501 and strips every response ETag.
+It validates Content-MD5 on PUTs. At completion the suite checks that there were no
+conditional requests, that ETags were removed, that Range GETs occurred, and that
+every PUT carried valid Content-MD5. This is not a test against Sakura Object Storage.
+
+For both backends, the suite explicitly runs `catalog-init` in a directory separate
+from blob storage, then starts an HTTP catalog service in another process.
+Archive and gateway operations use that HTTP authority; S3 stores only packs and
+indexes. Catalog generation publication uses the service's local persistent state,
+without S3 conditional PUT, ETags, or LIST.
+
+`results.json` records the executor hostname, SHA-256 of binaries, harness files,
+and Go source tree, start/end UTC timestamps, and OS/Python/Moto versions.
+Set `GO_BIN` or put Go on `PATH` to record its version.
+
+## Legacy JSON v2 end-to-end checks
+
+- Load the same fixture into a reference VM retaining the full period and into
+  Hot before archive. Standard Python generates remote-write protobuf and literal
+  Snappy while preserving the stale NaN bit pattern.
+- Use tenants `1:2` and `7:9`, each with 16 series, and 17,654 input samples in
+  total. Generate five hours at a 30-second interval, including irregular gaps,
+  counter resets, label churn, empty/missing labels, duplicate/conflicting values
+  at the same timestamp, staleness, NaN, ±Inf, and archive-boundary ±1 ms. Values
+  differ between tenants.
+- Archive the oldest three hours with one-hour windows. Choose H at fixture
+  creation so the next eligible window remains 30 minutes away, regardless of
+  the UTC-hour phase; record the exact H and eligibility deadline.
+  The test contract uses Hot retention=240h, lateness=30m, and safety margin=30m.
+  Fixture ingestion is the only write activity during the experiment.
+- Send SIGKILL to the archiver during native export and confirm the explicitly
+  initialized catalog remains at generation 0. Retry against the same source URL
+  and confirm success. Replaying complete windows and automatic selection must
+  leave the authority's catalog bytes unchanged.
+- Reject changes to the committed coverage origin, archive age, and allowed
+  lateness without changing authority state. Confirm no legacy `catalog.json`
+  exists in blob storage.
+- Query Cold using a stock vmselect connected only to the gateway. Exercise both
+  `query` and `query_range`, and confirm the object Range GET counter increases.
+- Stop Hot, restart it with a **new data directory**, and ingest recent samples
+  only. Confirm raw export of all series over the old period is empty for both
+  tenants. This proves Hot absence by reconstructing the fixture; it does not
+  wait for actual retention expiry.
+- Run 30 expressions × 2 tenants × 3 periods (Cold, Hot, and the boundary) × 2 APIs
+  (instant and range), for 360 comparisons. Normalize order and require **exact
+  equality** of timestamps, labels, and VM's numeric strings, without floating-point
+  tolerance. Cover rollups, aggregation, vector matching, offsets, subqueries,
+  `@`, and regexp/negative matchers.
+- Compare label names, label values, and series discovery with the reference VM,
+  including Cold data.
+- Confirm healthy queries before fault injection. Missing, truncated, and
+  checksum-invalid objects must make both query and `verify` fail. Restoring the
+  original bytes must restore successful queries.
+- Warm a 32 MiB cache, stop the catalog authority, and require queries and `/ready`
+  to fail. Restarting the authority from the same persistent state must restore
+  the exact manifest and query results. Removing state must make catalog startup
+  fail without silently creating an empty state.
+- Require zero conditional-request rejections, at least one removed ETag, and
+  valid Content-MD5 on every PUT in the S3 proxy counters. Validate each MD5 against
+  its request body.
+- Call delete through the Cold-only vmselect and require an explicit unsupported
+  error.
+- In both suites, establish exact baseline results with the Cold cache disabled,
+  then interrupt only blob access while the gateway/service stays running. The
+  local fixture moves object contents out of the open storage root; the S3 proxy
+  rejects every request with a fixture-specific HTTP 503 while retaining Moto's
+  data for restoration. Require a frontend HTTP error containing that blob error,
+  and increments in Cold query, query-error, and object-GET counters. S3 also
+  records rejected GETs at the proxy. Connection refusals and unrelated timeouts
+  cannot satisfy this check. `/health` and `/ready` must remain successful because
+  readiness checks catalog/coverage, not blob availability. Restore blob access
+  and require exact reference results and unchanged published catalog/coverage.
+  New reports retain these observations under `blob_outage`.
+
+All vmselect instances use `-search.disableCache`,
+`-search.denyPartialResponse=true`, `-replicationFactor=1`,
+`-globalReplicationFactor=1`, and `-search.skipSlowReplicas=false`.
+Set `-dedup.minScrapeInterval=1ms` consistently on reference/Hot storage and all
+vmselect instances. With `--replicas 2`, reference and Hot each use two vmstorage
+instances; only vminsert's replication factor becomes 2. Top-level reads must not
+skip Hot or Cold as if they were interchangeable replicas.
+
+## Interpreting measurements
+
+`results.json` records archive wall time, CPU, child-process peak RSS, sample count,
+pack/index bytes, external authority manifest bytes, range-query latency
+distributions during the 360 comparisons, and Range GET/download counters for the
+cache test. RSS is Linux `getrusage(RUSAGE_CHILDREN).ru_maxrss`: an upper bound that
+also includes the peaks of children such as provenance probes completed before
+archive. Python/Moto and long-running VM/catalog CPU and RSS are not attributed to
+archive.
+
+The expressions in each time period include more than raw selectors. An expression
+evaluated in the Hot period can still need Cold through offsets or lookback.
+Do not interpret the `hot` distribution as strictly Hot-only overhead. These are
+small measurements against Moto on the same machine, not a general S3/network
+performance test.
+
+Only the separate cache test restarts the gateway with a 32 MiB cache and runs
+`cold_only[30m]` twice. VM result cache remains disabled. The second query must
+perform zero Range GETs and return the same values. Read amplification is defined
+as **blob download bytes, including indexes / (returned raw samples × 16 bytes)**.
+This compares transfer volume with logical timestamp/float64 size, excludes catalog
+HTTP traffic, and is not a ratio to compressed pack size.
+
+Real Sakura/AWS S3/MinIO IAM, TLS, consistency, sustained load, high cardinality,
+catalog updates with stock VM result cache enabled, actual retention expiry,
+external ingress rejection of late writes, resharding, multiple-writer operation,
+and compatibility with every VM version are outside this suite's scope.
+
+Separate Go regression tests reject H/L contract changes at the authority,
+archiver, and gateway. The archiver rejects them before new PUTs or exports; the
+gateway fails queries and readiness even with a warm cache. Coverage-gap tests use
+fixtures whose initial contract already has a shorter H, rather than substituting
+a later configuration mismatch for an actual missing-coverage test.
+
+Both fixtures use a shared archive-age calculation that places the next eligible
+window exactly 30 minutes after fixture creation. A run may begin at any point in
+the UTC hour; crossing the next UTC hour does not itself change required coverage.
+The report records `created_at_ms`, `archive_age_ms`, `next_eligible_at_ms`, and
+`finished_at_ms`. Each suite must finish its assertions within that 30-minute
+horizon and reports failure if it does not. Actual production eligibility and
+coverage checks remain active. The [historical hour-boundary failure](serve-validation.md)
+is preserved separately.
+
+
+## Runtime provenance
+
+Both suites select workload-child `GOMAXPROCS` in this order: `--gomaxprocs N`,
+the outer `GOMAXPROCS` environment variable, then `2`. The selected value must be
+a positive integer and applies equally to stock VM, gateway/serve, catalog,
+interrupted commands, and synchronous archive/maintenance CLI commands. For example:
 
 ```sh
-python scripts/e2e_serve.py --backend local --workdir .cache/serve-local-fresh
-python scripts/e2e_serve.py --backend s3 --replicas 2 --pack-max-blocks 4 \
-  --workdir .cache/serve-s3-fresh
+GOMAXPROCS=7 python3 scripts/e2e.py --gomaxprocs 3 --backend local --workdir .cache/runtime-local
 ```
 
-`--pack-max-blocks 4` lowers the per-pack block limit so every fixture window must
-produce multiple packs; the same logical coverage and exact query checks still
-apply. Omitting it tests the default pack limits. See [archive packs](archive-packs.md)
-for the bounded streaming pipeline and [archive validation](archive-validation.md)
-for recorded multi-pack runs.
+Here the wrapper has `GOMAXPROCS=7`, while every workload child receives `3`.
+`results.json` records the outer value, selection source, chosen value, and each
+managed or one-shot process's command, allowlisted runtime environment, and exit
+status when available. Records are appended before launch and retained on expected
+or unexpected failures. Credentials and unrelated environment variables are not
+recorded. `--vm-only` writes the same process provenance to `runtime.json`.
+The recorded value is the environment actually passed to the process, not a
+measurement of Go's scheduler or a claim about peak process memory. Executable
+version probes are outside the measured workload.
 
-The harness starts one `serve` process with a SQLite catalog, scheduler, read RPC
-gateway, and shared S3 request budget. In addition to the shared query and fault
-checks below, it verifies:
-
-- Explicit initialization; missing state, changed policy/source/blob locator/ID,
-  and a second owner are rejected without changing committed state.
-- A failed tenant remains uncovered while a healthy tenant progresses and can be
-  queried; global readiness remains unsuccessful until all streams are covered.
-- SIGTERM during native export publishes nothing. Restart archives automatically,
-  then resumes from committed coverage without exporting completed windows again.
-- A live owner excludes offline inspection, verification, and backup. Clean
-  shutdown releases ownership for successful offline backup and verification.
-- A stopped service causes queries to fail; restart restores reads from persisted
-  state. S3 runs expose admitted-attempt and wait metrics.
-
-Focused Go tests cover additional boundaries such as publication replay, verified
-empty windows, streaming pack rotation and raw-oracle validation, bounded SQLite
-selection, import/restore, LRU eviction, coalesced reads, shared query-memory
-admission, and S3 retry pacing, cancellation, queue limits, and response-body
-lifetime. E2E success alone does not establish the S3 limiter's maximum throughput.
-
-## Run the legacy JSON v2 regression suites
+Before this correction, managed children always received `GOMAXPROCS=2` while
+one-shot commands inherited the wrapper environment. Historical result JSON remains
+unchanged; the [stage 2 narrative](serve-validation.md) distinguishes those settings.
+Run the focused harness regressions with:
 
 ```sh
-python scripts/e2e.py --backend local --workdir .cache/v2-local-fresh
-python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/v2-s3-fresh
+python3 -m unittest discover -s scripts -p 'test_e2e_harness.py' -v
 ```
 
-These suites initialize a JSON catalog and start its persistent HTTP authority in
-a separate process. Standalone `archive` and `gateway` commands use that authority;
-the blob store contains only packs and indexes. JSON-specific checks include
-SIGKILL during export, replay without manifest changes, fixed-contract rejection,
-warm-cache queries and readiness failing on authority outage, durable authority
-restart, and query/`verify` failures for corrupted objects.
+## Metadata measurement
 
-`make e2e` and `make e2e-s3` are shortcuts for these **JSON v2** suites, not the
-SQLite service suites. They build binaries first but do not install Python
-dependencies. To test fixture ingestion into stock VM alone, use:
+Both harnesses record `metadata_measurements` for label names, two label-value
+selectors, and series discovery for both tenants. Each observation includes exact
+reference comparison status, tiered latency, and deltas in object GET requests,
+Range GET requests, and downloaded bytes. The initial `uncached` phase disables
+the immutable cache; stock vmselect result caching stays disabled throughout.
+
+To reevaluate the stock five-second labels deadline after reader changes and
+collect repeat measurements on the same fixture, use fresh work directories:
 
 ```sh
-python scripts/e2e.py --vm-only --workdir .cache/vm-only-fresh
+python3 scripts/e2e.py --backend s3 --replicas 2 --labels-api-duration 5s \
+  --measure-warm-metadata --workdir .cache/metadata-json-5s
+python3 scripts/e2e_serve.py --backend s3 --replicas 2 --labels-api-duration 5s \
+  --measure-warm-metadata --workdir .cache/metadata-sqlite-5s
 ```
+
+`--labels-api-duration` accepts `5s` or the retained default `30s`; the effective
+value appears in the report and the child vmselect command. A deadline failure
+remains a failed suite and the partial metadata measurement is retained. Do not
+interpret a successful query with fewer returned series as an improvement: all
+phases keep the exact reference comparisons.
+
+The optional `prime` and `warm` passes run after the existing 32 MiB cache test.
+The prime pass may reuse entries from prior calls, so it is not a cold-cache
+measurement. The subsequent warm pass is a repeated workload, not a guarantee
+that every entry fits or that zero GETs occur. These per-call counters are process
+observations; in this fixture archival has completed and does not upload during
+the measurement. On S3, request counts include transport retries. Loopback latency
+and this small fixture do not establish a general metadata deadline guarantee.
 
 ## Offline recovery and cutover
 
@@ -174,10 +369,10 @@ failure. This is additional process recovery coverage, not a power-loss test.
 After the same build setup, run the small local fixtures used by CI:
 
 ```sh
-python scripts/qualify_workload.py --tenants 2 --series 1000 \
+python3 scripts/qualify_workload.py --tenants 2 --series 1000 \
   --history-hours 4 --dense-hours 2 --replicas 2 \
   --workdir .cache/workload-smoke-fresh
-python scripts/catalog_capacity.py --hours 24 --tenants 2 --repeats 1 \
+python3 scripts/catalog_capacity.py --hours 24 --tenants 2 --repeats 1 \
   --output .cache/catalog-smoke-fresh/results.json \
   --workdir .cache/catalog-smoke-fresh/work
 ```
@@ -188,196 +383,33 @@ full measured envelope. Use new work/output paths to preserve earlier evidence.
 with `--go /path/to/go` (or `GO`), not `GO_BIN`. The expensive Go catalog fixture
 skips ordinary `go test` unless invoked with its qualification environment.
 
-The [workload report](workload-validation.md) gives full reproduction commands for
-concurrent archival, exact Cold queries, cache eviction, admission refusal, and
-sampled process memory. Its measured local envelope uses **5,000 series per tenant**;
-the harness default of 10,000 is the original target whose broad query exceeded the
-unchanged query allowance. Two dense hours plus one 24-hour sentinel series per
-tenant do not qualify 24 hours of dense data for the whole cohort. Use the report's
-explicit workload and pressure flags when reproducing its evidence.
+The [workload report](workload-validation.md) gives full commands and the recorded
+envelope of 5,000 series per tenant. The harness default of 10,000 is the original
+target whose broad query exceeded the unchanged query allowance. Two dense hours
+plus one 24-hour sentinel series per tenant do not qualify 24 hours of dense data
+for the whole cohort. Use the report's explicit workload and pressure flags.
 
 The [catalog capacity report](catalog-capacity-validation.md) separately covers
-87,600 logical windows. It publishes synthetic descriptors through the real SQLite
-API and checks bounded selections, limit refusals, and restart; it performs no
-blob I/O. Its publication rate is not archive throughput. [Memory accounting](query-memory.md)
-explains why logical query reservations, Go heap metrics, cache limits, and sampled
-RSS describe different parts of the workload.
+87,600 logical windows through the real SQLite API, with no blob I/O. Its
+publication rate is not archive throughput or PostgreSQL capacity evidence.
+Both reports retain their original revisions and dependency pins.
 
-## Work directories and shared assertions
+## CI evidence
 
-Each run starts dedicated processes on available loopback ports. Use a new or empty
-`--workdir`; nonempty directories are rejected to preserve earlier evidence. The
-harness stops its own processes at exit and leaves logs, configurations,
-`results.json`, and isolated VM data. If no directory is given, it creates a
-temporary one and prints its path. Neither harness has an option to connect to an
-existing VM or real S3 service. S3 fixtures use public, test-only credentials.
+The workflow always packages available `.cache/ci-*` work directories into
+`e2e-evidence.tar.gz`, then uploads that file as the `e2e-evidence` artifact.
+After downloading and unzipping the artifact, run `tar -xzf e2e-evidence.tar.gz`.
+The archive preserves original tenant paths (including colons), hidden files,
+logs, and result bytes. Failed suites may leave partial directories; an empty
+archive means setup failed before any work directory was created. Packaging and
+upload also run after test failure and do not turn a failed test into success.
 
-Both complete E2E suites:
+The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
+and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
+their build, test, race, vet, and four E2E steps, but failed artifact upload because
+the action rejected colons in nested fixture paths. Those runs were not successful
+CI runs. Historical local result files remain unchanged.
 
-1. Load the same full dataset into a reference VM and Hot. The fixture has tenants
-   `1:2` and `7:9`, 16 series per tenant, and 17,654 input samples over five hours.
-   It includes irregular gaps, counter resets, label churn, empty/absent labels,
-   duplicate/conflicting timestamps, staleness, NaN, infinities, and millisecond
-   archive boundaries. Tenant values differ.
-2. Archive the oldest three hours in one-hour windows. Fixture creation chooses H
-   so the next eligible window is 30 minutes away; Hot retention is 240h, allowed
-   lateness is 30m, and the safety margin is 30m. No ingestion occurs after fixture
-   setup except the controlled recent-only reconstruction below.
-3. Confirm that stock vmselect reads Cold through the native gateway and Range
-   GETs, and that Cold excludes young samples at and after the boundary.
-4. Recreate Hot with a **new data directory** containing recent samples only and
-   confirm old-range raw export is empty for both tenants. This tests Hot absence,
-   not natural retention expiry.
-5. Compare 30 expressions × two tenants × three periods (Cold, Hot, boundary) ×
-   two APIs (instant, range): **360 exact comparisons per run**. Labels, timestamps,
-   and VM's numeric strings must match after ordering, without floating-point
-   tolerance. Expressions include rollups, aggregation, vector matching, offsets,
-   subqueries, `@`, and regexp/negative matchers. Metadata checks compare labels,
-   label values, and series discovery separately.
-6. Establish baseline results with the Cold cache disabled, verify a warm 32 MiB
-   immutable cache performs no additional Range GETs, reject missing/truncated/
-   checksum-invalid payloads, restore exact queries after repairs, and reject Cold
-   deletion explicitly.
-7. Interrupt only blob access while the gateway/service stays running, require a
-   query error identifying the blob failure and increased GET/error counters, then
-   restore exact results without changing publication or coverage. Health and
-   catalog/coverage readiness stay successful during this outage: readiness does
-   not scrub blobs. Connection refusals or unrelated timeouts cannot pass this
-   check. Reports retain the observations under `blob_outage`.
 
-For S3, [the compatibility proxy](../scripts/s3_compat_proxy.py) sits in front of
-Moto. It rejects conditional request headers with 501, removes response ETags,
-and validates Content-MD5 on every PUT. The suites require zero conditional
-requests, removed ETags, Range GETs, and valid MD5s. For blob outages the proxy
-returns a distinct HTTP 503; the local backend instead moves object contents out
-of the open root. These are protocol fixtures, not Sakura service tests.
-
-All vmselect instances disable result caching and partial responses, set both
-replication factors to one, and disable slow-replica skipping. Reference/Hot
-storage and all vmselect instances use `-dedup.minScrapeInterval=1ms`.
-`--replicas 2` creates two vmstorage instances per cluster and changes vminsert's
-replication factor to two; Hot and Cold must still both participate in queries.
-
-Combined frontends default to `-search.maxLabelsAPIDuration=30s`. Earlier uncached
-S3 metadata reads exceeded the stock five-second deadline; [runs after the reader
-changes](metadata-validation.md) passed this fixture with `--labels-api-duration 5s`.
-Metadata still validates full payload blocks. See [metadata measurement](#metadata-measurement)
-for deadline and repeat-measurement options; fixture success is not a general
-metadata deadline guarantee.
-
-Both fixtures record `created_at_ms`, `archive_age_ms`, `next_eligible_at_ms`, and
-`finished_at_ms`. They must complete within their 30-minute eligibility horizon.
-Crossing a UTC-hour boundary alone does not change required coverage; production
-eligibility checks remain active without a runtime clock override.
-
-## Metadata measurement
-
-Both harnesses record `metadata_measurements` for label names, two label-value
-selectors, and series discovery for both tenants. Each observation includes exact
-reference comparison status, tiered latency, and deltas in object GET requests,
-Range GET requests, and downloaded bytes. The initial `uncached` phase disables
-the immutable cache; stock vmselect result caching stays disabled throughout.
-
-To reevaluate the stock five-second labels deadline after reader changes and
-collect repeat measurements on the same fixture, use fresh work directories:
-
-```sh
-python3 scripts/e2e.py --backend s3 --replicas 2 --labels-api-duration 5s \
-  --measure-warm-metadata --workdir .cache/metadata-json-5s
-python3 scripts/e2e_serve.py --backend s3 --replicas 2 --labels-api-duration 5s \
-  --measure-warm-metadata --workdir .cache/metadata-sqlite-5s
-```
-
-`--labels-api-duration` accepts `5s` or the retained default `30s`; the effective
-value appears in the report and the child vmselect command. A deadline failure
-remains a failed suite and the partial metadata measurement is retained. Do not
-interpret a successful query with fewer returned series as an improvement: all
-phases keep the exact reference comparisons.
-
-The optional `prime` and `warm` passes run after the existing 32 MiB cache test.
-The prime pass may reuse entries from prior calls, so it is not a cold-cache
-measurement. The subsequent warm pass is a repeated workload, not a guarantee
-that every entry fits or that zero GETs occur. These per-call counters are process
-observations; in this fixture archival has completed and does not upload during
-the measurement. On S3, request counts include transport retries. Loopback latency
-and this small fixture do not establish a general metadata deadline guarantee.
-
-## CI and evidence
-
-The [CI workflow](../.github/workflows/ci.yml) runs Python regression tests,
-`make bootstrap build test race vet stock`, the workload and catalog smoke fixtures,
-all four JSON/SQLite E2E suites, and the local recovery suite on pushes and pull
-requests. SQLite S3 forces four-block packs. CI then packages available `.cache/ci-*`
-work directories, including qualification and recovery output, and uploads
-the `e2e-evidence` artifact. Packaging and upload use `if: always()`, so test failures
-can still produce diagnostic evidence; artifact upload does not turn a failed test
-into a success.
-
-After downloading and unzipping the artifact, extract it in an empty directory:
-
-```sh
-tar -xzf e2e-evidence.tar.gz
-```
-
-The tar preserves tenant paths containing colons, hidden files, logs, and result
-bytes. A failed suite may leave partial output; an empty tar means no suite work
-directory was available. [CI evidence validation](ci-evidence-validation.md)
-records an earlier successful artifact round trip and the upload issue it fixed.
-
-## Runtime provenance
-
-Both suites select workload-child `GOMAXPROCS` in this order: `--gomaxprocs N`,
-the outer environment variable, then `2`. The value must be a positive integer and
-applies to managed services and one-shot archive/maintenance commands alike:
-
-```sh
-GOMAXPROCS=7 python scripts/e2e_serve.py --gomaxprocs 3 \
-  --backend local --workdir .cache/runtime-local
-```
-
-Here every workload child receives `3`. `results.json` records the outer value,
-selection source, selected value, commands, allowlisted runtime environment, and
-exit status when available, including failed commands. `--vm-only` writes this
-process provenance to `runtime.json`. Credentials and unrelated environment
-variables are not recorded. Executable-version probes are outside the workload.
-
-Reports also record hostname, binary/harness/Go-source hashes, UTC timestamps,
-OS/Python/Moto versions, range-query timing distributions, cache measurements,
-and object bytes/counters. The JSON v2 report additionally measures one-shot
-archive wall time, CPU, and child-process peak RSS. RSS uses Linux
-`getrusage(RUSAGE_CHILDREN).ru_maxrss`, which can include earlier provenance
-probes; it is not total service memory and does not attribute long-running
-VM/catalog or Python/Moto resources to archive.
-
-Expressions evaluated in the Hot period can still read Cold through lookback or
-offsets, so `hot` timings do not mean Hot-only overhead. In the JSON v2 cache report,
-read amplification means blob bytes including indexes divided by returned raw
-samples × 16 bytes; it excludes catalog HTTP traffic and is not a ratio to
-compressed pack size. VM result caching stays disabled throughout.
-
-Loopback results do not qualify real Sakura/AWS/MinIO authentication, TLS,
-durability, latency, sustained load, or high-cardinality capacity. Natural Hot
-retention expiry, external lateness enforcement, resharding, multiple writers,
-stock VM result-cache behavior, and other VM versions are outside these suites.
-
-## Validation reports
-
-Reports describe the named run and revision; later harness changes do not
-retroactively alter their evidence. Keep original result JSON unchanged.
-
-| Report | Scope |
-| --- | --- |
-| [Workload and memory](workload-validation.md) | Local measured workload, concurrent archive/query pressure, and retained failed target |
-| [Catalog capacity](catalog-capacity-validation.md) | 87,600 synthetic window descriptors; catalog-only scope |
-| [Recovery and cutover](recovery-validation.md) | Offline import, older-backup catch-up, and process crashes |
-| [Metadata](metadata-validation.md) | Exact metadata results, request counts, and the five-second deadline fixture |
-| [Archive packs](archive-validation.md) | Streaming multi-pack publication and bounded-window failures |
-| [Reader](reader-validation.md) | LRU, shared reads, coalescing, and bounded query behavior |
-| [Raw oracle](raw-oracle-validation.md) | Incremental raw verification and allocation evidence |
-| [Implementation regression](implementation-validation.md) | Earlier archive/reader implementation checks |
-| [Harness foundations](foundation-validation.md) | Runtime provenance, fixture timing, and stronger blob-outage assertions across all four suites |
-| [SQLite service](serve-validation.md) | Service integration, scheduler, ownership, and shared S3 budget; includes preserved failures |
-| [SQLite catalog](sqlite-catalog-validation.md) | Offline catalog implementation, import, and maintenance |
-| [CI evidence](ci-evidence-validation.md) | Hosted artifact packaging and byte-preserving extraction |
-| [JSON v2 MVP](validation.md) | Historical separate-process MVP results and measurements |
-| [All-S3 v1 archive](results/legacy-v1/README.md) | Superseded architecture; excluded from current runtime evidence |
+See the [workflow](../.github/workflows/ci.yml) for the current suite matrix and
+[evidence index](evidence.md) for recorded results.

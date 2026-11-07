@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/yuuki/vmtier/internal/catalog"
 	"github.com/yuuki/vmtier/internal/cold"
 	"github.com/yuuki/vmtier/internal/config"
 	"github.com/yuuki/vmtier/internal/gateway"
@@ -91,10 +92,19 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 		memory := stats.archiveMemory.Snapshot()
 		fmt.Fprintf(w, "vmtier_archive_verifier_bytes %d\nvmtier_archive_verifier_peak_bytes %d\nvmtier_archive_pack_bytes %d\nvmtier_archive_pack_peak_bytes %d\n", memory.VerifierBytes, memory.VerifierPeakBytes, memory.PackBytes, memory.PackPeakBytes)
 	}
-	if reader.SQLiteCatalog == nil {
+	if reader.Repository == nil {
 		return
 	}
-	capacity, err := reader.SQLiteCatalog.Capacity(ctx)
+	// Local file capacity is a SQLite capability, not a requirement on the
+	// backend-neutral publication repository. Other backends omit these gauges.
+	capacityReader, ok := reader.Repository.(interface {
+		Capacity(context.Context) (catalog.SQLiteCapacity, error)
+	})
+	if !ok {
+		fmt.Fprintln(w, "vmtier_catalog_capacity_available 0")
+		return
+	}
+	capacity, err := capacityReader.Capacity(ctx)
 	if err != nil {
 		// Omit unknown gauges rather than presenting stale values or false zeroes.
 		fmt.Fprintln(w, "vmtier_catalog_capacity_available 0")

@@ -2,14 +2,17 @@
 
 ## Status
 
-Accepted; implementation is in progress. The SQLite repository, offline v2 import
-and backup/restore, and the single-owner `serve` runtime with a shared S3 request
-budget are implemented. The runtime uses per-stream archive publication and
-bounded SQLite selection for read RPC. Streaming pack rotation, incremental oracle
-parsing, LRU/miss coalescing, adjacent-range reads, and provider/workload qualification
-remain planned. The specification and delivery gates are in
-[the first-release design](../design.md); executed runtime checks are recorded in
-[service validation](../serve-validation.md).
+Accepted for the single-host SQLite baseline. The repository, offline migration
+and backup/restore, service scheduling, pack rotation, incremental verification,
+LRU/shared reads, adjacent ranges, and query work admission are implemented.
+Broader provider/workload, retention, ingress, and release qualification remain
+scoped separately in [the first-release design](../design.md) and
+[validation evidence](../evidence.md).
+
+[ADR 0004](0004-postgresql-catalog.md) extends this original scope after a concrete
+multi-host availability requirement: PostgreSQL is now an optional backend with
+fenced archiver ownership and multiple read gateways. The alternatives below
+record the reasons at the time of the original single-host decision.
 
 ## Context
 

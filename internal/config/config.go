@@ -23,6 +23,7 @@ import (
 )
 
 var safeID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
 type Store struct {
 	Type                  string  `json:"type"`
@@ -37,16 +38,19 @@ type Store struct {
 }
 
 type Service struct {
+	MaxReplicas     int    `json:"max_replicas,omitempty"`
 	ArchiveInterval string `json:"archive_interval,omitempty"`
 	ArchiveTimeout  string `json:"archive_timeout,omitempty"`
+	ArchiveLeaseTTL string `json:"archive_lease_ttl,omitempty"`
 }
 
 // Catalog selects an authoritative control plane, independent of blob storage.
 type Catalog struct {
-	Type string `json:"type"`
-	Path string `json:"path"`
-	URL  string `json:"url"`
-	ID   string `json:"id"`
+	Type   string `json:"type"`
+	Path   string `json:"path"`
+	URL    string `json:"url"`
+	ID     string `json:"id"`
+	DSNEnv string `json:"dsn_env,omitempty"`
 }
 type Source struct {
 	ID  string `json:"id"`
@@ -72,6 +76,7 @@ type Config struct {
 	QueryMemoryBytes                         int64    `json:"query_memory_bytes,omitempty"`
 	age, retention, lateness, safety, window time.Duration
 	archiveInterval                          time.Duration
+	archiveLeaseTTL                          time.Duration
 }
 
 func Read(path string) (*Config, error) {
@@ -108,20 +113,27 @@ func (c *Config) Validate() error {
 	}
 	switch c.Catalog.Type {
 	case "local", "sqlite":
-		if c.Catalog.Path == "" || c.Catalog.URL != "" {
-			return errors.New("local/SQLite catalog requires path and no url")
+		if c.Catalog.Path == "" || c.Catalog.URL != "" || c.Catalog.DSNEnv != "" {
+			return errors.New("local/SQLite catalog requires path and no url or dsn_env")
 		}
 		if c.Store.Type == "local" && samePath(c.Catalog.Path, c.Store.Path) {
 			return errors.New("catalog and blob directories must be distinct")
 		}
 	case "http":
 		u, err := url.Parse(c.Catalog.URL)
-		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || c.Catalog.Path != "" {
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || c.Catalog.Path != "" || c.Catalog.DSNEnv != "" {
 			return errors.New("HTTP catalog requires an origin URL without credentials/path/query/fragment and no path field")
 		}
 		c.Catalog.URL = strings.TrimRight(c.Catalog.URL, "/")
+	case "postgres":
+		if !environmentName.MatchString(c.Catalog.DSNEnv) || c.Catalog.Path != "" || c.Catalog.URL != "" {
+			return errors.New("PostgreSQL catalog requires dsn_env naming an environment variable, with no path or url")
+		}
+		if c.Store.Type != "s3" {
+			return errors.New("PostgreSQL service requires shared S3 blob storage")
+		}
 	default:
-		return errors.New("catalog.type must be local, http or sqlite; S3 is not a catalog authority")
+		return errors.New("catalog.type must be local, http, sqlite or postgres; S3 is not a catalog authority")
 	}
 	switch c.Store.Type {
 	case "local":
@@ -138,6 +150,9 @@ func (c *Config) Validate() error {
 		if c.Catalog.Type == "sqlite" && c.Store.RequestsPerSecond == 0 && c.Store.MaxConcurrentRequests == 0 && c.Store.MaxQueuedRequests == 0 {
 			c.Store.RequestsPerSecond, c.Store.MaxConcurrentRequests, c.Store.MaxQueuedRequests = 80, 8, 64
 		}
+		if c.Catalog.Type == "postgres" && (c.Store.RequestsPerSecond == 0 || c.Store.MaxConcurrentRequests == 0 || c.Store.MaxQueuedRequests == 0) {
+			return errors.New("PostgreSQL service requires explicit aggregate S3 request limits")
+		}
 		if c.Store.RequestsPerSecond != 0 || c.Store.MaxConcurrentRequests != 0 || c.Store.MaxQueuedRequests != 0 {
 			if math.IsNaN(c.Store.RequestsPerSecond) || math.IsInf(c.Store.RequestsPerSecond, 0) || c.Store.RequestsPerSecond <= 0 || c.Store.RequestsPerSecond > 1000000 || c.Store.MaxConcurrentRequests < 1 || c.Store.MaxConcurrentRequests > 10000 || c.Store.MaxQueuedRequests < 1 || c.Store.MaxQueuedRequests > 100000 {
 				return errors.New("configure positive bounded S3 requests_per_second, max_concurrent_requests and max_queued_requests together")
@@ -146,9 +161,23 @@ func (c *Config) Validate() error {
 	default:
 		return errors.New("store.type must be local or s3")
 	}
-	if c.Catalog.Type == "sqlite" {
+	if c.Catalog.Type == "sqlite" || c.Catalog.Type == "postgres" {
 		if _, err := c.BlobLocator(); err != nil {
 			return err
+		}
+	}
+	if _, err := c.perReplicaStore(); err != nil {
+		return err
+	}
+	c.archiveLeaseTTL = 30 * time.Second
+	if c.Service.ArchiveLeaseTTL != "" {
+		if c.Catalog.Type != "postgres" {
+			return errors.New("service.archive_lease_ttl requires a PostgreSQL catalog")
+		}
+		var err error
+		c.archiveLeaseTTL, err = time.ParseDuration(c.Service.ArchiveLeaseTTL)
+		if err != nil || c.archiveLeaseTTL < 3*time.Second || c.archiveLeaseTTL > 24*time.Hour || c.archiveLeaseTTL%time.Millisecond != 0 {
+			return errors.New("service.archive_lease_ttl must be whole milliseconds between 3s and 24h")
 		}
 	}
 	c.archiveTimeout = 2 * time.Minute
@@ -265,11 +294,15 @@ func (c *Config) ValidateArchiveRange(start, end int64) error {
 	return nil
 }
 func (c *Config) OpenBlobs() (objectstore.BlobStore, error) {
-	switch c.Store.Type {
+	store, err := c.perReplicaStore()
+	if err != nil {
+		return nil, err
+	}
+	switch store.Type {
 	case "local":
-		return objectstore.NewLocal(c.Store.Path, 64<<20)
+		return objectstore.NewLocal(store.Path, 64<<20)
 	case "s3":
-		return objectstore.NewS3(objectstore.S3Config{Endpoint: c.Store.Endpoint, Region: c.Store.Region, Bucket: c.Store.Bucket, Prefix: c.Store.Prefix, RequestsPerSecond: c.Store.RequestsPerSecond, MaxConcurrentRequests: c.Store.MaxConcurrentRequests, MaxQueuedRequests: c.Store.MaxQueuedRequests})
+		return objectstore.NewS3(objectstore.S3Config{Endpoint: store.Endpoint, Region: store.Region, Bucket: store.Bucket, Prefix: store.Prefix, RequestsPerSecond: store.RequestsPerSecond, MaxConcurrentRequests: store.MaxConcurrentRequests, MaxQueuedRequests: store.MaxQueuedRequests})
 	default:
 		return nil, fmt.Errorf("unsupported store type %q", c.Store.Type)
 	}
@@ -280,8 +313,8 @@ func (c *Config) OpenCatalog() (catalog.Store, error) {
 		return catalog.NewLocal(c.Catalog.Path, c.Catalog.ID, false)
 	case "http":
 		return catalog.NewHTTP(c.Catalog.URL, c.Catalog.ID, os.Getenv("VMTIER_CATALOG_TOKEN"))
-	case "sqlite":
-		return nil, errors.New("SQLite uses the bounded repository; use serve or offline SQLite maintenance")
+	case "sqlite", "postgres":
+		return nil, errors.New("SQLite and PostgreSQL use the bounded repository; use serve or catalog maintenance")
 	default:
 		return nil, errors.New("invalid catalog type")
 	}
@@ -310,6 +343,21 @@ func (c *Config) ArchiveInterval() time.Duration { return c.archiveInterval }
 
 func (c *Config) ArchiveTimeout() time.Duration { return c.archiveTimeout }
 
+func (c *Config) ArchiveLeaseTTL() time.Duration { return c.archiveLeaseTTL }
+
+// PostgresDSN resolves credentials at use time; connection strings are never
+// stored in the JSON configuration or included in configuration errors.
+func (c *Config) PostgresDSN() (string, error) {
+	if c.Catalog.Type != "postgres" || !environmentName.MatchString(c.Catalog.DSNEnv) {
+		return "", errors.New("PostgreSQL catalog requires a valid dsn_env")
+	}
+	dsn := os.Getenv(c.Catalog.DSNEnv)
+	if strings.TrimSpace(dsn) == "" {
+		return "", fmt.Errorf("PostgreSQL connection environment variable %s is unset or empty", c.Catalog.DSNEnv)
+	}
+	return dsn, nil
+}
+
 func (c *Config) ArchiveContract() catalog.Contract {
 	out := catalog.Contract{CoverageStart: c.CoverageStart, WindowMS: c.window.Milliseconds(), AgeMS: c.age.Milliseconds(), LatenessMS: c.lateness.Milliseconds(), DedupMS: 1, Tenants: append([]string(nil), c.Tenants...)}
 	for _, source := range c.Sources {
@@ -322,13 +370,13 @@ func (c *Config) BlobLocator() (catalog.BlobLocator, error) {
 	return catalog.NormalizeBlobLocator(catalog.BlobLocator{Type: c.Store.Type, Path: c.Store.Path, Endpoint: c.Store.Endpoint, Region: c.Store.Region, Bucket: c.Store.Bucket, Prefix: c.Store.Prefix})
 }
 
-func (c *Config) SQLiteReader(s objectstore.BlobStore, db *catalog.SQLite) (*cold.Reader, error) {
+func (c *Config) RepositoryReader(s objectstore.BlobStore, db catalog.Repository) (*cold.Reader, error) {
 	blob, err := c.BlobLocator()
 	if err != nil {
 		return nil, err
 	}
 	r := c.Reader(s, nil)
-	r.SQLiteCatalog, r.BlobLocator = db, blob
+	r.Repository, r.BlobLocator = db, blob
 	return r, nil
 }
 

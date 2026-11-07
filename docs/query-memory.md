@@ -14,6 +14,10 @@ the upstream RPC API then owns serialization. This leaves at most eight RPC
 response buffers outside the two reservations. It does not justify a claim that
 all process memory is covered by the shared allowance.
 
+These limits and component metrics apply per process to both service backends.
+PostgreSQL replicas have independent caches and query-memory allowances;
+`service.max_replicas` divides S3 admission, not these memory budgets.
+
 ## Reader work model
 
 The reader charges these components before reading selected payloads, on both
@@ -76,7 +80,7 @@ unbounded error text are metric labels.
 | `vmtier_query_index_estimate_peak_bytes` | Largest observed single parsed directory estimate |
 | `vmtier_query_work_peak_bytes` | Highest single-query logical charge observed; an index that itself causes refusal can exceed the limit |
 | `vmtier_cache_used_bytes`, `vmtier_cache_evictions_total` | Retained cache accounting and actual LRU eviction count |
-| `vmtier_archive_verifier_bytes`, `vmtier_archive_verifier_peak_bytes` | Retained sample slice capacities at 16 bytes per element, two key copies/native-name bytes, 256 bytes per series for maps/slice headers, and temporary per-series dedup arrays; observed during SQLite archiving |
+| `vmtier_archive_verifier_bytes`, `vmtier_archive_verifier_peak_bytes` | Retained sample slice capacities at 16 bytes per element, two key copies/native-name bytes, 256 bytes per series for maps/slice headers, and temporary per-series dedup arrays; observed during service archiving |
 | `vmtier_archive_pack_bytes`, `vmtier_archive_pack_peak_bytes` | Payload/index backing capacities, structural parsed index estimate and readback capacity around pack upload; excludes in-progress builder scratch |
 | `vmtier_go_heap_objects_bytes` | Go runtime heap object bytes, including objects not yet collected |
 | `vmtier_go_heap_alloc_bytes_total` | Cumulative Go heap allocations; its delta measures allocation traffic, not retained memory |
