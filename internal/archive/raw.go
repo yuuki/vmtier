@@ -25,7 +25,7 @@ func verifyRawResponse(body io.Reader, maxBytes int64, maxSamples int, start, en
 	if err == nil {
 		var token json.Token
 		token, err = d.Token()
-		if err == io.EOF {
+		if err == io.EOF { //nolint:errorlint // json.Decoder reports the end of input as a bare io.EOF; anything else stays an error.
 			err = nil
 		} else if err == nil {
 			err = fmt.Errorf("trailing raw verification content: %v", token)

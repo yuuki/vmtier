@@ -55,7 +55,7 @@ func TestRecordBoundaryTruncationOfConflictingDuplicates(t *testing.T) {
 					return
 				}
 				if !strings.HasSuffix(r.URL.Path, "/query") {
-					http.Error(w, "unexpected path", 404)
+					http.Error(w, "unexpected path", http.StatusNotFound)
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")

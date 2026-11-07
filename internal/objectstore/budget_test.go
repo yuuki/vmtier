@@ -169,7 +169,7 @@ func TestBudgetTransportHoldsPermitUntilBodyClose(t *testing.T) {
 	var calls atomic.Int32
 	transport := budgetTransport{budget: b, base: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		calls.Add(1)
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("payload")), Header: make(http.Header)}, nil
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("payload")), Header: make(http.Header)}, nil
 	})}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -207,7 +207,7 @@ func TestBudgetTransportHoldsPermitUntilBodyClose(t *testing.T) {
 		t.Fatalf("permit did not release after Close: calls=%d stats=%+v", calls.Load(), b.snapshot())
 	}
 	transport.base = roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("connection failed") })
-	if _, err := transport.RoundTrip(r); err == nil || b.snapshot().InFlightRequests != 0 {
+	if _, err := transport.RoundTrip(r); err == nil || b.snapshot().InFlightRequests != 0 { //nolint:bodyclose // the base transport fails, so RoundTrip returns no response
 		t.Fatalf("transport failure leaked permit: %v %+v", err, b.snapshot())
 	}
 }
@@ -243,7 +243,7 @@ func TestBudgetTransportClosesRejectedRequestBody(t *testing.T) {
 		t.Error("full queue reached the transport")
 		return nil, errors.New("unexpected request")
 	})}
-	if _, err := transport.RoundTrip(r); !errors.Is(err, ErrRequestQueueFull) || !body.closed.Load() {
+	if _, err := transport.RoundTrip(r); !errors.Is(err, ErrRequestQueueFull) || !body.closed.Load() { //nolint:bodyclose // admission fails, so RoundTrip returns no response
 		t.Fatalf("rejected request body not closed: %v", err)
 	}
 	cancel()

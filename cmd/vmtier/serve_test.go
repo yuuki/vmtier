@@ -126,7 +126,7 @@ func TestServeShutdownReleasesCatalogOwnership(t *testing.T) {
 		response, err := client.Get("http://" + address + "/health")
 		if err == nil {
 			response.Body.Close()
-			started = response.StatusCode == 200
+			started = response.StatusCode == http.StatusOK
 			if started {
 				break
 			}

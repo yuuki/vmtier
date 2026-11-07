@@ -23,6 +23,7 @@ configuration with credentials removed, reproduction steps, expected and actual
 behavior, and relevant logs or test results. For query discrepancies, include the
 expression, time bounds, tenant, and a small reproducible dataset when possible.
 Keep private metric data, credentials, and access tokens out of public reports.
+Report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## Development and validation
 
@@ -30,12 +31,18 @@ Use the pinned source and [build instructions](docs/getting-started.md#build-fro
 generated `vendor/` or `.deps/` files to make a test pass. Keep stock VictoriaMetrics
 binaries unmodified and record the revision when evaluating an upgrade.
 
-For runtime changes, run relevant unit tests and the repository checks:
+For runtime changes, run relevant unit tests and, after `make bootstrap`, the
+local pre-PR gate and the remaining repository checks:
 
 ```sh
-make build test race vet vulncheck
-python3 -m unittest discover -s scripts -p 'test_*.py'
+make check            # golangci-lint, go mod tidy -diff, actionlint and zizmor, race tests, script tests
+make build vet vuln
 ```
+
+`make test-integration` (with `VMTIER_TEST_POSTGRES_DSN`), `make test-fuzz` and
+`make bench` cover the PostgreSQL repositories, the decoders and the hot paths.
+[AGENTS.md](AGENTS.md) lists the compatibility contracts whose changes must be
+called out.
 
 Use `make GO=/path/to/go ...` when Go is outside `PATH`.
 
@@ -68,7 +75,8 @@ a recent-only Hot reconstruction is not a natural retention-expiry test.
 ## Pull requests and releases
 
 Explain the concrete problem, resulting behavior, tests, and limitations. Keep
-runtime changes small enough to review and diagnose. Examples must not contain
+runtime changes small enough to review and diagnose. Commits, branches and pull
+request titles follow the Git conventions in AGENTS.md. Examples must not contain
 credentials or assume access to a contributor's environment. Real-provider tests
 require an explicitly configured disposable target.
 

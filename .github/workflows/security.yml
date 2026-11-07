@@ -1,5 +1,6 @@
 name: security
-# Weekly runs catch advisories published after a change merged.
+# Weekly runs catch advisories published after a change merged and run the
+# current CodeQL queries.
 on:
   push:
   pull_request:
@@ -26,6 +27,9 @@ jobs:
       - name: Report reachable vulnerabilities in vmtier and its modules
         run: make vulncheck
 
+  # actionlint and zizmor over .github/ (workflows and dependabot.yml). With
+  # GH_TOKEN, zizmor also runs its online audits, such as impostor commits and
+  # known-vulnerable actions; pipx is preinstalled on the runner.
   workflows:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -37,12 +41,44 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Lint and audit workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make lint-actions
+
+  # Go is traced while building the service binary, which links every internal
+  # package; Python covers the harnesses and release tooling under scripts/.
+  # Workflows are audited by zizmor in the workflows job instead.
+  codeql:
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write # upload CodeQL results to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: manual
+          - language: python
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: '3.15.2'
-      - name: Lint workflow syntax and expressions
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - name: Audit workflow security
-        run: |
-          python -m pip install zizmor==1.32.0
-          zizmor --offline --min-severity low .github/workflows
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - if: matrix.build-mode == 'manual'
+        run: make bootstrap build
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

@@ -55,3 +55,24 @@ func BenchmarkPortableToWire(b *testing.B) {
 		}
 	}
 }
+
+// Every Cold query that misses the cache parses and validates the index of each
+// selected pack before any Range GET.
+func BenchmarkParseIndex(b *testing.B) {
+	idx, _, err := Build(bytes.NewReader(benchmarkNative()), Tenant{1, 0}, 0, 128000, Limits{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	encoded, err := MarshalIndex(idx, Limits{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(int64(len(encoded)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := ParseIndex(encoded, Limits{}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

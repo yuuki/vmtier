@@ -55,7 +55,7 @@ func buildPacks(r io.Reader, tenant Tenant, start, end int64, limits Limits, max
 	p.builder = p.newBuilder()
 	for {
 		name, payload, err := readNativeRecord(lr, l)
-		if err == io.EOF {
+		if err == io.EOF { //nolint:errorlint // readNativeRecord returns a bare io.EOF only at a record boundary; anything wrapped is truncation.
 			break
 		}
 		if err != nil {

@@ -3,7 +3,7 @@ package objectstore
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // G501: S3 Content-MD5 is a protocol upload-integrity header, not a security control.
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -235,7 +235,7 @@ func (s *S3) Put(ctx context.Context, key string, data []byte) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
-	digest := md5.Sum(data) // S3 Content-MD5 compatibility; SHA-256 remains authoritative.
+	digest := md5.Sum(data) //nolint:gosec // G401: S3 Content-MD5 compatibility; SHA-256 remains authoritative.
 	in := &s3.PutObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(s.prefix + key), Body: bytes.NewReader(data), ContentLength: aws.Int64(int64(len(data))), ContentMD5: aws.String(base64.StdEncoding.EncodeToString(digest[:]))}
 	_, err := s.client.PutObject(ctx, in)
 	if err != nil {

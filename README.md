@@ -101,7 +101,8 @@ See [guarantees and limits](docs/limits.md) before deployment.
 - [PostgreSQL catalog](docs/postgres-catalog.md), [HA deployment](docs/ha-deployment.md),
   and [HA validation](docs/postgres-ha-validation.md).
 - [Architecture and source map](docs/architecture.md).
-- [Testing](docs/testing.md), [releases](docs/releasing.md), and [contributing](CONTRIBUTING.md).
+- [Testing](docs/testing.md), [releases](docs/releasing.md), [contributing](CONTRIBUTING.md),
+  and [security reporting](SECURITY.md).
 - [Legacy JSON v2 deployment](docs/legacy-json-v2.md).
 
 Licensed under [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) and

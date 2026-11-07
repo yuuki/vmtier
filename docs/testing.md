@@ -37,12 +37,17 @@ From the repository root:
 
 ```sh
 ./scripts/bootstrap.sh
-make build test race vet stock
-python3 -m unittest discover -s scripts -p 'test_*.py'
+make check build vet stock
 python3 -m venv .venv-e2e
 . .venv-e2e/bin/activate
 python -m pip install -r scripts/requirements-e2e.txt
 ```
+
+`make check` runs golangci-lint, `go mod tidy -diff`, actionlint and zizmor,
+the Go race tests, and the Python regression tests below. `make test-fuzz` runs
+every Go fuzz target for `FUZZTIME` (30 seconds by default); CI fuzzes for 15
+seconds per target and for three minutes in its weekly run. `make bench` writes
+benchmark results to `bench.txt` for benchstat.
 
 Use a fresh work directory for every suite. The commands below assume this setup,
 including the active virtual environment for S3 tests. For documentation-only
@@ -84,7 +89,9 @@ provenance, and unexecuted checks. Loopback timings do not qualify provider perf
 ## PostgreSQL repository and HA suites
 
 Use a disposable PostgreSQL 17 database and set `VMTIER_TEST_POSTGRES_DSN` before
-`make test race`; integration tests otherwise skip explicitly. Tests isolate
+`make test race`, or run `make test-integration`, which runs only the PostgreSQL
+packages and fails when the variable is unset; integration tests otherwise skip
+explicitly. Tests isolate
 themselves in temporary schemas. See [PostgreSQL setup](postgres-catalog.md#build-and-integration-tests).
 
 With HAProxy, `psql`, Moto, and the pinned stock VM binaries installed:
@@ -424,8 +431,11 @@ job requires identical file hashes and `SHA256SUMS`, then runs the archive smoke
 test. That test checks the exact asset set, static linking, the presence of every
 recorded notice, `vmtier version`, and SQLite catalog initialization in the static
 binary. The job uploads the snapshot as `release-snapshot`. The `security`
-workflow runs `make vulncheck` (govulncheck) on every push and weekly. It also
-checks workflow syntax with actionlint and workflow security with zizmor.
+workflow runs `make vulncheck` (govulncheck) and CodeQL for Go and Python on
+every push and weekly. Its `workflows` job runs `make lint-actions`: actionlint
+and zizmor over `.github/`, including zizmor's online audits. The `test`
+workflow's `lint` job runs golangci-lint and `go mod tidy -diff`, and its `fuzz`
+job runs `make test-fuzz`.
 `python3 -m unittest discover -s scripts -p 'test_*.py'` covers the packaging
 logic without Docker. A tag runs the full [release gates](releasing.md#maintainer-procedure).
 This includes the suites above against the packaged binary; their evidence is

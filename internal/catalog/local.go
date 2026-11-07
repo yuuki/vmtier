@@ -102,7 +102,7 @@ func (s *Local) lock(ctx context.Context) (func(), error) {
 		if e == nil {
 			return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }, nil
 		}
-		if e != syscall.EWOULDBLOCK && e != syscall.EAGAIN {
+		if !errors.Is(e, syscall.EWOULDBLOCK) && !errors.Is(e, syscall.EAGAIN) {
 			f.Close()
 			return nil, e
 		}

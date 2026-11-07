@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/encoding"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage"
@@ -158,7 +159,7 @@ func Build(r io.Reader, tenant Tenant, start, end int64, limits Limits) (*Index,
 	}
 	for {
 		mnBytes, payload, err := readNativeRecord(lr, l)
-		if err == io.EOF {
+		if err == io.EOF { //nolint:errorlint // readNativeRecord returns a bare io.EOF only at a record boundary; anything wrapped is truncation.
 			break
 		}
 		if err != nil {
@@ -196,7 +197,7 @@ func readNativeHeader(r io.Reader, start, end int64) error {
 // It returns io.EOF only at a record boundary.
 func readNativeRecord(lr *io.LimitedReader, l Limits) (name, payload []byte, err error) {
 	name, err = readFrame(lr, l.MaxMetricNameBytes, true)
-	if err == io.EOF {
+	if err == io.EOF { //nolint:errorlint // readFrame returns a bare io.EOF only before a frame's first byte.
 		return nil, nil, err
 	}
 	if err != nil {
@@ -434,9 +435,14 @@ func validateSeries(s Series, tenant Tenant, l Limits) ([]byte, error) {
 	if _, ok := s.Labels["__name__"]; !ok {
 		return nil, errors.New("series missing metric name")
 	}
-	for k := range s.Labels {
+	for k, v := range s.Labels {
 		if k == "" {
 			return nil, errors.New("empty label key")
+		}
+		// The index stores labels as JSON, which replaces invalid UTF-8 with
+		// U+FFFD; the parsed labels would no longer match NativeName.
+		if !utf8.ValidString(k) || !utf8.ValidString(v) {
+			return nil, errors.New("series label is not valid UTF-8; pack indexes store labels as JSON")
 		}
 	}
 	lb, _ := json.Marshal(s.Labels)

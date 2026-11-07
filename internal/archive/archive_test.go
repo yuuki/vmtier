@@ -99,7 +99,7 @@ func sourceServer(t *testing.T, cfg Config, mode string) (*httptest.Server, *ato
 			json.NewEncoder(w).Encode(out)
 			return
 		}
-		http.Error(w, "unexpected", 404)
+		http.Error(w, "unexpected", http.StatusNotFound)
 	}))
 	return s, calls
 }

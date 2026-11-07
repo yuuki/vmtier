@@ -384,13 +384,18 @@ func TestCompressedPortableRoundTrip(t *testing.T) {
 }
 
 func FuzzNativeParser(f *testing.F) {
-	native, _ := nativeFixture(0, 100, map[string]string{"__name__": "x"}, []int64{0, 50}, []int64{2, 3}, 0)
-	f.Add(native)
+	for _, seed := range nativeSeeds() {
+		f.Add(seed)
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > 1<<20 {
 			return
 		}
-		_, _, _ = Build(bytes.NewReader(data), Tenant{}, 0, 100, Limits{MaxInputBytes: 1 << 20, MaxPackBytes: 1 << 20, MaxIndexBytes: 1 << 20})
+		idx, packData, err := Build(bytes.NewReader(data), Tenant{}, 0, 100, fuzzLimits)
+		if err != nil {
+			return
+		}
+		requirePublishable(t, idx, packData, fuzzLimits)
 	})
 }
 

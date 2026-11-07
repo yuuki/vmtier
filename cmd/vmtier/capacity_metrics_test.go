@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -97,7 +98,7 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 	mux := serveMux(&c, reader, api, store, &stats)
 	scrape := func() string {
 		recorder := httptest.NewRecorder()
-		mux.ServeHTTP(recorder, httptest.NewRequest("GET", "/metrics", nil))
+		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 		if recorder.Code != 200 {
 			t.Fatalf("scrape status=%d", recorder.Code)
 		}
