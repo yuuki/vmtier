@@ -12,8 +12,14 @@ before initialization; optional pack and query limits are described in the
 | [serve-sakura.json](serve-sakura.json) | Current SQLite `vmtier serve` | Sakura S3 endpoint with a shared request budget |
 | [serve-postgres.json](serve-postgres.json) | PostgreSQL `vmtier serve` | Shared Sakura S3 endpoint with aggregate request limits |
 | [ha/](ha/README.md) | PostgreSQL service and redundant Cold endpoint example | Shared S3 endpoint with a fixed maximum client count |
+| [systemd/](systemd/vmtier.service) | Hardened systemd unit and environment file for `vmtier serve` from a release archive | Either; credentials in `vmtier.env` |
 | [config.json](config.json) | Legacy JSON v2 `archive` / `gateway` | S3-compatible loopback endpoint |
 | [sakura.json](sakura.json) | Legacy JSON v2 `archive` / `gateway` | Sakura S3 endpoint |
+
+Release archives include `serve-sakura.json`, `serve-postgres.json`, and the
+`systemd/` files; [install a release archive](../docs/getting-started.md#install-a-release-archive)
+shows where each goes. The unit's sandbox was checked under systemd 252
+([release validation](../docs/release-validation.md#systemd-deployment-example)).
 
 For SQLite, copy `serve-sakura.json` to your own configuration file
 and follow the [service guide](../docs/serve.md). Set the bucket, prefix, catalog

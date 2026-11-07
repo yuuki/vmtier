@@ -1,4 +1,5 @@
 """Release packaging checks that run without Docker or a Go toolchain."""
+import io
 import json
 import shutil
 import struct
@@ -250,6 +251,32 @@ class FileTest(unittest.TestCase):
         (self.root / 'SHA256SUMS').write_text('0' * 64 + '  ../escape\n')
         with self.assertRaises(release.ReleaseError):
             release.read_checksums(self.root)
+
+
+    def test_packaged_examples_exist(self):
+        for example in release.EXAMPLES:
+            self.assertTrue((release.ROOT / example).is_file(), example)
+
+    def release_notes(self, version):
+        dist = self.root / version
+        dist.mkdir()
+        base = release.artifact_base(version)
+        (dist / f'{base}.tar.gz').write_bytes(b'archive')
+        (dist / f'{base}.cdx.json').write_text('{}')
+        release.write_json(dist / f'{base}.build.json', {'version': version, 'commit': 'c' * 40,
+                                                         'binary': {'sha256': 'b' * 64}})
+        release.write_checksums(dist, [f'{base}{s}' for s in ('.tar.gz', '.build.json', '.cdx.json')])
+        with mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+            release.notes(mock.Mock(dist=str(dist)))
+        return out.getvalue()
+
+    def test_notes_mark_pre_releases_and_link_scope_at_the_commit(self):
+        candidate = self.release_notes('v0.1.0-rc.1')
+        self.assertIn('pre-release for evaluation, not a production-supported release', candidate)
+        self.assertIn(f"blob/{'c' * 40}/docs/releasing.md#support-scope", candidate)
+        self.assertIn(f"blob/{'c' * 40}/docs/evidence.md", candidate)
+        self.assertIn('--source-ref refs/tags/v0.1.0-rc.1', candidate)
+        self.assertNotIn('pre-release', self.release_notes('v0.1.0'))
 
 
 class SBOMTest(unittest.TestCase):
