@@ -38,8 +38,13 @@ current working directory, including paths inside configuration files.
 
 ## Build and initialization
 
-Follow [Getting started](getting-started.md) to build. Bootstrap verifies the pinned `go-sqlite3
-v1.14.32` archive and generates vendor files. CGO compiles bundled SQLite, so a C
+Catalogs and packs also pin the VM release and revision. A dependency upgrade to a
+new VM pin requires the [VM upgrade procedure](compatibility.md#codec-and-upgrades);
+SQLite backup/restore or JSON import does not change that compatibility contract.
+
+Follow [Getting started](getting-started.md) to build. Bootstrap downloads and
+verifies the pinned `go-sqlite3 v1.14.53` module through the committed Go module
+checksums and regenerates vendor files. CGO compiles bundled SQLite 3.54.1, so a C
 compiler is required. The default build needs no separate SQLite service or system
 SQLite library. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 

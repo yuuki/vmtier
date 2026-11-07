@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -91,29 +92,31 @@ func TestSearchMetadataAndTimeFiltering(t *testing.T) {
 		}, nil
 	}), Limits{})
 	sq := storage.NewSearchQuery(3, 7, 1500, 2500, nil, 100)
-	labels, err := a.LabelNames(nil, sq, 100, 0)
+	labels, err := a.LabelNames(context.Background(), nil, sq, 100)
 	if err != nil || strings.Join(labels, ",") != "__name__,job" {
 		t.Fatalf("labels=%v err=%v", labels, err)
 	}
-	values, err := a.LabelValues(nil, sq, "__name__", 100, 0)
+	values, err := a.LabelValues(context.Background(), nil, sq, "__name__", 100)
 	if err != nil || strings.Join(values, ",") != "cpu" {
 		t.Fatalf("values=%v err=%v", values, err)
 	}
-	names, err := a.SearchMetricNames(nil, sq, 0)
+	names, err := a.SearchMetricNames(context.Background(), nil, sq)
 	if err != nil || len(names) != 1 {
 		t.Fatalf("names=%v err=%v", names, err)
 	}
-	it, err := a.InitSearch(nil, sq, 0)
+	it, err := a.InitSearch(context.Background(), nil, sq)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer it.MustClose()
-	var mb storage.MetricBlock
 	count := 0
-	for it.NextBlock(&mb) {
+	for {
+		wire, ok := it.NextBlock(context.Background(), nil)
+		if !ok {
+			break
+		}
 		count++
 		// vmselect's actual wire decoder must accept the produced block.
-		wire := mb.Marshal(nil)
 		var decoded storage.MetricBlock
 		tail, err := decoded.Unmarshal(wire)
 		if err != nil || len(tail) != 0 {
@@ -158,7 +161,7 @@ func TestFailClosed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := New(tc.backend, tc.limits)
-			it, err := a.InitSearch(nil, sq, 0)
+			it, err := a.InitSearch(context.Background(), nil, sq)
 			if it != nil || err == nil || !strings.Contains(err.Error(), tc.needle) {
 				t.Fatalf("iterator=%v err=%v", it, err)
 			}
@@ -168,16 +171,18 @@ func TestFailClosed(t *testing.T) {
 		})
 	}
 	a := New(nil, Limits{})
-	if it, err := a.InitSearch(nil, sq, uint64(time.Now().Unix()-1)); it != nil || err == nil {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	if it, err := a.InitSearch(ctx, nil, sq); it != nil || err == nil {
 		t.Fatal("expired query accepted")
 	}
-	if _, err := a.DeleteSeries(nil, sq, 0); err == nil {
+	if _, err := a.DeleteSeries(context.Background(), nil, sq); err == nil {
 		t.Fatal("delete accepted")
 	}
-	if err := a.RegisterMetricNames(nil, nil, 0); err == nil {
+	if err := a.RegisterMetricNames(context.Background(), nil, nil); err == nil {
 		t.Fatal("write accepted")
 	}
-	if _, err := a.Tenants(nil, storage.TimeRange{}, 0); err == nil {
+	if _, err := a.Tenants(context.Background(), nil, storage.TimeRange{}); err == nil {
 		t.Fatal("unsupported tenant discovery accepted")
 	}
 }
@@ -193,8 +198,98 @@ func TestPreservesNativeMetricNameBytes(t *testing.T) {
 	a := New(backendFunc(func(context.Context, *storage.SearchQuery) ([]storage.MetricBlock, error) {
 		return []storage.MetricBlock{mb}, nil
 	}), Limits{})
-	names, err := a.SearchMetricNames(nil, storage.NewSearchQuery(3, 7, 0, 2000, nil, 10), 0)
+	names, err := a.SearchMetricNames(context.Background(), nil, storage.NewSearchQuery(3, 7, 0, 2000, nil, 10))
 	if err != nil || len(names) != 1 || names[0] != want {
 		t.Fatalf("native name order changed: %v", err)
+	}
+}
+
+func TestRequestCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	a := New(backendFunc(func(ctx context.Context, _ *storage.SearchQuery) ([]storage.MetricBlock, error) {
+		close(started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}), Limits{MaxRequestDuration: time.Minute})
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.InitSearch(ctx, nil, storage.NewSearchQuery(3, 7, 0, 5000, nil, 100))
+		done <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("request cancellation lost: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("backend did not receive request cancellation")
+	}
+}
+
+func TestIteratorCancellationAndAppend(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := New(backendFunc(func(context.Context, *storage.SearchQuery) ([]storage.MetricBlock, error) {
+		return []storage.MetricBlock{
+			block(3, 7, "cpu", []int64{1000}, nil),
+			block(3, 7, "cpu", []int64{1001}, nil),
+		}, nil
+	}), Limits{})
+	it, err := a.InitSearch(ctx, nil, storage.NewSearchQuery(3, 7, 0, 2000, nil, 100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer it.MustClose()
+	prefix := []byte("prefix")
+	wire, ok := it.NextBlock(ctx, append([]byte(nil), prefix...))
+	if !ok || !bytes.HasPrefix(wire, prefix) {
+		t.Fatalf("iterator did not append to destination: %x", wire)
+	}
+	var decoded storage.MetricBlock
+	if tail, err := decoded.Unmarshal(wire[len(prefix):]); err != nil || len(tail) != 0 {
+		t.Fatalf("invalid wire block: tail=%x err=%v", tail, err)
+	}
+	cancel()
+	if got, ok := it.NextBlock(ctx, prefix); ok || !bytes.Equal(got, prefix) || !errors.Is(it.Error(), context.Canceled) {
+		t.Fatalf("canceled iterator returned data: %x %v %v", got, ok, it.Error())
+	}
+	if _, ok := it.NextBlock(context.Background(), nil); ok {
+		t.Fatal("iterator resumed after cancellation")
+	}
+}
+
+func TestMetricsMetadataUnsupported(t *testing.T) {
+	a := New(nil, Limits{})
+	if rows, err := a.GetMetadataRecords(context.Background(), nil, nil, 100, ""); rows != nil || err == nil || !strings.Contains(err.Error(), "unsupported RPC searchMetadata") {
+		t.Fatalf("metadata RPC must fail explicitly: rows=%v err=%v", rows, err)
+	}
+}
+
+func TestMetadataLimits(t *testing.T) {
+	a := New(backendFunc(func(context.Context, *storage.SearchQuery) ([]storage.MetricBlock, error) {
+		return []storage.MetricBlock{
+			block(3, 7, "a", []int64{1000}, map[string]string{"job": "one", "instance": "1"}),
+			block(3, 7, "b", []int64{1000}, map[string]string{"job": "two", "instance": "2"}),
+			block(3, 7, "c", []int64{1000}, map[string]string{"job": "three", "instance": "3"}),
+		}, nil
+	}), Limits{MaxLabelNames: 2, MaxLabelValues: 2})
+	sq := storage.NewSearchQuery(3, 7, 0, 2000, nil, 100)
+	for _, requestLimit := range []int{0, 1, 2, 100} {
+		want := 2
+		if requestLimit == 1 {
+			want = 1
+		}
+		names, err := a.LabelNames(context.Background(), nil, sq, requestLimit)
+		if err != nil || len(names) != want {
+			t.Fatalf("label names limit=%d: got %v, %v", requestLimit, names, err)
+		}
+		values, err := a.LabelValues(context.Background(), nil, sq, "job", requestLimit)
+		if err != nil || len(values) != want {
+			t.Fatalf("label values limit=%d: got %v, %v", requestLimit, values, err)
+		}
 	}
 }

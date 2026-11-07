@@ -122,15 +122,15 @@ func TestAdjacentRangesSamplesAndMetadata(t *testing.T) {
 		t.Fatalf("four adjacent blocks should use one GET: %v", store.calls)
 	}
 	api := gateway.New(r, gateway.Limits{})
-	names, err := api.LabelNames(nil, query(), 100, 0)
+	names, err := api.LabelNames(context.Background(), nil, query(), 100)
 	if err != nil || !reflect.DeepEqual(names, []string{"__name__", "job"}) {
 		t.Fatalf("label names: %v, %v", names, err)
 	}
-	labels, err := api.LabelValues(nil, query(), "job", 100, 0)
+	labels, err := api.LabelValues(context.Background(), nil, query(), "job", 100)
 	if err != nil || !reflect.DeepEqual(labels, []string{"keep", "skip"}) {
 		t.Fatalf("label values: %v, %v", labels, err)
 	}
-	series, err := api.SearchMetricNames(nil, query(), 0)
+	series, err := api.SearchMetricNames(context.Background(), nil, query())
 	var wantSeries []string
 	for _, series := range idx.Series {
 		wantSeries = append(wantSeries, string(pack.MetricName(idx.Tenant, series.Labels).Marshal(nil)))
@@ -149,7 +149,7 @@ func TestAdjacentRangesSamplesAndMetadata(t *testing.T) {
 	}
 	// Metadata still requires an actual sample in the requested time interval.
 	q := storage.NewSearchQuery(1, 2, 11, 99, nil, 100)
-	names, err = api.LabelNames(nil, q, 100, 0)
+	names, err = api.LabelNames(context.Background(), nil, q, 100)
 	if err != nil || len(names) != 0 {
 		t.Fatalf("metadata ignored sample time: %v %v", names, err)
 	}

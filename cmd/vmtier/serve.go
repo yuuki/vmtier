@@ -93,7 +93,6 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}
 	api := gateway.NewWithContext(ctx, serviceBackend{ctx, reader}, c.GatewayLimits())
 	rpc, err := vmselectapi.NewServer(rpcAddr, api, vmselectapi.Limits{
-		MaxLabelNames: 10000, MaxLabelValues: 100000, MaxTagValueSuffixes: 10000,
 		MaxConcurrentRequests: 8, MaxQueueDuration: 0,
 		MaxQueueDurationFlagName: "vmtier queue timeout", MaxConcurrentRequestsFlagName: "vmtier concurrency",
 	}, false)

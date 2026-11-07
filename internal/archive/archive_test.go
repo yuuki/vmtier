@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -352,34 +352,70 @@ func TestIncompleteSourceSetAndTopologyChange(t *testing.T) {
 	}
 }
 func TestCountVerifierDedupAndStale(t *testing.T) {
-	cfg := baseConfig("")
-	var block storage.Block
-	// Use the exported decimal representation of a stale marker.
-	vals, scale := decimal.AppendFloatToDecimal(nil, []float64{1, decimal.StaleNaN, 3, 4})
-	block.Init(&storage.TSID{}, []int64{cfg.StartMS, cfg.StartMS, cfg.StartMS + 1, cfg.EndMS}, vals, scale, 64)
-	payload := block.MarshalPortable(nil)
-	name := pack.MetricName(pack.Tenant{}, map[string]string{"__name__": "x"}).MarshalNoAccountIDProjectID(nil)
-	b := encoding.MarshalInt64(nil, cfg.StartMS)
-	b = encoding.MarshalInt64(b, cfg.EndMS-1)
-	b = encoding.MarshalUint32(b, uint32(len(name)))
-	b = append(b, name...)
-	b = encoding.MarshalUint32(b, uint32(len(payload)))
-	b = append(b, payload...)
-	idx, data, e := pack.Build(bytes.NewReader(b), pack.Tenant{}, cfg.StartMS, cfg.EndMS, pack.Limits{})
-	if e != nil {
-		t.Fatal(e)
-	}
-	c, e := sampleCounts(idx, data, 100)
-	if e != nil {
-		t.Fatal(e)
-	}
-	for _, n := range c {
-		if n.normal != 1 || n.stale != 1 {
-			t.Fatal(fmt.Sprintf("dedup stale mismatch %+v", n))
-		}
-	}
-	if _, e = sampleCounts(idx, data, 1); e == nil {
-		t.Fatal("verification expansion bound ignored")
+	// The pinned VM prefers the maximum non-stale value for timestamp conflicts
+	// (VictoriaMetrics issue #10196), while all-stale conflicts remain stale.
+	for _, tc := range []struct {
+		name       string
+		duplicates []float64
+		winner     float64
+		counts     count
+	}{
+		{"staleLast", []float64{1, decimal.StaleNaN}, 1, count{normal: 2}},
+		{"staleFirst", []float64{decimal.StaleNaN, 1}, 1, count{normal: 2}},
+		{"maximumNonStale", []float64{1, decimal.StaleNaN, 2}, 2, count{normal: 2}},
+		{"allStale", []float64{decimal.StaleNaN, decimal.StaleNaN}, decimal.StaleNaN, count{normal: 1, stale: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := baseConfig("")
+			var block storage.Block
+			values := append(append([]float64(nil), tc.duplicates...), 3, 4)
+			times := make([]int64, len(tc.duplicates))
+			for i := range times {
+				times[i] = cfg.StartMS
+			}
+			times = append(times, cfg.StartMS+1, cfg.EndMS)
+			vals, scale := decimal.AppendFloatToDecimal(nil, values)
+			block.Init(&storage.TSID{}, times, vals, scale, 64)
+			payload := block.MarshalPortable(nil)
+			name := pack.MetricName(pack.Tenant{}, map[string]string{"__name__": "x"}).MarshalNoAccountIDProjectID(nil)
+			b := encoding.MarshalInt64(nil, cfg.StartMS)
+			b = encoding.MarshalInt64(b, cfg.EndMS-1)
+			b = encoding.MarshalUint32(b, uint32(len(name)))
+			b = append(b, name...)
+			b = encoding.MarshalUint32(b, uint32(len(payload)))
+			b = append(b, payload...)
+			idx, data, err := pack.Build(bytes.NewReader(b), pack.Tenant{}, cfg.StartMS, cfg.EndMS, pack.Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, err := extractSamples(idx, data, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("unexpected series count: %d", len(rows))
+			}
+			for _, samples := range rows {
+				if len(samples) != 2 || samples[0].timestamp != cfg.StartMS || samples[1] != (sample{cfg.StartMS + 1, 3}) {
+					t.Fatalf("unexpected deduplicated samples: %+v", samples)
+				}
+				if math.Float64bits(samples[0].value) != math.Float64bits(tc.winner) {
+					t.Fatalf("wrong duplicate winner: got %v, want %v", samples[0].value, tc.winner)
+				}
+			}
+			counts, err := sampleCounts(idx, data, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, got := range counts {
+				if got != tc.counts {
+					t.Fatalf("dedup stale mismatch: got %+v, want %+v", got, tc.counts)
+				}
+			}
+			if _, err = sampleCounts(idx, data, 1); err == nil {
+				t.Fatal("verification expansion bound ignored")
+			}
+		})
 	}
 }
 

@@ -9,9 +9,36 @@ This guide describes how to run the current tests; recorded runs are linked unde
 
 Follow [getting started](getting-started.md) to bootstrap dependencies and build
 vmtier. The tested environment is Linux amd64; CI uses Ubuntu 24.04, Go **1.27.3**,
-and Python **3.12**. The Go module requires at least 1.25.3. A C toolchain is needed
+and Python **3.15.2**. The Go module requires at least 1.25.3. A C toolchain is needed
 for CGO, including the bundled SQLite driver. E2E tests require local TCP listeners;
 Docker and cloud credentials are not needed.
+
+The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
+and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
+their build, test, race, vet, and four E2E steps, but failed artifact upload because
+the action rejected colons in nested fixture paths. Those runs were not successful
+CI runs. Historical local result files remain unchanged.
+
+## Pinned environment
+
+The target is **VictoriaMetrics OSS v1.155.0-cluster**, commit
+`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. No VM patches are applied.
+`build-vm.sh` verifies the SHA-256 of a pinned source archive and builds
+vmstorage, vminsert, and vmselect using upstream vendored dependencies.
+The pinned toolchains are Go 1.27.3 and Python 3.15.2. Bootstrap verifies the
+committed Go modules and regenerates vmtier's vendor tree independently of the
+stock VM vendor tree. Historical result files retain their original toolchains
+and VM revisions; they do not establish validation of an upgraded dependency set.
+The retained JSON v2 suite tests an independent persistent HTTP catalog authority and
+a blob store using ordinary PUT/GET/Range requests. The SQLite service has a separate
+harness described below. Evidence from the previous
+all-S3 catalog architecture is kept under [legacy-v1](results/legacy-v1/README.md)
+and is not included in current results.
+
+## SQLite service
+
+After building vmtier and the pinned stock VM binaries and installing the Python
+dependencies shown below, run:
 
 ```sh
 make build test race vet
@@ -32,15 +59,27 @@ python -m pip install -r scripts/requirements-e2e.txt
 ```
 
 `make stock` builds `.bin/vmstorage`, `.bin/vminsert`, and `.bin/vmselect` from the
-bootstrapped, unmodified **VictoriaMetrics OSS v1.128.0-cluster**, commit
-`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. Source downloads are SHA-256 pinned;
+bootstrapped, unmodified **VictoriaMetrics OSS v1.155.0-cluster**, commit
+`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. Source downloads are SHA-256 pinned;
 builds use upstream vendored dependencies. Use `make GO=/path/to/go ...` for another
 Go binary. Set `GO_BIN=/path/to/go` for E2E commands if Go is outside `PATH`, so
 the report can record its version.
 
 The activated environment makes `moto_server` available to S3 tests. Alternatively,
-set `MOTO_SERVER` to its executable path. The requirement pins Moto to **5.1.15**;
+set `MOTO_SERVER` to its executable path. The requirement pins Moto to **5.2.5**;
 the local backend does not use it.
+
+`GO_BIN` selects the Go binary. `VM_SOURCE_DIR` selects where the verified pinned
+VM source is extracted; use a new directory or one already prepared by these
+scripts. An arbitrary existing source tree is rejected. To validate only fixture ingestion into VM, use
+`python3 scripts/e2e.py --vm-only`.
+
+Each run creates an isolated directory and starts dedicated processes on available
+loopback ports. Pass an **unused directory** to `--workdir PATH`; the suite does not
+reuse existing data. At exit it stops only the processes it started and leaves
+logs, configurations, `results.json`, and isolated VM data. It has no option to
+connect to an external VM or a real S3 service. S3 tests use Moto 5.2.5 and public,
+test-only credentials.
 
 ## Run the SQLite service suites
 

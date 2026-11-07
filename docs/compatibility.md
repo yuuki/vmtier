@@ -3,7 +3,7 @@
 [Documentation index](README.md) · [Service guide](serve.md) ·
 [Catalog maintenance](sqlite-catalog.md)
 
-The SQLite [`serve` runtime](serve.md) and legacy JSON v2 MVP both target **VictoriaMetrics OSS v1.128.0-cluster**, commit **`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) distinguishes implemented stages from remaining work.
+The SQLite [`serve` runtime](serve.md) and legacy JSON v2 MVP both target **VictoriaMetrics OSS v1.155.0-cluster**, commit **`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) distinguishes implemented stages from remaining work.
 
 ## Compatibility at a glance
 
@@ -21,16 +21,16 @@ The SQLite [`serve` runtime](serve.md) and legacy JSON v2 MVP both target **Vict
 
 | Concern | Symbols and source |
 | --- | --- |
-| Native export framing and omitted tenant | [`prometheus.ExportNativeHandler`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/app/vmselect/prometheus/prometheus.go): a 16-byte time range, followed by uint32 length + metric name and uint32 length + portable block. Uses `MarshalNoAccountIDProjectID`. |
-| Independent raw oracle | [`prometheus.QueryHandler`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/app/vmselect/prometheus/prometheus.go): the `promql.IsMetricSelectorWithRollup` special case calls `exportHandler` with `promapi` and `reduceMemUsage=false`, returning a raw matrix and a success footer. |
-| Portable codec versus wire data | [`storage.Block.MarshalPortable`, `UnmarshalPortable`, `MarshalData`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/lib/storage/block.go): portable data is neither an on-disk part nor MetricBlock wire bytes. `UnmarshalPortable` performs decoding. |
-| Read interface | [`vmselectapi.API`, `BlockIterator`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/lib/vmselectapi/api.go). |
-| Framing, errors, deadlines, and queuing | [`vmselectapi.NewServer`, `processRPC`, `processSearch`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/lib/vmselectapi/server.go): sends the search error string first; on success, sends MetricBlocks and an end marker. |
-| Handshake and compression | [`handshake.VMSelectServer`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/lib/handshake/handshake.go): `vmselect.01`, `ok`, and compression negotiation. vmtier reuses this implementation. |
-| Replicas and partial responses | [`netstorage.startStorageNodesRequest`, `storageNodesRequest`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/app/vmselect/netstorage/netstorage.go) and [`httputil.GetDenyPartialResponse`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/lib/httputil/bool.go). |
-| Query cache | [`promql` and `search.disableCache`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/app/vmselect/promql/eval.go). |
-| Retention filtering | [`storage.Search.Init`, `NextMetricBlock`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/lib/storage/search.go): excludes blocks older than `retentionDeadline`. |
-| No arbitrary time-range deletion | [`prometheus.DeleteHandler`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/app/vmselect/prometheus/prometheus.go): rejects non-default start/end parameters. |
+| Native export framing and omitted tenant | [`prometheus.ExportNativeHandler`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/app/vmselect/prometheus/prometheus.go): a 16-byte time range, followed by uint32 length + metric name and uint32 length + portable block. Uses `MarshalNoAccountIDProjectID`. |
+| Independent raw oracle | [`prometheus.QueryHandler`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/app/vmselect/prometheus/prometheus.go): the `promql.IsMetricSelectorWithRollup` special case calls `exportHandler` with `promapi` and `reduceMemUsage=false`, returning a raw matrix and a success footer. |
+| Portable codec versus wire data | [`storage.Block.MarshalPortable`, `UnmarshalPortable`, `MarshalData`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/lib/storage/block.go): portable data is neither an on-disk part nor MetricBlock wire bytes. `UnmarshalPortable` performs decoding. |
+| Read interface | [`vmselectapi.API`, `BlockIterator`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/lib/vmselectapi/api.go). |
+| Framing, errors, deadlines, and queuing | [`vmselectapi.NewServer`, `processRPC`, `processSearch`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/lib/vmselectapi/server.go): sends the search error string first; on success, sends MetricBlocks and an end marker. |
+| Handshake and compression | [`handshake.VMSelectServer`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/lib/handshake/handshake.go): `vmselect.01`, `ok`, and compression negotiation. vmtier reuses this implementation. |
+| Replicas and partial responses | [`netstorage.startStorageNodesRequest`, `storageNodesRequest`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/app/vmselect/netstorage/netstorage.go) and [`httputil.GetDenyPartialResponse`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/lib/httputil/bool.go). |
+| Query cache | [`promql` and `search.disableCache`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/app/vmselect/promql/eval.go). |
+| Retention filtering | [`storage.Search.Init`, `NextMetricBlock`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/lib/storage/search.go): excludes blocks older than `retentionDeadline`. |
+| No arbitrary time-range deletion | [`prometheus.DeleteHandler`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/app/vmselect/prometheus/prometheus.go): rejects non-default start/end parameters. |
 
 ## RPC and HTTP support
 
@@ -49,6 +49,7 @@ Prometheus query endpoint.
 | `deleteSeries_v5`, `registerMetricNames_v3` | Explicit error | The gateway is read-only and does not return a false success. |
 | `tenants_v1` | Explicit error | Automatic tenant discovery and the multitenant frontend are outside scope; tenants are configured explicitly. |
 | `metricNamesUsageStats_v1`, `resetMetricNamesStats_v1` | Explicit error | Usage-statistics administration is unsupported. |
+| `searchMetadata_v1` | Explicit error | Metric type/help/unit metadata is unsupported; label and series metadata remain supported. |
 | Unknown RPC version | Upstream server error | No silent version fallback. |
 
 A tenant is an accountID/projectID pair. Native exported metric names omit it, so it is restored from the archive context. Each request is restricted to one tenant; requests mixing tenants are rejected. Tenant identity is not encoded as an extra series label. The RPC listener is not an authentication boundary: protect it on a trusted internal network and authorize tenants at the HTTP entry point to stock vmselect.
@@ -70,21 +71,24 @@ out. These results and the [combined workload measurements](workload-validation.
 are scoped observations, not a general metadata latency guarantee. See
 [service query configuration](serve.md#connect-stock-vmselect).
 
-The public RPC deadline has second-level precision and is converted into an S3
-context deadline. Immediate cancellation on client disconnect is not guaranteed
-because the public API does not expose the RPC request context. Both runtimes
-reserve logical query work before backend search, with 128 MiB per-query and
-256 MiB shared defaults. The eight-request RPC ceiling and memory admission have
+The public RPC API passes a context with a deadline to the gateway. The gateway
+propagates it to Cold reads and applies its own maximum request duration. The
+upstream server constructs this context from a second-level RPC deadline and cancels
+it when the storage RPC connection closes. Immediate propagation of an HTTP client
+disconnect through stock vmselect has not been validated. Limits on concurrency,
+queueing, response bytes, and series/blocks produce explicit errors when exceeded.
+Both runtimes reserve logical query work before backend search, with 128 MiB per-query
+and 256 MiB shared defaults. The eight-request RPC ceiling and memory admission have
 no deliberate queue wait. S3 has its separate bounded queue. Limits on read/decoded
-work, catalog plans, response bytes, series, blocks, and shared reads produce
-explicit errors. [Memory accounting](query-memory.md) explains reservation lifetimes
-and why these budgets are not a process RSS limit.
+work, catalog plans, response bytes, series, blocks, and shared reads produce explicit
+errors. [Memory accounting](query-memory.md) explains reservation lifetimes and why
+these budgets are not a process RSS limit.
 
 ## Codec and upgrades
 
 Pack v1 indexes record the VM release and revision; the reader rejects mismatches. These fields identify the expected codec, not an authenticated source binary. Portable streams do not carry a signed source version. Operators must pin all source vmselect and vmstorage binaries to the supported revision. `status/buildinfo` returns Prometheus-compatible fixed values and is not used for revision detection.
 
-Preserving opaque payloads at rest does not imply decode-free RPC forwarding. The decoder checks frame, row, byte, and expansion limits before calling VM's public integer codec, clips to logical coverage, and reconstructs wire blocks. Infinities and stale markers use VM's scale/integer sentinel representations without additional floating-point precision reduction. [`decimal.FromFloat` and `AppendDecimalToFloat`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2/lib/decimal/decimal.go) do not guarantee ordinary NaN payload preservation. Arbitrary NaN payload round trips are unsupported, and the archive verifier rejects non-stale NaNs.
+Preserving opaque payloads at rest does not imply decode-free RPC forwarding. The decoder checks frame, row, byte, and expansion limits before calling VM's public integer codec, clips to logical coverage, and reconstructs wire blocks. Infinities and stale markers use VM's scale/integer sentinel representations without additional floating-point precision reduction. [`decimal.FromFloat` and `AppendDecimalToFloat`](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/lib/decimal/decimal.go) do not guarantee ordinary NaN payload preservation. Arbitrary NaN payload round trips are unsupported, and the archive verifier rejects non-stale NaNs.
 
 For an upgrade:
 
@@ -95,6 +99,36 @@ For an upgrade:
 5. Version codec changes explicitly and provide an existing-pack migration procedure.
 
 Do not relabel old packs as a new codec. Single-node VM lacks the same `storageNode` interface and is outside this integration's scope.
+
+### Upgrading from v1.128.0-cluster
+
+This build pins v1.155.0-cluster for new archives and stock VM processes. Existing
+catalogs and pack indexes pinned to v1.128.0-cluster remain rejected. An old
+portable fixture decoding successfully does not authorize changing its provenance
+or bypassing catalog compatibility checks. There is no in-place catalog or pack
+migration in this update.
+
+Keep the previous binaries, catalog backups, and immutable objects available.
+While the complete history is still available from the source VM, align the new
+source and query components to the pinned revision, initialize a new catalog ID,
+and archive into a separate state directory and object prefix. Verify the complete
+required coverage and compare queries before switching readers. If the source no
+longer contains that history, retain the old deployment to serve its old archives;
+do not switch it to this build or discard its objects. The JSON-to-SQLite import
+command does not translate VM codec pins.
+
+The v1.155.0 API uses context-aware methods and serialized wire-block iterators.
+The gateway adapts to those interfaces without modifying upstream VM sources.
+The new metric type/help/unit metadata RPC is explicitly unsupported.
+
+Upstream deduplication also changed: when a normal sample and a stale marker share
+a timestamp, v1.155.0 keeps the greatest non-stale value regardless of input order;
+a collision containing only stale markers remains stale. vmtier uses upstream
+`storage.DeduplicateSamples`, matching the aligned stock VM. This differs from the
+old release's stale-marker precedence and is another reason to rearchive and
+compare queries during an upgrade.
+
+
 
 ## S3 and catalog backends
 

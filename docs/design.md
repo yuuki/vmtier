@@ -38,14 +38,17 @@ a claim of tested Sakura compatibility or a throughput guarantee.
 
 ## Evidence and required changes
 
-Keep native pack/index v1 and the vmstorage-compatible read gateway. The pinned
-OSS VM release is `v1.128.0-cluster`, commit
-`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. The local and restricted-Moto suites
-passed 720 exact query comparisons covering Hot/Cold boundaries and tenant
-separation, plus metadata checks. The S3 suite used no conditional requests and
-required no ETags.
-These establish compatibility for the fixture, not production capacity. No real
-Sakura service was used.
+Keep native pack/index v1 and the vmstorage-compatible read gateway. The current
+pinned OSS VM release is `v1.155.0-cluster`, commit
+`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. Existing catalogs with an older VM
+pin require the [upgrade procedure](compatibility.md#codec-and-upgrades).
+
+The historical local and restricted-Moto suites against `v1.128.0-cluster`, commit
+`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`, passed 720 exact query comparisons
+covering Hot/Cold boundaries and tenant separation, plus metadata checks. The S3
+suite used no conditional requests and required no ETags. Those results establish
+compatibility for that revision and fixture, not the upgraded dependencies or
+production capacity. No real Sakura service was used.
 
 | JSON v2 MVP behavior | Practical consequence | First-release change |
 | --- | --- | --- |
@@ -161,7 +164,7 @@ interval may still happen to exist in Hot.
 Use SQLite on a local filesystem, with foreign keys, WAL mode, and
 `synchronous=FULL`. The implemented repository uses one connection for short
 metadata transactions; S3 work runs outside those transactions. The pinned driver
-is `github.com/mattn/go-sqlite3 v1.14.32`, matching the existing C toolchain
+is `github.com/mattn/go-sqlite3 v1.14.53`, matching the existing C toolchain
 requirement, with its license recorded in [third-party notices](../THIRD_PARTY_NOTICES.md).
 SQLite addresses ordinary catalog growth and atomic updates, not HA. Do not use
 NFS or copy a live database file as a backup.
@@ -312,8 +315,10 @@ the upstream RPC gate retains its separate eight-request ceiling. Excess work is
 refused rather than queued. Results stay materialized until validation succeeds.
 Reservations cover backend work and sample iterators; metadata serialization can
 continue after release because the upstream API returns slices without a completion
-callback. Client disconnect also cannot immediately cancel every upstream RPC;
-the existing deadline remains the work bound.
+callback. The gateway propagates the upstream RPC context to backend work while
+also enforcing its service context and local request deadline. Immediate
+cancellation on frontend client disconnect is not guaranteed; deadlines still
+bound work.
 
 These are accounted work limits, not a combined heap or RSS guarantee. Parsed
 indexes, shared cache flights, archive verification, metadata serialization,

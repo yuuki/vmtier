@@ -15,6 +15,13 @@ qualification.
 read gateway in one process. Stock vmselect evaluates MetricsQL across Hot
 vmstorage and the Cold gateway.
 
+Compatibility is pinned to **VictoriaMetrics OSS v1.155.0-cluster**, commit
+[`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/cab3d5fbeeedd5d0374c1dabde93939af4c2499c).
+Other versions and single-node VictoriaMetrics are outside the validated scope.
+Existing catalogs and packs with the previous VM pin cannot be opened by this
+version; follow the [upgrade procedure](docs/compatibility.md#codec-and-upgrades)
+before changing a deployment.
+
 ```mermaid
 flowchart LR
   W[vminsert] --> H[stock vmstorage: Hot]
@@ -39,14 +46,9 @@ clips, and rebuilds blocks for stock vmselect on reads. SQLite archive windows
 can span multiple bounded packs; the reader uses LRU caching, shared concurrent
 reads, adjacent Range GETs, and bounded query admission.
 
-Compatibility is pinned to **VictoriaMetrics OSS v1.128.0-cluster**, commit
-[`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2).
-Other versions and single-node VictoriaMetrics are outside the validated scope.
-
 ## Get started
 
 On Linux with Go, Python 3, a C toolchain, and curl installed:
-
 ```sh
 git clone https://github.com/yuuki/vmtier.git
 cd vmtier
@@ -55,12 +57,14 @@ make bootstrap build
 ```
 
 See [Getting started](docs/getting-started.md) for exact prerequisites and a
-self-contained local demo with disposable stock VM processes. To configure an
-existing cluster, follow the [service guide](docs/serve.md) and
-[configuration examples](examples/README.md). Configuration requires an explicit
-coverage origin and an externally enforced lateness policy before startup. Run
-[capacity preflight](docs/preflight.md) on representative busy windows before
-initializing the catalog.
+self-contained local demo with disposable stock VM processes. For an existing
+cluster, follow the [service guide](docs/serve.md) and [configuration examples](examples/README.md).
+Run [capacity preflight](docs/preflight.md) on representative busy windows before
+initializing the catalog. Configuration requires an explicit coverage origin and
+an externally enforced lateness policy before startup. `inspect` and `verify`
+support SQLite as offline commands; stop `serve` before using them or the
+[catalog maintenance commands](docs/sqlite-catalog.md). Standalone `archive` and
+`gateway` commands remain JSON v2 tools and reject SQLite configurations.
 
 ## Operating boundaries
 

@@ -8,8 +8,8 @@ the [JSON v2 MVP design](mvp-design.md) describes the retained legacy deployment
 vmtier archives age-eligible samples from VictoriaMetrics OSS cluster to immutable
 native packs and serves those samples through the vmstorage read RPC. An unmodified
 stock vmselect evaluates MetricsQL over Hot vmstorage and the Cold gateway.
-Compatibility is pinned to **v1.128.0-cluster**, commit
-`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`; other versions and single-node VM are
+Compatibility is pinned to **v1.155.0-cluster**, commit
+`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`; other versions and single-node VM are
 outside the tested integration. See [Compatibility](compatibility.md).
 
 ## Components and ownership
