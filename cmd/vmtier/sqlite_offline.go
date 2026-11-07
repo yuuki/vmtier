@@ -46,26 +46,35 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 		}
 	}
 	for _, tenant := range state.Contract.Tenants {
-		for start := state.Contract.CoverageStart; start < ends[tenant]; {
-			end := start + state.Contract.WindowMS
-			if end <= start {
-				return errors.New("verification interval overflows")
-			}
-			plan, err := db.Select(ctx, catalog.Selection{Tenant: tenant, Start: start, End: end})
-			if err != nil {
-				return err
-			}
-			for _, window := range plan.Windows {
-				for _, ref := range window.Packs {
-					if err := verifySQLitePack(ctx, blobs, window, ref); err != nil {
-						return fmt.Errorf("verify tenant %s source %s window %d: %w", tenant, window.SourceID, start, err)
-					}
-				}
-			}
-			start = end
+		if err := verifySQLiteTenant(ctx, db, blobs, state.Contract, tenant, ends[tenant]); err != nil {
+			return err
 		}
 	}
 	return printSQLiteStatus(ctx, db)
+}
+
+// verifySQLiteTenant verifies the packs of a tenant's windows from the coverage
+// start up to coverageEnd, selecting one window at a time.
+func verifySQLiteTenant(ctx context.Context, db *catalog.SQLite, blobs objectstore.BlobStore, contract catalog.Contract, tenant string, coverageEnd int64) error {
+	for start := contract.CoverageStart; start < coverageEnd; {
+		end := start + contract.WindowMS
+		if end <= start {
+			return errors.New("verification interval overflows")
+		}
+		plan, err := db.Select(ctx, catalog.Selection{Tenant: tenant, Start: start, End: end})
+		if err != nil {
+			return err
+		}
+		for _, window := range plan.Windows {
+			for _, ref := range window.Packs {
+				if err := verifySQLitePack(ctx, blobs, window, ref); err != nil {
+					return fmt.Errorf("verify tenant %s source %s window %d: %w", tenant, window.SourceID, start, err)
+				}
+			}
+		}
+		start = end
+	}
+	return nil
 }
 
 func verifySQLitePack(ctx context.Context, blobs objectstore.BlobStore, window catalog.Window, ref catalog.PackRef) error {
@@ -90,12 +99,5 @@ func verifySQLitePack(ctx context.Context, blobs objectstore.BlobStore, window c
 	if int64(len(data)) != ref.DataBytes || pack.Sum(data) != ref.DataSHA256 {
 		return errors.New("pack size/checksum mismatch")
 	}
-	for si, series := range idx.Series {
-		for bi, block := range series.Blocks {
-			if _, err := pack.LoadBlock(idx, si, bi, data[block.Offset:block.Offset+block.Length]); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return loadPackBlocks(idx, data)
 }
