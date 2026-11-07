@@ -47,6 +47,21 @@ The gateway uses the public `vmselectapi.API`, `NewServer`, storage and encoding
 
 Go vendoring retains license and notice files for the included dependencies. The exact vmtier module/version inventory is generated `vendor/modules.txt`. The stock VM binaries have a separate inventory in `.deps/VictoriaMetrics-cab3d5fbeeedd5d0374c1dabde93939af4c2499c/vendor/modules.txt`; their upstream dependency versions can differ from vmtier's. The downloaded upstream source and its license/NOTICE files remain intact. Do not delete a retained license on the assumption that one selected binary does not link that package.
 
-For a binary distribution, record its actual linked module set with `go version -m <binary>` and package the corresponding full license texts and required notices, including the Go runtime license. For distribution of the entire generated source tree or upstream test binaries, preserve all included licenses and notices. This MVP work does not publish a release or represent a completed release-wide legal audit; the local generated source retains attribution material.
+For a binary distribution, record its actual linked module set with `go version -m <binary>` and package the corresponding full license texts and required notices, including the Go runtime license. For distribution of the entire generated source tree or upstream test binaries, preserve all included licenses and notices. The release tooling below does this for the published binary archive; it does not replace legal review of a new dependency.
 
 `NOTICE` reproduces the direct VM/AWS/Smithy attribution notices and the SQLite driver's copyright notice. Dependency-specific license terms continue to apply in addition to vmtier's project license. The prior-art comparison did not copy vmcoldstorage code (permission unconfirmed), Mimir code (AGPL), or code from other compared projects; see [docs/prior-art.md](docs/prior-art.md).
+
+## Release binaries
+
+[Release archives](docs/releasing.md) contain one static `linux/amd64` binary. `scripts/release.py` reads the linked module set from the binary with `go version -m` and copies every license, notice, and patent file of those modules, nested ones included, into `licenses/<module path>/`. For example, `gozstd` links prebuilt zstd code; the zstd distribution is dual-licensed, and its BSD `LICENSE` and GPL-2.0 `COPYING` are both retained. The archive also contains this file, `LICENSE`, `NOTICE`, the Go distribution license, and musl's `COPYRIGHT`.
+
+[`release/licenses.json`](release/licenses.json) records the reviewed SPDX expression of every linked module. The build fails when a linked module is missing from the record, or the record lists a module that is not linked. The same expressions appear in the build record and the CycloneDX SBOM published with each release.
+
+| Statically linked toolchain component | License and notice |
+| --- | --- |
+| Go runtime and standard library | BSD-3-Clause; `licenses/go/LICENSE` is copied from the builder's `GOROOT` |
+| musl 1.2.6 (Alpine package) | MIT; [`release/notices/musl-1.2.6-COPYRIGHT`](release/notices/musl-1.2.6-COPYRIGHT) is the `COPYRIGHT` file of `musl-1.2.6.tar.gz` (SHA-256 `d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a`), whose signature verifies with the musl release key `8364 8929 0BB6 B70F 99FF DA05 56BC DB59 3020 450F` |
+| GCC support code (`libgcc`, start files) | GPL-3.0 with the GCC Runtime Library Exception, which covers binaries produced by GCC |
+| SQLite amalgamation in `go-sqlite3` | Public-domain dedication (SPDX `blessing`), recorded with the driver's MIT license |
+
+The builder fails if its musl version differs from the version of the committed notice. glibc is not linked.

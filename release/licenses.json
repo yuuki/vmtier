@@ -1,0 +1,36 @@
+{
+  "comment": "Reviewed SPDX license expressions for every module linked into the release binary. scripts/release.py fails when the linked set and this record differ. Review the module's license files before adding or changing an entry.",
+  "modules": {
+    "github.com/VictoriaMetrics/VictoriaMetrics": "Apache-2.0",
+    "github.com/VictoriaMetrics/easyproto": "Apache-2.0",
+    "github.com/VictoriaMetrics/fastcache": "MIT",
+    "github.com/VictoriaMetrics/metrics": "MIT",
+    "github.com/VictoriaMetrics/metricsql": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2": "Apache-2.0 AND BSD-3-Clause",
+    "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/credentials": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/internal/configsources": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/internal/v4a": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/service/internal/checksum": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/service/internal/s3shared": "Apache-2.0",
+    "github.com/aws/aws-sdk-go-v2/service/s3": "Apache-2.0",
+    "github.com/aws/smithy-go": "Apache-2.0 AND BSD-3-Clause",
+    "github.com/cespare/xxhash/v2": "MIT",
+    "github.com/golang/snappy": "BSD-3-Clause",
+    "github.com/klauspost/compress": "BSD-3-Clause AND Apache-2.0 AND MIT",
+    "github.com/mattn/go-sqlite3": "MIT AND blessing",
+    "github.com/valyala/bytebufferpool": "MIT",
+    "github.com/valyala/fastrand": "MIT",
+    "github.com/valyala/gozstd": "MIT AND (BSD-3-Clause OR GPL-2.0-only)",
+    "github.com/valyala/histogram": "MIT",
+    "github.com/valyala/quicktemplate": "MIT",
+    "golang.org/x/sys": "BSD-3-Clause"
+  },
+  "toolchain": {
+    "go": {"license": "BSD-3-Clause", "notice": "Go distribution LICENSE copied from the builder GOROOT"},
+    "musl": {"version": "1.2.6", "license": "MIT", "notice": "release/notices/musl-1.2.6-COPYRIGHT"}
+  }
+}
