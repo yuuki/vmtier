@@ -102,7 +102,41 @@ func Read(path string) (*Config, error) {
 	}
 	return &c, nil
 }
+
+// Validate checks each section in turn and normalizes the configuration in
+// place: it applies defaults, canonicalizes tenants and trims URLs.
 func (c *Config) Validate() error {
+	if err := c.validateCatalog(); err != nil {
+		return err
+	}
+	if err := c.validateStore(); err != nil {
+		return err
+	}
+	if c.Catalog.Type == "sqlite" {
+		if _, err := c.BlobLocator(); err != nil {
+			return err
+		}
+	}
+	if err := c.validateService(); err != nil {
+		return err
+	}
+	if err := c.validatePolicy(); err != nil {
+		return err
+	}
+	if len(c.Tenants) == 0 || len(c.Tenants) > 100 || len(c.Sources) == 0 || len(c.Sources) > 100 {
+		return errors.New("require 1..100 tenants and sources")
+	}
+	if err := c.normalizeTenants(); err != nil {
+		return err
+	}
+	if err := c.normalizeSources(); err != nil {
+		return err
+	}
+	return c.validateBudgets()
+}
+
+// validateCatalog also trims the trailing slashes of an HTTP catalog URL.
+func (c *Config) validateCatalog() error {
 	if !safeID.MatchString(c.Catalog.ID) || c.Catalog.ID == "." || c.Catalog.ID == ".." {
 		return errors.New("catalog.id must be a pinned nonempty safe identity (max 128 bytes); legacy S3-only catalogs require explicit migration")
 	}
@@ -116,58 +150,77 @@ func (c *Config) Validate() error {
 		}
 	case "http":
 		u, err := url.Parse(c.Catalog.URL)
-		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || c.Catalog.Path != "" {
+		if err != nil || !isHTTPBaseURL(u) || (u.Path != "" && u.Path != "/") || c.Catalog.Path != "" {
 			return errors.New("HTTP catalog requires an origin URL without credentials/path/query/fragment and no path field")
 		}
 		c.Catalog.URL = strings.TrimRight(c.Catalog.URL, "/")
 	default:
 		return errors.New("catalog.type must be local, http or sqlite; S3 is not a catalog authority")
 	}
+	return nil
+}
+
+// validateStore also applies the default S3 request limits of a SQLite catalog.
+func (c *Config) validateStore() error {
 	switch c.Store.Type {
 	case "local":
 		if c.Store.Path == "" {
 			return errors.New("local blob store requires path")
 		}
-		if c.Store.RequestsPerSecond != 0 || c.Store.MaxConcurrentRequests != 0 || c.Store.MaxQueuedRequests != 0 {
+		if c.Store.hasRequestLimits() {
 			return errors.New("S3 request limits do not apply to local blobs")
 		}
 	case "s3":
 		if c.Store.Bucket == "" {
 			return errors.New("S3 blob store requires bucket")
 		}
-		if c.Catalog.Type == "sqlite" && c.Store.RequestsPerSecond == 0 && c.Store.MaxConcurrentRequests == 0 && c.Store.MaxQueuedRequests == 0 {
+		if c.Catalog.Type == "sqlite" && !c.Store.hasRequestLimits() {
 			c.Store.RequestsPerSecond, c.Store.MaxConcurrentRequests, c.Store.MaxQueuedRequests = 80, 8, 64
 		}
-		if c.Store.RequestsPerSecond != 0 || c.Store.MaxConcurrentRequests != 0 || c.Store.MaxQueuedRequests != 0 {
-			if math.IsNaN(c.Store.RequestsPerSecond) || math.IsInf(c.Store.RequestsPerSecond, 0) || c.Store.RequestsPerSecond <= 0 || c.Store.RequestsPerSecond > 1000000 || c.Store.MaxConcurrentRequests < 1 || c.Store.MaxConcurrentRequests > 10000 || c.Store.MaxQueuedRequests < 1 || c.Store.MaxQueuedRequests > 100000 {
-				return errors.New("configure positive bounded S3 requests_per_second, max_concurrent_requests and max_queued_requests together")
-			}
+		if c.Store.hasRequestLimits() && !c.Store.requestLimitsBounded() {
+			return errors.New("configure positive bounded S3 requests_per_second, max_concurrent_requests and max_queued_requests together")
 		}
 	default:
 		return errors.New("store.type must be local or s3")
 	}
-	if c.Catalog.Type == "sqlite" {
-		if _, err := c.BlobLocator(); err != nil {
-			return err
-		}
-	}
-	c.archiveTimeout = 2 * time.Minute
-	if c.Service.ArchiveTimeout != "" {
-		var err error
-		c.archiveTimeout, err = time.ParseDuration(c.Service.ArchiveTimeout)
-		if err != nil || c.archiveTimeout < 10*time.Millisecond || c.archiveTimeout > 24*time.Hour || c.archiveTimeout%time.Millisecond != 0 {
-			return errors.New("service.archive_timeout must be whole milliseconds between 10ms and 24h")
-		}
-	}
-	c.archiveInterval = 30 * time.Second
-	if c.Service.ArchiveInterval != "" {
-		var err error
-		c.archiveInterval, err = time.ParseDuration(c.Service.ArchiveInterval)
-		if err != nil || c.archiveInterval < 10*time.Millisecond || c.archiveInterval > 24*time.Hour || c.archiveInterval%time.Millisecond != 0 {
-			return errors.New("service.archive_interval must be whole milliseconds between 10ms and 24h")
-		}
-	}
+	return nil
+}
 
+func (s Store) hasRequestLimits() bool {
+	return s.RequestsPerSecond != 0 || s.MaxConcurrentRequests != 0 || s.MaxQueuedRequests != 0
+}
+
+func (s Store) requestLimitsBounded() bool {
+	if math.IsNaN(s.RequestsPerSecond) || math.IsInf(s.RequestsPerSecond, 0) || s.RequestsPerSecond <= 0 || s.RequestsPerSecond > 1000000 {
+		return false
+	}
+	return s.MaxConcurrentRequests >= 1 && s.MaxConcurrentRequests <= 10000 && s.MaxQueuedRequests >= 1 && s.MaxQueuedRequests <= 100000
+}
+
+func (c *Config) validateService() error {
+	var ok bool
+	if c.archiveTimeout, ok = serviceDuration(c.Service.ArchiveTimeout, 2*time.Minute); !ok {
+		return errors.New("service.archive_timeout must be whole milliseconds between 10ms and 24h")
+	}
+	if c.archiveInterval, ok = serviceDuration(c.Service.ArchiveInterval, 30*time.Second); !ok {
+		return errors.New("service.archive_interval must be whole milliseconds between 10ms and 24h")
+	}
+	return nil
+}
+
+// serviceDuration parses an optional service period, which must be whole
+// milliseconds between 10ms and 24h. An empty value selects the default.
+func serviceDuration(value string, defaultValue time.Duration) (time.Duration, bool) {
+	if value == "" {
+		return defaultValue, true
+	}
+	d, err := time.ParseDuration(value)
+	return d, err == nil && d >= 10*time.Millisecond && d <= 24*time.Hour && d%time.Millisecond == 0
+}
+
+// validatePolicy parses the archive durations and checks the retention,
+// lateness and coverage contract they define.
+func (c *Config) validatePolicy() error {
 	fields := []struct {
 		s string
 		p *time.Duration
@@ -191,9 +244,11 @@ func (c *Config) Validate() error {
 	if c.CoverageStart <= 0 || c.CoverageStart%c.window.Milliseconds() != 0 {
 		return errors.New("coverage_start_ms must be positive and UTC window aligned")
 	}
-	if len(c.Tenants) == 0 || len(c.Tenants) > 100 || len(c.Sources) == 0 || len(c.Sources) > 100 {
-		return errors.New("require 1..100 tenants and sources")
-	}
+	return nil
+}
+
+// normalizeTenants rewrites each tenant in its canonical form and rejects duplicates.
+func (c *Config) normalizeTenants() error {
 	seen := map[string]bool{}
 	for i, t := range c.Tenants {
 		p, e := pack.ParseTenant(t)
@@ -207,7 +262,13 @@ func (c *Config) Validate() error {
 		seen[t] = true
 		c.Tenants[i] = t
 	}
-	seen = map[string]bool{}
+	return nil
+}
+
+// normalizeSources trims the trailing slashes of each source URL and rejects
+// duplicate IDs or URLs.
+func (c *Config) normalizeSources() error {
+	seen := map[string]bool{}
 	urls := map[string]bool{}
 	for i, s := range c.Sources {
 		if !safeID.MatchString(s.ID) || s.ID == "." || s.ID == ".." || seen[s.ID] {
@@ -215,7 +276,7 @@ func (c *Config) Validate() error {
 		}
 		seen[s.ID] = true
 		u, e := url.Parse(s.URL)
-		if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		if e != nil || !isHTTPBaseURL(u) {
 			return errors.New("invalid source URL; use hot-only vmselect base URL without credentials")
 		}
 		s.URL = strings.TrimRight(s.URL, "/")
@@ -225,6 +286,16 @@ func (c *Config) Validate() error {
 		urls[s.URL] = true
 		c.Sources[i] = s
 	}
+	return nil
+}
+
+// isHTTPBaseURL reports whether u is an HTTP(S) URL with a host and without
+// credentials, query or fragment.
+func isHTTPBaseURL(u *url.URL) bool {
+	return u.Host != "" && (u.Scheme == "http" || u.Scheme == "https") && u.User == nil && u.RawQuery == "" && u.Fragment == ""
+}
+
+func (c *Config) validateBudgets() error {
 	if c.CacheBytes < 0 || c.CacheBytes > 256<<20 || c.MaxQueryBytes < 0 || c.MaxQueryBytes > 1<<30 {
 		return errors.New("cache/query budgets outside safe bounds")
 	}
