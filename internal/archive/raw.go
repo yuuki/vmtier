@@ -203,96 +203,129 @@ func (v *rawVerifier) matrix() error {
 }
 
 func (v *rawVerifier) series() error {
-	metric, values := false, false
-	var expected, pending []sample
-	count := 0
-	err := objectFields(v.d, func(key string) error {
-		switch key {
-		case "metric":
-			var labels map[string]string
-			if err := v.d.Decode(&labels); err != nil {
-				return err
-			}
-			if labels == nil {
-				return errors.New("raw verification missing metric labels")
-			}
-			encoded, err := json.Marshal(labels)
-			if err != nil {
-				return err
-			}
-			key := string(encoded)
-			if v.seen[key] {
-				return errors.New("duplicate raw verification series")
-			}
-			var ok bool
-			expected, ok = v.want[key]
-			if !ok {
-				return errors.New("raw source includes series absent from native export")
-			}
-			v.seen[key] = true
-			metric = true
-			for i, row := range pending {
-				if err := v.compare(row, expected, i); err != nil {
-					return err
-				}
-			}
-			pending = nil
-		case "values":
-			values = true
-			if err := delimiter(v.d, '['); err != nil {
-				return err
-			}
-			var pair []json.RawMessage
-			for v.d.More() {
-				v.total++
-				if v.total > v.maxSamples {
-					return errors.New("raw verification sample limit exceeded")
-				}
-				// Reuse the pair's backing buffers across rows. No matrix-sized
-				// collection of RawMessages survives comparison.
-				if err := v.d.Decode(&pair); err != nil {
-					return err
-				}
-				if len(pair) != 2 {
-					return errors.New("invalid raw verification row")
-				}
-				timestamp, err := rawTimestamp(pair[0])
-				if err != nil {
-					return err
-				}
-				var value string
-				if err := json.Unmarshal(pair[1], &value); err != nil {
-					return err
-				}
-				actual, err := strconv.ParseFloat(value, 64)
-				if err != nil {
-					return errors.New("invalid raw verification value")
-				}
-				row := sample{timestamp, actual}
-				if metric {
-					if err := v.compare(row, expected, count); err != nil {
-						return err
-					}
-				} else {
-					pending = append(pending, row)
-				}
-				count++
-			}
-			return delimiter(v.d, ']')
-		default:
-			return skipJSON(v.d)
-		}
-		return nil
-	})
+	s := rawSeries{v: v}
+	if err := objectFields(v.d, s.field); err != nil {
+		return err
+	}
+	if !s.metric || !s.values {
+		return errors.New("raw verification missing metric or values")
+	}
+	if s.count != len(s.expected) {
+		return errors.New("raw source/native sample count mismatch")
+	}
+	return nil
+}
+
+// rawSeries is one matrix series whose fields may arrive in either order. Rows
+// decoded before the metric wait in pending until its expected samples are known.
+type rawSeries struct {
+	v                 *rawVerifier
+	metric, values    bool
+	expected, pending []sample
+	count             int
+}
+
+func (s *rawSeries) field(key string) error {
+	switch key {
+	case "metric":
+		return s.decodeMetric()
+	case "values":
+		s.values = true
+		return s.decodeValues()
+	default:
+		return skipJSON(s.v.d)
+	}
+}
+
+func (s *rawSeries) decodeMetric() error {
+	var labels map[string]string
+	if err := s.v.d.Decode(&labels); err != nil {
+		return err
+	}
+	if labels == nil {
+		return errors.New("raw verification missing metric labels")
+	}
+	encoded, err := json.Marshal(labels)
 	if err != nil {
 		return err
 	}
-	if !metric || !values {
-		return errors.New("raw verification missing metric or values")
+	key := string(encoded)
+	if s.v.seen[key] {
+		return errors.New("duplicate raw verification series")
 	}
-	if count != len(expected) {
-		return errors.New("raw source/native sample count mismatch")
+	var ok bool
+	s.expected, ok = s.v.want[key]
+	if !ok {
+		return errors.New("raw source includes series absent from native export")
 	}
+	s.v.seen[key] = true
+	s.metric = true
+	for i, row := range s.pending {
+		if err := s.v.compare(row, s.expected, i); err != nil {
+			return err
+		}
+	}
+	s.pending = nil
+	return nil
+}
+
+func (s *rawSeries) decodeValues() error {
+	if err := delimiter(s.v.d, '['); err != nil {
+		return err
+	}
+	var pair []json.RawMessage
+	for s.v.d.More() {
+		s.v.total++
+		if s.v.total > s.v.maxSamples {
+			return errors.New("raw verification sample limit exceeded")
+		}
+		// Reuse the pair's backing buffers across rows. No matrix-sized
+		// collection of RawMessages survives comparison.
+		if err := s.v.d.Decode(&pair); err != nil {
+			return err
+		}
+		row, err := rawRow(pair)
+		if err != nil {
+			return err
+		}
+		if err := s.add(row); err != nil {
+			return err
+		}
+	}
+	return delimiter(s.v.d, ']')
+}
+
+// rawRow decodes one [timestamp, "value"] row of a matrix series.
+func rawRow(pair []json.RawMessage) (sample, error) {
+	if len(pair) != 2 {
+		return sample{}, errors.New("invalid raw verification row")
+	}
+	timestamp, err := rawTimestamp(pair[0])
+	if err != nil {
+		return sample{}, err
+	}
+	var value string
+	if err := json.Unmarshal(pair[1], &value); err != nil {
+		return sample{}, err
+	}
+	actual, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return sample{}, errors.New("invalid raw verification value")
+	}
+	return sample{timestamp, actual}, nil
+}
+
+// add compares a row with the expected samples, or keeps it pending until the
+// metric is known.
+func (s *rawSeries) add(row sample) error {
+	if s.metric {
+		if err := s.v.compare(row, s.expected, s.count); err != nil {
+			return err
+		}
+	} else {
+		s.pending = append(s.pending, row)
+	}
+	s.count++
 	return nil
 }
 

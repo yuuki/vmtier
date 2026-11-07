@@ -2,15 +2,18 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/yuuki/vmtier/internal/pack"
+	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
 const (
@@ -33,49 +36,73 @@ type BlobLocator struct {
 // NormalizeBlobLocator applies the same S3 defaults and key rules as BlobStore.
 // Local paths are absolute so changing the working directory cannot retarget keys.
 func NormalizeBlobLocator(b BlobLocator) (BlobLocator, error) {
+	var err error
 	switch b.Type {
 	case "local":
-		if b.Path == "" || b.Endpoint != "" || b.Region != "" || b.Bucket != "" || b.Prefix != "" {
-			return b, errors.New("local blob locator requires only a path")
-		}
-		p, err := filepath.Abs(b.Path)
-		if err != nil {
-			return b, err
-		}
-		b.Path = filepath.Clean(p)
+		b, err = normalizeLocalLocator(b)
 	case "s3":
-		if b.Path != "" || b.Bucket == "" || strings.ContainsAny(b.Bucket, "/\\\r\n\x00") {
-			return b, errors.New("invalid S3 blob locator")
-		}
-		if b.Region == "" {
-			b.Region = "us-east-1"
-		}
-		if b.Prefix != "" {
-			b.Prefix = strings.TrimSuffix(b.Prefix, "/")
-			if b.Prefix == "" || len(b.Prefix) > 1024 || strings.HasPrefix(b.Prefix, "/") || path.Clean(b.Prefix) != b.Prefix || strings.ContainsAny(b.Prefix, "\\\x00\r\n") {
-				return b, errors.New("invalid S3 prefix")
-			}
-			for _, part := range strings.Split(b.Prefix, "/") {
-				if strings.HasPrefix(part, ".") {
-					return b, errors.New("invalid S3 prefix component")
-				}
-			}
-		}
-		if b.Endpoint != "" {
-			u, err := url.Parse(b.Endpoint)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-				return b, errors.New("invalid S3 endpoint")
-			}
-			b.Endpoint = strings.TrimSuffix(b.Endpoint, "/")
-		}
+		b, err = normalizeS3Locator(b)
 	default:
 		return b, errors.New("blob locator type must be local or s3")
+	}
+	if err != nil {
+		return b, err
 	}
 	encoded, _ := json.Marshal(b)
 	if len(encoded) > 16<<10 {
 		return b, errors.New("blob locator is too large")
 	}
 	return b, nil
+}
+
+func normalizeLocalLocator(b BlobLocator) (BlobLocator, error) {
+	if b.Path == "" || b.Endpoint != "" || b.Region != "" || b.Bucket != "" || b.Prefix != "" {
+		return b, errors.New("local blob locator requires only a path")
+	}
+	p, err := filepath.Abs(b.Path)
+	if err != nil {
+		return b, err
+	}
+	b.Path = filepath.Clean(p)
+	return b, nil
+}
+
+// normalizeS3Locator applies the default region and trims the trailing
+// slashes of the prefix and endpoint.
+func normalizeS3Locator(b BlobLocator) (BlobLocator, error) {
+	if b.Path != "" || b.Bucket == "" || strings.ContainsAny(b.Bucket, "/\\\r\n\x00") {
+		return b, errors.New("invalid S3 blob locator")
+	}
+	if b.Region == "" {
+		b.Region = "us-east-1"
+	}
+	if b.Prefix != "" {
+		b.Prefix = strings.TrimSuffix(b.Prefix, "/")
+		if err := validateS3Prefix(b.Prefix); err != nil {
+			return b, err
+		}
+	}
+	if b.Endpoint != "" {
+		u, err := url.Parse(b.Endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return b, errors.New("invalid S3 endpoint")
+		}
+		b.Endpoint = strings.TrimSuffix(b.Endpoint, "/")
+	}
+	return b, nil
+}
+
+// validateS3Prefix requires a clean relative key prefix without hidden components.
+func validateS3Prefix(prefix string) error {
+	if prefix == "" || len(prefix) > 1024 || strings.HasPrefix(prefix, "/") || path.Clean(prefix) != prefix || strings.ContainsAny(prefix, "\\\x00\r\n") {
+		return errors.New("invalid S3 prefix")
+	}
+	for _, part := range strings.Split(prefix, "/") {
+		if strings.HasPrefix(part, ".") {
+			return errors.New("invalid S3 prefix component")
+		}
+	}
+	return nil
 }
 
 type StreamCoverage struct {
@@ -208,4 +235,114 @@ func normalizeSelection(s Selection) (Selection, error) {
 		return s, errors.New("selection limits outside supported bounds")
 	}
 	return s, nil
+}
+
+// tenantCoverageEnd returns the coverage end of the tenant's least advanced
+// stream, or MaxInt64 when the tenant has no stream.
+func tenantCoverageEnd(coverage []StreamCoverage, tenant string) int64 {
+	end := int64(math.MaxInt64)
+	for _, c := range coverage {
+		if c.Tenant == tenant && c.End < end {
+			end = c.End
+		}
+	}
+	return end
+}
+
+// windowStarts returns the first and last start of the windows that a
+// selection overlaps, beginning no earlier than the coverage origin.
+func windowStarts(sel Selection, c Contract) (lower, upper int64) {
+	lower = max((sel.Start/c.WindowMS)*c.WindowMS, c.CoverageStart)
+	upper = ((sel.End - 1) / c.WindowMS) * c.WindowMS
+	return lower, upper
+}
+
+// planReader builds one query plan in a repository's read transaction. It
+// charges the selected windows and pack references against the selection's
+// window, pack and plan byte limits. Each repository supplies its own queries.
+type planReader struct {
+	tx        *sql.Tx
+	sel       Selection
+	state     Status
+	planBytes int64
+	packCount int
+	selected  []selectedWindow
+}
+
+// selectedWindow is a stored window whose pack references are not loaded yet.
+// digest is the stored publication digest, if the repository reads it.
+type selectedWindow struct {
+	id     int64
+	count  int
+	digest string
+	window Window
+}
+
+func newPlanReader(tx *sql.Tx, sel Selection, state Status) *planReader {
+	return &planReader{tx: tx, sel: sel, state: state, planBytes: 128}
+}
+
+// windowLimit bounds a window query to one row more than the plan can still
+// hold, so that a plan over the window limit is detected.
+func (p *planReader) windowLimit() int { return p.sel.MaxWindows - len(p.selected) + 1 }
+
+func (p *planReader) newWindow(sourceID string) selectedWindow {
+	var v selectedWindow
+	v.window.Tenant, v.window.SourceID = p.sel.Tenant, sourceID
+	return v
+}
+
+// addWindow validates a stored window and adds it to the plan within the
+// window and plan byte limits.
+func (p *planReader) addWindow(v selectedWindow, generation int64) error {
+	if generation < 1 || generation > int64(p.state.Generation) || v.count < 0 || v.count > MaxPacksPerWindow || v.window.End-v.window.Start != p.state.Contract.WindowMS {
+		return errors.New("invalid stored window")
+	}
+	v.window.Generation = uint64(generation)
+	p.planBytes += 256 + int64(len(p.sel.Tenant)+len(v.window.SourceID))
+	if len(p.selected) >= p.sel.MaxWindows || p.planBytes > p.sel.MaxPlanBytes {
+		return querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan limit exceeded")
+	}
+	p.selected = append(p.selected, v)
+	return nil
+}
+
+// reservePacks charges the packs of a selected window against the pack limit.
+func (p *planReader) reservePacks(count int) error {
+	if count > p.sel.MaxPacks-p.packCount {
+		return querylimit.Errorf(querylimit.CatalogPlan, "query catalog pack limit exceeded")
+	}
+	p.packCount += count
+	return nil
+}
+
+// readPacks sets the pack references of v from rows, which must list them in
+// ordinal order, within the plan byte limit.
+func (p *planReader) readPacks(rows *sql.Rows, v *selectedWindow) error {
+	v.window.Packs = []PackRef{}
+	for rows.Next() {
+		var ordinal int
+		var ref PackRef
+		if err := rows.Scan(&ordinal, &ref.DataKey, &ref.IndexKey, &ref.DataSHA256, &ref.IndexSHA256, &ref.DataBytes, &ref.IndexBytes); err != nil {
+			return err
+		}
+		if ordinal != len(v.window.Packs) || ordinal >= v.count {
+			return errors.New("invalid stored pack order/count")
+		}
+		p.planBytes += 256 + int64(len(ref.DataKey)+len(ref.IndexKey)+len(ref.DataSHA256)+len(ref.IndexSHA256))
+		if p.planBytes > p.sel.MaxPlanBytes {
+			return querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
+		}
+		v.window.Packs = append(v.window.Packs, ref)
+	}
+	return rows.Err()
+}
+
+// checkPacks requires a loaded window to have all of its pack references and
+// to form a valid publication, whose digest it returns.
+func (p *planReader) checkPacks(v selectedWindow) (string, error) {
+	if len(v.window.Packs) != v.count {
+		return "", errors.New("stored window is missing pack references")
+	}
+	return validatePublication(p.state.Contract, v.window.Publication)
 }

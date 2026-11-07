@@ -74,31 +74,41 @@ func verifyRepository(ctx context.Context, c *config.Config, db catalog.Reposito
 		}
 	}
 	for _, tenant := range state.Contract.Tenants {
-		for start := state.Contract.CoverageStart; start < ends[tenant]; {
-			end := start + state.Contract.WindowMS
-			if end <= start {
-				return errors.New("verification interval overflows")
-			}
-			readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			plan, err := db.Select(readCtx, catalog.Selection{Tenant: tenant, Start: start, End: end})
-			cancel()
-			if err != nil {
-				return err
-			}
-			for _, window := range plan.Windows {
-				if window.Generation > state.Generation {
-					continue
-				}
-				for _, ref := range window.Packs {
-					if err := verifyCatalogPack(ctx, blobs, window, ref); err != nil {
-						return fmt.Errorf("verify tenant %s source %s window %d: %w", tenant, window.SourceID, start, err)
-					}
-				}
-			}
-			start = end
+		if err := verifyTenantWindows(ctx, db, blobs, state, tenant, ends[tenant]); err != nil {
+			return err
 		}
 	}
 	return json.NewEncoder(os.Stdout).Encode(state)
+}
+
+// verifyTenantWindows verifies the packs of a tenant's windows from the
+// coverage start up to coverageEnd, selecting one window at a time. Windows
+// published after the state snapshot are skipped.
+func verifyTenantWindows(ctx context.Context, db catalog.Repository, blobs objectstore.BlobStore, state catalog.Status, tenant string, coverageEnd int64) error {
+	for start := state.Contract.CoverageStart; start < coverageEnd; {
+		end := start + state.Contract.WindowMS
+		if end <= start {
+			return errors.New("verification interval overflows")
+		}
+		readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		plan, err := db.Select(readCtx, catalog.Selection{Tenant: tenant, Start: start, End: end})
+		cancel()
+		if err != nil {
+			return err
+		}
+		for _, window := range plan.Windows {
+			if window.Generation > state.Generation {
+				continue
+			}
+			for _, ref := range window.Packs {
+				if err := verifyCatalogPack(ctx, blobs, window, ref); err != nil {
+					return fmt.Errorf("verify tenant %s source %s window %d: %w", tenant, window.SourceID, start, err)
+				}
+			}
+		}
+		start = end
+	}
+	return nil
 }
 
 func verifyCatalogPack(ctx context.Context, blobs objectstore.BlobStore, window catalog.Window, ref catalog.PackRef) error {
@@ -123,12 +133,5 @@ func verifyCatalogPack(ctx context.Context, blobs objectstore.BlobStore, window 
 	if int64(len(data)) != ref.DataBytes || pack.Sum(data) != ref.DataSHA256 {
 		return errors.New("pack size/checksum mismatch")
 	}
-	for si, series := range idx.Series {
-		for bi, block := range series.Blocks {
-			if _, err := pack.LoadBlock(idx, si, bi, data[block.Offset:block.Offset+block.Length]); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return loadPackBlocks(idx, data)
 }

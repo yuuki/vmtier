@@ -352,30 +352,7 @@ func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publicati
 		return 0, fmt.Errorf("%w: window must start at stream coverage end %d", ErrInvalidPublication, end)
 	}
 	next := state.Generation + 1
-	var windowID int64
-	if err = tx.QueryRowContext(ctx, `INSERT INTO `+p.table("windows")+`(tenant,source_id,start_ms,end_ms,generation,pack_count,digest) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, publication.Tenant, publication.SourceID, publication.Start, publication.End, next, len(publication.Packs), digest).Scan(&windowID); err != nil {
-		return 0, err
-	}
-	for ordinal, ref := range publication.Packs {
-		// One shared key namespace rejects reuse across data and index roles,
-		// including keys published by another client in an earlier window.
-		for _, key := range []string{ref.DataKey, ref.IndexKey} {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("object_keys")+`(object_key,window_id) VALUES($1,$2)`, key, windowID); err != nil {
-				var pgErr *pq.Error
-				if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-					return 0, fmt.Errorf("%w: published object key cannot be reused", ErrInvalidPublication)
-				}
-				return 0, err
-			}
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("packs")+` VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, windowID, ordinal, ref.DataKey, ref.IndexKey, ref.DataSHA256, ref.IndexSHA256, ref.DataBytes, ref.IndexBytes); err != nil {
-			return 0, err
-		}
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET end_ms=$1 WHERE tenant=$2 AND source_id=$3`, publication.End, publication.Tenant, publication.SourceID); err != nil {
-		return 0, err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET generation=$1 WHERE singleton=1`, next); err != nil {
+	if err = p.writePublication(ctx, tx, publication, next, digest); err != nil {
 		return 0, err
 	}
 	// Even a transaction delayed by a database lock must still have a live
@@ -388,6 +365,44 @@ func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publicati
 		return 0, err
 	}
 	return next, nil
+}
+
+// writePublication inserts a new window with its object keys and packs, then
+// advances the stream coverage and the catalog generation to next.
+func (p *Postgres) writePublication(ctx context.Context, tx *sql.Tx, publication Publication, next uint64, digest string) error {
+	var windowID int64
+	if err := tx.QueryRowContext(ctx, `INSERT INTO `+p.table("windows")+`(tenant,source_id,start_ms,end_ms,generation,pack_count,digest) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, publication.Tenant, publication.SourceID, publication.Start, publication.End, next, len(publication.Packs), digest).Scan(&windowID); err != nil {
+		return err
+	}
+	for ordinal, ref := range publication.Packs {
+		// One shared key namespace rejects reuse across data and index roles,
+		// including keys published by another client in an earlier window.
+		for _, key := range []string{ref.DataKey, ref.IndexKey} {
+			if err := p.reserveObjectKey(ctx, tx, key, windowID); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("packs")+` VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, windowID, ordinal, ref.DataKey, ref.IndexKey, ref.DataSHA256, ref.IndexSHA256, ref.DataBytes, ref.IndexBytes); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET end_ms=$1 WHERE tenant=$2 AND source_id=$3`, publication.End, publication.Tenant, publication.SourceID); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET generation=$1 WHERE singleton=1`, next)
+	return err
+}
+
+// reserveObjectKey records a published object key, which must be new.
+func (p *Postgres) reserveObjectKey(ctx context.Context, tx *sql.Tx, key string, windowID int64) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("object_keys")+`(object_key,window_id) VALUES($1,$2)`, key, windowID); err != nil {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return fmt.Errorf("%w: published object key cannot be reused", ErrInvalidPublication)
+		}
+		return err
+	}
+	return nil
 }
 
 // Select returns a bounded plan from one snapshot. No transaction remains open
@@ -408,104 +423,69 @@ func (p *Postgres) Select(ctx context.Context, sel Selection) (QueryPlan, error)
 		return out, err
 	}
 	out.ID, out.Generation = state.ID, state.Generation
-	out.CoverageEnd = math.MaxInt64
-	for _, c := range state.Coverage {
-		if c.Tenant == sel.Tenant && c.End < out.CoverageEnd {
-			out.CoverageEnd = c.End
-		}
-	}
+	out.CoverageEnd = tenantCoverageEnd(state.Coverage, sel.Tenant)
 	if out.CoverageEnd == math.MaxInt64 {
 		return out, errors.New("tenant is not configured")
 	}
-	lower := max((sel.Start/state.Contract.WindowMS)*state.Contract.WindowMS, state.Contract.CoverageStart)
-	upper := ((sel.End - 1) / state.Contract.WindowMS) * state.Contract.WindowMS
-	type selectedWindow struct {
-		id     int64
-		count  int
-		digest string
-		window Window
-	}
-	var selected []selectedWindow
-	var planBytes int64 = 128
+	lower, upper := windowStarts(sel, state.Contract)
+	plan := newPlanReader(tx, sel, state)
 	for _, source := range state.Contract.Sources {
-		rows, err := tx.QueryContext(ctx, `SELECT id,start_ms,end_ms,generation,pack_count,digest FROM `+p.table("windows")+` WHERE tenant=$1 AND source_id=$2 AND start_ms>=$3 AND start_ms<=$4 ORDER BY start_ms LIMIT $5`, sel.Tenant, source.ID, lower, upper, sel.MaxWindows-len(selected)+1)
-		if err != nil {
-			return out, err
-		}
-		for rows.Next() {
-			var v selectedWindow
-			var generation int64
-			v.window.Tenant, v.window.SourceID = sel.Tenant, source.ID
-			if err = rows.Scan(&v.id, &v.window.Start, &v.window.End, &generation, &v.count, &v.digest); err != nil {
-				rows.Close()
-				return out, err
-			}
-			if generation < 1 || generation > int64(state.Generation) || v.count < 0 || v.count > MaxPacksPerWindow || v.window.End-v.window.Start != state.Contract.WindowMS || !validHash(v.digest) {
-				rows.Close()
-				return out, errors.New("invalid stored window")
-			}
-			v.window.Generation = uint64(generation)
-			planBytes += 256 + int64(len(sel.Tenant)+len(source.ID))
-			if len(selected) >= sel.MaxWindows || planBytes > sel.MaxPlanBytes {
-				rows.Close()
-				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan limit exceeded")
-			}
-			selected = append(selected, v)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
+		if err = p.selectWindows(ctx, plan, source.ID, lower, upper); err != nil {
 			return out, err
 		}
 	}
-	packCount := 0
-	for _, v := range selected {
-		if v.count > sel.MaxPacks-packCount {
-			return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog pack limit exceeded")
-		}
-		rows, err := tx.QueryContext(ctx, `SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM `+p.table("packs")+` WHERE window_id=$1 ORDER BY ordinal LIMIT $2`, v.id, v.count+1)
-		if err != nil {
+	for _, v := range plan.selected {
+		if err = plan.reservePacks(v.count); err != nil {
 			return out, err
 		}
-		v.window.Packs = []PackRef{}
-		for rows.Next() {
-			var ordinal int
-			var ref PackRef
-			if err = rows.Scan(&ordinal, &ref.DataKey, &ref.IndexKey, &ref.DataSHA256, &ref.IndexSHA256, &ref.DataBytes, &ref.IndexBytes); err != nil {
-				rows.Close()
-				return out, err
-			}
-			if ordinal != len(v.window.Packs) || ordinal >= v.count {
-				rows.Close()
-				return out, errors.New("invalid stored pack order/count")
-			}
-			planBytes += 256 + int64(len(ref.DataKey)+len(ref.IndexKey)+len(ref.DataSHA256)+len(ref.IndexSHA256))
-			if planBytes > sel.MaxPlanBytes {
-				rows.Close()
-				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
-			}
-			v.window.Packs = append(v.window.Packs, ref)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
+		if err = p.loadPacks(ctx, plan, &v); err != nil {
 			return out, err
 		}
-		if len(v.window.Packs) != v.count {
-			return out, errors.New("stored window is missing pack references")
-		}
-		digest, err := validatePublication(state.Contract, v.window.Publication)
+		digest, err := plan.checkPacks(v)
 		if err != nil {
 			return out, err
 		}
 		if digest != v.digest {
 			return out, errors.New("stored publication digest differs")
 		}
-		packCount += v.count
 		out.Windows = append(out.Windows, v.window)
 	}
-	if planBytes > sel.MaxPlanBytes {
+	if plan.planBytes > sel.MaxPlanBytes {
 		return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
 	}
 	return out, tx.Commit()
+}
+
+// selectWindows adds the stored windows of one source that start in
+// [lower,upper] to the plan, with their publication digests.
+func (p *Postgres) selectWindows(ctx context.Context, plan *planReader, sourceID string, lower, upper int64) error {
+	rows, err := plan.tx.QueryContext(ctx, `SELECT id,start_ms,end_ms,generation,pack_count,digest FROM `+p.table("windows")+` WHERE tenant=$1 AND source_id=$2 AND start_ms>=$3 AND start_ms<=$4 ORDER BY start_ms LIMIT $5`, plan.sel.Tenant, sourceID, lower, upper, plan.windowLimit())
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		v := plan.newWindow(sourceID)
+		var generation int64
+		if err := rows.Scan(&v.id, &v.window.Start, &v.window.End, &generation, &v.count, &v.digest); err != nil {
+			return err
+		}
+		if !validHash(v.digest) {
+			return errors.New("invalid stored window")
+		}
+		if err := plan.addWindow(v, generation); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// loadPacks reads the pack references of a selected window in ordinal order.
+func (p *Postgres) loadPacks(ctx context.Context, plan *planReader, v *selectedWindow) error {
+	rows, err := plan.tx.QueryContext(ctx, `SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM `+p.table("packs")+` WHERE window_id=$1 ORDER BY ordinal LIMIT $2`, v.id, v.count+1)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	return plan.readPacks(rows, v)
 }

@@ -8,7 +8,6 @@ import (
 	"io"
 	"sort"
 
-	"github.com/VictoriaMetrics/VictoriaMetrics/lib/encoding"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage"
 )
 
@@ -49,107 +48,130 @@ func buildPacks(r io.Reader, tenant Tenant, start, end int64, limits Limits, max
 	}
 	lr := &io.LimitedReader{R: r, N: l.MaxInputBytes + 1}
 	defer func() { stats.NativeInputBytes = l.MaxInputBytes + 1 - lr.N }()
-	var header [16]byte
-	if _, err := io.ReadFull(lr, header[:]); err != nil {
-		return fmt.Errorf("native header: %w", err)
+	if err := readNativeHeader(lr, start, end); err != nil {
+		return err
 	}
-	if encoding.UnmarshalInt64(header[:]) != start || encoding.UnmarshalInt64(header[8:]) != end-1 {
-		return errors.New("native export header differs from requested [start,end)")
-	}
-	newBuilder := func() *rotatingBuilder {
-		return &rotatingBuilder{idx: &Index{Version: FormatVersion, VMVersion: VMVersion, VMRevision: VMRevision, Tenant: tenant, Start: start, End: end, SHA256: strings64Zero, Series: []Series{}}, ids: map[string]int{}}
-	}
-	builder := newBuilder()
-	packs, physicalRows := 0, 0
-	flush := func() error {
-		if builder.blocks == 0 {
-			return nil
-		}
-		if packs >= maxPacks {
-			return errors.New("archive window exceeds pack count limit")
-		}
-		builder.idx.Size = int64(len(builder.data))
-		builder.idx.SHA256 = Sum(builder.data)
-		if _, err := MarshalIndex(builder.idx, l); err != nil {
-			return err
-		}
-		if err := emit(builder.idx, builder.data); err != nil {
-			return err
-		}
-		packs++
-		builder = newBuilder()
-		return nil
-	}
+	p := &packRotation{tenant: tenant, start: start, end: end, limits: l, maxPacks: maxPacks, maxSamples: maxSamples, emit: emit, stats: stats}
+	p.builder = p.newBuilder()
 	for {
-		name, err := readFrame(lr, l.MaxMetricNameBytes, true)
+		name, payload, err := readNativeRecord(lr, l)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("native metric name: %w", err)
-		}
-		payload, err := readFrame(lr, l.MaxBlockBytes, false)
-		if err != nil {
-			return fmt.Errorf("native block: %w", err)
-		}
-		if lr.N <= 0 {
-			return errors.New("native export exceeds input limit")
-		}
-		pb, err := decodePortable(payload)
-		if err != nil {
-			return fmt.Errorf("portable block: %w", err)
-		}
-		if len(pb.ts) > maxSamples-physicalRows {
-			return errors.New("archive physical sample verification limit exceeded")
-		}
-		physicalRows += len(pb.ts)
-		stats.PhysicalSamples = physicalRows
-		stats.Records++
-		var mn storage.MetricName
-		if err := mn.UnmarshalNoAccountIDProjectID(name); err != nil {
-			return fmt.Errorf("metric name: %w", err)
-		}
-		labels := map[string]string{"__name__": string(mn.MetricGroup)}
-		for _, tag := range mn.Tags {
-			key := string(tag.Key)
-			if _, exists := labels[key]; key == "" || exists {
-				return errors.New("empty or duplicate label key in native metric name")
-			}
-			labels[key] = string(tag.Value)
-		}
-		lo := sort.Search(len(pb.ts), func(i int) bool { return pb.ts[i] >= start })
-		if lo == len(pb.ts) || pb.ts[lo] >= end {
-			continue
-		}
-		canonical, _ := json.Marshal(labels)
-		ref := BlockRef{Length: int64(len(payload)), MinTimestamp: pb.ts[0], MaxTimestamp: pb.ts[len(pb.ts)-1], Rows: len(pb.ts), SHA256: Sum(payload)}
-		added, err := builder.add(string(canonical), labels, name, payload, ref, l)
-		if err != nil {
 			return err
 		}
-		if !added {
-			if builder.blocks == 0 {
-				return errors.New("native record cannot fit within configured pack bounds")
-			}
-			if err := flush(); err != nil {
-				return err
-			}
-			if packs >= maxPacks {
-				return errors.New("archive window exceeds pack count limit")
-			}
-			added, err = builder.add(string(canonical), labels, name, payload, ref, l)
-			if err != nil {
-				return err
-			}
-			if !added {
-				return errors.New("native record cannot fit within configured pack bounds")
-			}
+		if err := p.add(name, payload); err != nil {
+			return err
 		}
 	}
 	if lr.N <= 0 {
 		return errors.New("native export exceeds input limit")
 	}
-	return flush()
+	return p.flush()
+}
+
+// packRotation splits the records of one window into bounded packs, emitting
+// each pack before it starts the next.
+type packRotation struct {
+	tenant       Tenant
+	start, end   int64
+	limits       Limits
+	maxPacks     int
+	maxSamples   int
+	emit         func(*Index, []byte) error
+	stats        *BuildStats
+	builder      *rotatingBuilder
+	packs        int
+	physicalRows int
+}
+
+func (p *packRotation) newBuilder() *rotatingBuilder {
+	return &rotatingBuilder{idx: &Index{Version: FormatVersion, VMVersion: VMVersion, VMRevision: VMRevision, Tenant: p.tenant, Start: p.start, End: p.end, SHA256: strings64Zero, Series: []Series{}}, ids: map[string]int{}}
+}
+
+// flush emits the current pack, unless it is empty, and starts a new one.
+func (p *packRotation) flush() error {
+	if p.builder.blocks == 0 {
+		return nil
+	}
+	if p.packs >= p.maxPacks {
+		return errors.New("archive window exceeds pack count limit")
+	}
+	p.builder.idx.Size = int64(len(p.builder.data))
+	p.builder.idx.SHA256 = Sum(p.builder.data)
+	if _, err := MarshalIndex(p.builder.idx, p.limits); err != nil {
+		return err
+	}
+	if err := p.emit(p.builder.idx, p.builder.data); err != nil {
+		return err
+	}
+	p.packs++
+	p.builder = p.newBuilder()
+	return nil
+}
+
+// add counts the physical rows of one native record and places it if it has
+// rows in the logical window.
+func (p *packRotation) add(name, payload []byte) error {
+	pb, err := decodePortable(payload)
+	if err != nil {
+		return fmt.Errorf("portable block: %w", err)
+	}
+	if len(pb.ts) > p.maxSamples-p.physicalRows {
+		return errors.New("archive physical sample verification limit exceeded")
+	}
+	p.physicalRows += len(pb.ts)
+	p.stats.PhysicalSamples = p.physicalRows
+	p.stats.Records++
+	var mn storage.MetricName
+	if err := mn.UnmarshalNoAccountIDProjectID(name); err != nil {
+		return fmt.Errorf("metric name: %w", err)
+	}
+	labels := map[string]string{"__name__": string(mn.MetricGroup)}
+	for _, tag := range mn.Tags {
+		key := string(tag.Key)
+		if _, exists := labels[key]; key == "" || exists {
+			return errors.New("empty or duplicate label key in native metric name")
+		}
+		labels[key] = string(tag.Value)
+	}
+	lo := sort.Search(len(pb.ts), func(i int) bool { return pb.ts[i] >= p.start })
+	if lo == len(pb.ts) || pb.ts[lo] >= p.end {
+		return nil
+	}
+	canonical, _ := json.Marshal(labels)
+	ref := BlockRef{Length: int64(len(payload)), MinTimestamp: pb.ts[0], MaxTimestamp: pb.ts[len(pb.ts)-1], Rows: len(pb.ts), SHA256: Sum(payload)}
+	return p.place(string(canonical), labels, name, payload, ref)
+}
+
+// place adds a record to the current pack. A record that does not fit is
+// added to a new pack after the current one is emitted.
+func (p *packRotation) place(key string, labels map[string]string, name, payload []byte, ref BlockRef) error {
+	added, err := p.builder.add(key, labels, name, payload, ref, p.limits)
+	if err != nil {
+		return err
+	}
+	if added {
+		return nil
+	}
+	if p.builder.blocks == 0 {
+		return errors.New("native record cannot fit within configured pack bounds")
+	}
+	if err := p.flush(); err != nil {
+		return err
+	}
+	if p.packs >= p.maxPacks {
+		return errors.New("archive window exceeds pack count limit")
+	}
+	added, err = p.builder.add(key, labels, name, payload, ref, p.limits)
+	if err != nil {
+		return err
+	}
+	if !added {
+		return errors.New("native record cannot fit within configured pack bounds")
+	}
+	return nil
 }
 
 const strings64Zero = "0000000000000000000000000000000000000000000000000000000000000000"

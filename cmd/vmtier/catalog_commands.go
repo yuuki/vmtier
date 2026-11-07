@@ -50,35 +50,18 @@ func runCatalogMaintenance(args []string) error {
 	backend := fs.String("backend", "sqlite", "catalog maintenance backend: sqlite or postgres")
 	path := fs.String("path", "", "SQLite catalog directory; a fresh destination for import/restore")
 	id := fs.String("id", "", "expected catalog ID, or a new ID for import/restore")
-	var configuration, from, out, backup, tenant string
-	fs.StringVar(&configuration, "config", "", "policy/blob configuration (required for PostgreSQL and v2 import)")
-	var start, end int64
-	var maxWindows, maxPacks int
-	switch args[0] {
-	case "catalog-import":
-		fs.StringVar(&from, "from", "", "stopped JSON v2 catalog directory")
-	case "catalog-backup":
-		fs.StringVar(&out, "out", "", "fresh backup directory")
-	case "catalog-restore":
-		fs.StringVar(&backup, "backup", "", "backup directory")
-	case "catalog-upgrade":
-	case "catalog-inspect":
-		fs.StringVar(&tenant, "tenant", "", "optional tenant for a bounded query plan")
-		fs.Int64Var(&start, "start", 0, "inclusive epoch milliseconds (requires -tenant and -end)")
-		fs.Int64Var(&end, "end", 0, "exclusive epoch milliseconds (requires -tenant and -start)")
-		fs.IntVar(&maxWindows, "max-windows", 0, "query-plan window cap (zero uses the repository default)")
-		fs.IntVar(&maxPacks, "max-packs", 0, "query-plan pack cap (zero uses the repository default)")
-	default:
-		return errors.New("unsupported catalog maintenance operation")
+	var f maintenanceFlags
+	if err := f.define(fs, args[0]); err != nil {
+		return err
 	}
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 	if *backend == "postgres" {
-		if fs.NArg() != 0 || *path != "" || configuration == "" {
+		if fs.NArg() != 0 || *path != "" || f.configuration == "" {
 			return errors.New("PostgreSQL maintenance requires -backend postgres -config FILE, with no path")
 		}
-		return runPostgresCatalogCommand(args[0], configuration, *id, tenant, start, end, maxWindows, maxPacks)
+		return runPostgresCatalogCommand(args[0], f.configuration, *id, f.tenant, f.start, f.end, f.maxWindows, f.maxPacks)
 	}
 	if *backend != "sqlite" || args[0] == "catalog-upgrade" {
 		return errors.New("catalog-upgrade requires -backend postgres; SQLite has no schema upgrade")
@@ -88,56 +71,105 @@ func runCatalogMaintenance(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if args[0] == "catalog-import" {
-		if from == "" || configuration == "" {
+	switch args[0] {
+	case "catalog-import":
+		if f.from == "" || f.configuration == "" {
 			return errors.New("catalog-import requires -from and -config")
 		}
-		return importSQLite(ctx, configuration, from, *path, *id)
-	}
-	if args[0] == "catalog-restore" {
-		if backup == "" {
+		return importSQLite(ctx, f.configuration, f.from, *path, *id)
+	case "catalog-restore":
+		if f.backup == "" {
 			return errors.New("catalog-restore requires -backup and a new -id")
 		}
-		s, err := catalog.RestoreSQLite(ctx, backup, *path, *id)
-		if err != nil {
-			return err
+		return restoreSQLite(ctx, f.backup, *path, *id)
+	case "catalog-backup":
+		if f.out == "" {
+			return errors.New("catalog-backup requires -out")
 		}
-		defer s.Close()
-		return printCatalogStatus(ctx, s)
+		return backupSQLite(ctx, *path, *id, f.out)
 	}
-	if args[0] == "catalog-backup" && out == "" {
-		return errors.New("catalog-backup requires -out")
+	// define accepts no other operation, and SQLite has no catalog-upgrade.
+	return inspectSQLite(ctx, *path, *id, f)
+}
+
+// maintenanceFlags holds the catalog maintenance flags other than -backend,
+// -path and -id.
+type maintenanceFlags struct {
+	configuration, from, out, backup, tenant string
+	start, end                               int64
+	maxWindows, maxPacks                     int
+}
+
+// define registers -config and the flags of one maintenance operation.
+func (f *maintenanceFlags) define(fs *flag.FlagSet, operation string) error {
+	fs.StringVar(&f.configuration, "config", "", "policy/blob configuration (required for PostgreSQL and v2 import)")
+	switch operation {
+	case "catalog-import":
+		fs.StringVar(&f.from, "from", "", "stopped JSON v2 catalog directory")
+	case "catalog-backup":
+		fs.StringVar(&f.out, "out", "", "fresh backup directory")
+	case "catalog-restore":
+		fs.StringVar(&f.backup, "backup", "", "backup directory")
+	case "catalog-upgrade":
+		// PostgreSQL only, with no flags of its own.
+	case "catalog-inspect":
+		fs.StringVar(&f.tenant, "tenant", "", "optional tenant for a bounded query plan")
+		fs.Int64Var(&f.start, "start", 0, "inclusive epoch milliseconds (requires -tenant and -end)")
+		fs.Int64Var(&f.end, "end", 0, "exclusive epoch milliseconds (requires -tenant and -start)")
+		fs.IntVar(&f.maxWindows, "max-windows", 0, "query-plan window cap (zero uses the repository default)")
+		fs.IntVar(&f.maxPacks, "max-packs", 0, "query-plan pack cap (zero uses the repository default)")
+	default:
+		return errors.New("unsupported catalog maintenance operation")
 	}
-	if args[0] == "catalog-inspect" {
-		if tenant == "" && (start != 0 || end != 0 || maxWindows != 0 || maxPacks != 0) {
-			return errors.New("query-plan flags require -tenant, -start and -end")
-		}
-		if tenant != "" && (start <= 0 || end <= start) {
-			return errors.New("query plans require a positive -start and an exclusive -end greater than -start")
-		}
-	}
-	s, err := catalog.OpenSQLite(ctx, *path, *id)
+	return nil
+}
+
+func restoreSQLite(ctx context.Context, backup, dest, id string) error {
+	s, err := catalog.RestoreSQLite(ctx, backup, dest, id)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
-	if args[0] == "catalog-backup" {
-		return s.Backup(ctx, out)
-	}
-	if tenant != "" {
-		parsed, err := pack.ParseTenant(tenant)
-		if err != nil {
-			return err
-		}
-		plan, err := s.Select(ctx, catalog.Selection{
-			Tenant: parsed.String(), Start: start, End: end, MaxWindows: maxWindows, MaxPacks: maxPacks,
-		})
-		if err != nil {
-			return err
-		}
-		return json.NewEncoder(os.Stdout).Encode(plan)
-	}
 	return printCatalogStatus(ctx, s)
+}
+
+func backupSQLite(ctx context.Context, dir, id, out string) error {
+	s, err := catalog.OpenSQLite(ctx, dir, id)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	return s.Backup(ctx, out)
+}
+
+// inspectSQLite prints the catalog status, or with -tenant, the query plan of
+// [-start,-end).
+func inspectSQLite(ctx context.Context, dir, id string, f maintenanceFlags) error {
+	if f.tenant == "" && (f.start != 0 || f.end != 0 || f.maxWindows != 0 || f.maxPacks != 0) {
+		return errors.New("query-plan flags require -tenant, -start and -end")
+	}
+	if f.tenant != "" && (f.start <= 0 || f.end <= f.start) {
+		return errors.New("query plans require a positive -start and an exclusive -end greater than -start")
+	}
+	s, err := catalog.OpenSQLite(ctx, dir, id)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	if f.tenant == "" {
+		return printCatalogStatus(ctx, s)
+	}
+	parsed, err := pack.ParseTenant(f.tenant)
+	if err != nil {
+		return err
+	}
+	plan, err := s.Select(ctx, catalog.Selection{
+		Tenant: parsed.String(), Start: f.start, End: f.end, MaxWindows: f.maxWindows, MaxPacks: f.maxPacks,
+	})
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(plan)
 }
 
 func importSQLite(ctx context.Context, file, from, dest, id string) error {
