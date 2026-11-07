@@ -41,8 +41,8 @@ make build vet vuln
 
 `make test-integration` (with `VMTIER_TEST_POSTGRES_DSN`), `make test-fuzz` and
 `make bench` cover the PostgreSQL repositories, the decoders and the hot paths.
-[AGENTS.md](AGENTS.md) lists every command and the compatibility contracts whose
-changes must be called out.
+[AGENTS.md](AGENTS.md) lists the compatibility contracts whose changes must be
+called out.
 
 Use `make GO=/path/to/go ...` when Go is outside `PATH`.
 
@@ -75,7 +75,8 @@ a recent-only Hot reconstruction is not a natural retention-expiry test.
 ## Pull requests and releases
 
 Explain the concrete problem, resulting behavior, tests, and limitations. Keep
-runtime changes small enough to review and diagnose. Examples must not contain
+runtime changes small enough to review and diagnose. Commits, branches and pull
+request titles follow the Git conventions in AGENTS.md. Examples must not contain
 credentials or assume access to a contributor's environment. Real-provider tests
 require an explicitly configured disposable target.
 
