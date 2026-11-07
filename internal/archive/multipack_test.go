@@ -32,8 +32,8 @@ func TestSQLiteMultiPackCrossPackConflictStaleAndOracleFailure(t *testing.T) {
 				ts []int64
 				vs []float64
 			}{
-				{[]int64{start, start + 10, start + 20, start + 30}, []float64{1, 2, decimal.StaleNaN, 4}},
-				{[]int64{start + 10, start + 20, start + 30, end - 1}, []float64{3, 5, 7, decimal.StaleNaN}},
+				{[]int64{start, start + 10, start + 20, start + 30, start + 40}, []float64{1, 2, decimal.StaleNaN, 4, decimal.StaleNaN}},
+				{[]int64{start + 10, start + 20, start + 30, start + 40, end - 1}, []float64{3, 5, 7, decimal.StaleNaN, decimal.StaleNaN}},
 				{[]int64{start + 10, end - 1}, []float64{decimal.StaleNaN, 8}},
 			} {
 				values, scale := decimal.AppendFloatToDecimal(nil, record.vs)
@@ -53,13 +53,15 @@ func TestSQLiteMultiPackCrossPackConflictStaleAndOracleFailure(t *testing.T) {
 				}
 				expr := r.URL.Query().Get("query")
 				if strings.HasPrefix(expr, "{") {
-					values := []any{[]any{float64(start) / 1000, "1"}, []any{float64(start+10) / 1000, "NaN"}, []any{float64(start+20) / 1000, "NaN"}, []any{float64(start+30) / 1000, "7"}, []any{float64(end-1) / 1000, "NaN"}}
+					// VM #10196 prefers maximum non-stale duplicates across packs;
+					// the all-stale conflict at start+40 must remain a stale marker.
+					values := []any{[]any{float64(start) / 1000, "1"}, []any{float64(start+10) / 1000, "3"}, []any{float64(start+20) / 1000, "5"}, []any{float64(start+30) / 1000, "7"}, []any{float64(start+40) / 1000, "NaN"}, []any{float64(end-1) / 1000, "8"}}
 					json.NewEncoder(w).Encode(map[string]any{"status": "success", "isPartial": badOracle, "data": map[string]any{"resultType": "matrix", "result": []any{map[string]any{"metric": metric, "values": values}}}})
 					return
 				}
-				value := "2"
+				value := "5"
 				if strings.HasPrefix(expr, "stale_") {
-					value = "3"
+					value = "1"
 				}
 				json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": map[string]any{"resultType": "vector", "result": []any{map[string]any{"metric": metric, "value": []any{float64(end-1) / 1000, value}}}}})
 			}))
@@ -70,7 +72,7 @@ func TestSQLiteMultiPackCrossPackConflictStaleAndOracleFailure(t *testing.T) {
 			a, _ := newSQLiteArchiver(t, cfg)
 			result, err := a.RunPass(context.Background(), testNow)
 			memory := cfg.Memory.Snapshot()
-			if memory.VerifierBytes != 0 || memory.PackBytes != 0 || memory.VerifierPeakBytes < 10*16 || memory.PackPeakBytes == 0 {
+			if memory.VerifierBytes != 0 || memory.PackBytes != 0 || memory.VerifierPeakBytes < 12*16 || memory.PackPeakBytes == 0 {
 				t.Fatalf("archive memory components missing or retained after completion: %+v", memory)
 			}
 			state, statusErr := a.Catalog.Status(context.Background())
@@ -81,10 +83,10 @@ func TestSQLiteMultiPackCrossPackConflictStaleAndOracleFailure(t *testing.T) {
 				t.Fatal("must stage all three packs before independent verification")
 			}
 			if badOracle {
-				if err == nil || state.Generation != 0 || result.CommittedWindows != 0 {
+				if err == nil || !strings.Contains(err.Error(), "raw verification returned partial data") || state.Generation != 0 || result.CommittedWindows != 0 {
 					t.Fatalf("failed oracle published staged packs: %+v %+v %v", state, result, err)
 				}
-			} else if err != nil || result.Samples != 5 || result.CommittedWindows != 1 || state.Generation != 1 {
+			} else if err != nil || result.Samples != 6 || result.CommittedWindows != 1 || state.Generation != 1 {
 				t.Fatalf("cross-pack conflicts/stale differ: %+v %v", result, err)
 			}
 		})

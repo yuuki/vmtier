@@ -8,7 +8,7 @@ for cutover and the [first-release design](design.md) for implementation progres
 The limits and command architecture below belong to the legacy MVP; they do not
 describe the SQLite catalog's storage or lifecycle.
 
-vmtier is an independent archiver and read gateway, not an official VictoriaMetrics product. The supported OSS cluster version is pinned to `v1.128.0-cluster`, commit `9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. See the [prior-art comparison](prior-art.md), [native gateway decision](adr/0001-native-gateway.md), and [compatibility reference](compatibility.md).
+vmtier is an independent archiver and read gateway, not an official VictoriaMetrics product. The supported OSS cluster version is pinned to `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. See the [prior-art comparison](prior-art.md), [native gateway decision](adr/0001-native-gateway.md), and [compatibility reference](compatibility.md).
 
 ## Architecture
 
@@ -93,7 +93,7 @@ The S3 reader uses the block directory for Range GETs and validates length, Cont
 
 Missing objects, unsupported codecs, tenant mismatches, corruption, S3 failures, and resource-limit violations produce query errors. Bounded search completes before the upstream server sends a success prefix, so discovering corruption does not turn a failed query into an empty success. The top-level vmselect must also deny partial responses.
 
-The gateway uses `vmselectapi.Server` concurrency/queue limits and request deadlines. Backend I/O is bounded by context. The public API does not expose the RPC request context or immediate client cancellation, so a disconnect does not guarantee immediate cancellation of all S3 work; the deadline bounds it.
+The gateway uses `vmselectapi.Server` concurrency/queue limits and request deadlines. Backend I/O is bounded by context. The public API exposes an RPC context, which the gateway propagates to backend operations with a local request deadline. A frontend client disconnect does not guarantee immediate cancellation of all S3 work; deadlines still bound it.
 
 A query continues reading the objects in its selected catalog snapshot. Catalog updates retain existing entries, and the MVP deletes neither published objects nor orphans, so concurrent updates do not introduce a garbage-collection race. Ordinary S3 PUT does not enforce immutability. Correctness depends on vmtier never reusing published keys and operators preventing external modification or deletion. This is a capacity-growth limitation, not an implemented GC policy.
 

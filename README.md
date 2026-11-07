@@ -4,7 +4,7 @@
 
 The current implementation adds a single-owner **`vmtier serve`** runtime to the native gateway MVP: SQLite publication and coverage, age-based archive scheduling, and a shared S3 request budget. See the [service guide](docs/serve.md) and [service validation](docs/serve-validation.md). The SQLite writer now rotates bounded packs and verifies its raw oracle incrementally. The reader uses LRU caching, shared concurrent misses, and adjacent Range GETs. The [first-release design](docs/design.md) separates these implementations from the remaining workload, provider, and recovery qualification. The JSON v2 MVP remains available for regression testing and migration.
 
-Compatibility is pinned to **VictoriaMetrics OSS v1.128.0-cluster**, commit [`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/9a009c491da4c17531893ab4acb6a5f1b5e0eaf2). Other versions' native codecs and read RPCs have not been validated.
+Compatibility is pinned to **VictoriaMetrics OSS v1.155.0-cluster**, commit [`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/cab3d5fbeeedd5d0374c1dabde93939af4c2499c). Other versions' native codecs and read RPCs are unsupported. Existing catalogs and packs with the previous VM pin cannot be opened by this version; follow the [upgrade procedure](docs/compatibility.md#codec-and-upgrades) before changing a deployment.
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,7 @@ Use [capacity preflight](docs/preflight.md) on representative busy windows befor
 
 ## Build and reproduce the legacy JSON v2 MVP
 
-Requirements: Linux amd64, Go **1.27.3** (the tested version; minimum 1.25.3), Python 3.12 or newer, a C toolchain, curl, and approximately 2 GB of free disk space. Docker is not required. These commands use disposable local VM processes and a Moto S3 test backend.
+Requirements: Linux amd64, Go **1.27.3**, Python **3.15.2**, a C toolchain, curl, and enough free disk space for the Go module/build caches and disposable test data. Docker is not required. These commands use disposable local VM processes and a Moto S3 test backend.
 
 ```sh
 ./scripts/bootstrap.sh
@@ -48,7 +48,7 @@ python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/demo-s3
 
 If Go is installed outside `PATH`, use `make GO=/path/to/go ...`. The test environment must permit local TCP listeners.
 
-Bootstrap downloads checksum-pinned VM sources and the SQLite driver, then generates `.deps/` and `vendor/`. It does not update unrelated modules or patch VM. The SQLite driver uses CGO and bundled SQLite. `go.mod` and `go.sum` record the pinned dependencies; generated vendor files are not tracked in Git.
+Bootstrap downloads the checksum-pinned stock VM source archive into `.deps/`, then runs `go mod download`, `go mod verify`, and `go mod vendor` using the committed `go.mod` and `go.sum`. It regenerates `vendor/` so dependency updates take effect in existing workspaces. Stock VM builds use their original upstream vendor tree; vmtier uses its own pinned modules. No VM source is patched. The SQLite driver uses CGO and bundled SQLite. Generated dependencies and vendor files are not tracked in Git.
 
 The legacy JSON v2 E2E harness:
 
@@ -112,7 +112,7 @@ Keep the RPC listener on a trusted network. `/health` reports process liveness; 
 - Cold metadata still uses full validated block reads, with [bounded LRU caching and adjacent ranges](docs/reader-validation.md). The earlier uncached S3 fixture exceeded vmselect's default five-second labels API deadline. The [before/after metadata measurements](docs/metadata-validation.md) passed the retained fixture with the five-second deadline after the reader changes. The harness retains a configurable 30-second default; this does not establish an arbitrary-workload latency guarantee.
 - Query admission reserves a per-query logical work allowance under a shared budget, including parsed-index estimates and copied result names. Cache flights, archive work, runtime overhead, and metadata serialization also consume memory; this is not a heap or RSS ceiling. See [component accounting](docs/query-memory.md) and the [measured workload envelope](docs/workload-validation.md), including the larger workload that exceeded the default query budget.
 - Compaction, GC, Cold TTL deletion, multipart upload, and downsampling remain unimplemented.
-- VM frontend result caching is disabled in the MVP; the immutable Cold block cache is separate. Upstream public APIs do not expose immediate cancellation on client disconnect, so backend work can continue until its deadline.
+- VM frontend result caching is disabled in the MVP; the immutable Cold block cache is separate. The gateway propagates the upstream RPC context to backend work and applies its own request limit. Immediate cancellation on frontend client disconnect is not guaranteed; deadlines still bound work.
 
 ## Documentation
 

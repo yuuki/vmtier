@@ -87,7 +87,7 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := gateway.New(metricsLimitBackend{}, gateway.Limits{})
-	if _, err := api.InitSearch(nil, &storage.SearchQuery{AccountID: 1, ProjectID: 2, MinTimestamp: 1, MaxTimestamp: 2}, 0); querylimit.Reason(err) != querylimit.ReadBytes {
+	if _, err := api.InitSearch(context.Background(), nil, &storage.SearchQuery{AccountID: 1, ProjectID: 2, MinTimestamp: 1, MaxTimestamp: 2}); querylimit.Reason(err) != querylimit.ReadBytes {
 		t.Fatalf("fixture refusal: %v", err)
 	}
 	var stats serviceStats

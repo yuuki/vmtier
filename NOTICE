@@ -2,7 +2,7 @@ vmtier
 An independent, unofficial project; not a VictoriaMetrics product or endorsement.
 
 This project uses VictoriaMetrics OSS code as a Go library:
-Copyright 2019-2025 VictoriaMetrics, Inc.
+Copyright 2019-2026 VictoriaMetrics, Inc.
 Licensed under the Apache License, Version 2.0.
 
 The following notices are reproduced from dependencies used by the S3 adapter:
