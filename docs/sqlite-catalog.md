@@ -13,7 +13,7 @@ a JSON v2 tool. SQLite has no public catalog HTTP API.
 
 The [stage 1 validation](sqlite-catalog-validation.md) records the original repository
 and offline-command checks. Current runtime evidence and unexecuted checks are in
-[service validation](serve-validation.md); the remaining implementation stages are
+[service validation](serve-validation.md); remaining qualification and acceptance work is
 tracked in the [first-release design](design.md).
 
 ## Repository behavior

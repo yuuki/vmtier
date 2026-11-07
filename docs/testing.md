@@ -1,21 +1,5 @@
 # Reproducing validation
 
-## CI evidence
-
-The workflow always packages available `.cache/ci-*` work directories into
-`e2e-evidence.tar.gz`, then uploads that file as the `e2e-evidence` artifact.
-After downloading and unzipping the artifact, run `tar -xzf e2e-evidence.tar.gz`.
-The archive preserves original tenant paths (including colons), hidden files,
-logs, and result bytes. Failed suites may leave partial directories; an empty
-archive means setup failed before any work directory was created. Packaging and
-upload also run after test failure and do not turn a failed test into success.
-
-The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
-and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
-their build, test, race, vet, and four E2E steps, but failed artifact upload because
-the action rejected colons in nested fixture paths. Those runs were not successful
-CI runs. Historical local result files remain unchanged.
-
 ## Pinned environment
 
 The target is **VictoriaMetrics OSS v1.155.0-cluster**, commit
@@ -32,10 +16,28 @@ harness described below. Evidence from the previous
 all-S3 catalog architecture is kept under [legacy-v1](results/legacy-v1/README.md)
 and is not included in current results.
 
+## Setup and quick checks
+
+Follow [getting started](getting-started.md#build-from-source) for prerequisites.
+From the repository root:
+
+```sh
+./scripts/bootstrap.sh
+make build test race vet stock
+python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 -m venv .venv-e2e
+. .venv-e2e/bin/activate
+python -m pip install -r scripts/requirements-e2e.txt
+```
+
+Use a fresh work directory for every suite. The commands below assume this setup,
+including the active virtual environment for S3 tests. For documentation-only
+changes, check links, CLI flags, and implementation claims; no benchmarks are needed.
+
 ## SQLite service
 
 After building vmtier and the pinned stock VM binaries and installing the Python
-dependencies shown below, run:
+dependencies in the setup above, run:
 
 ```sh
 python3 scripts/e2e_serve.py --backend local --workdir .cache/serve-local-fresh
@@ -68,10 +70,6 @@ configuration. See [stage 2 validation](serve-validation.md) for the default-dea
 failure and subsequent regression results.
 
 ```sh
-./scripts/build-vm.sh
-# Build vmtier using the bootstrap/build instructions in the README.
-python3 -m venv .venv-e2e
-.venv-e2e/bin/pip install -r scripts/requirements-e2e.txt
 python3 scripts/e2e.py --backend local --workdir .cache/v2-local-fresh
 MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e.py \
   --backend s3 --replicas 2 --workdir .cache/v2-s3-fresh
@@ -105,7 +103,7 @@ without S3 conditional PUT, ETags, or LIST.
 and Go source tree, start/end UTC timestamps, and OS/Python/Moto versions.
 Set `GO_BIN` or put Go on `PATH` to record its version.
 
-## End-to-end checks
+## Legacy JSON v2 end-to-end checks
 
 - Load the same fixture into a reference VM retaining the full period and into
   Hot before archive. Standard Python generates remote-write protobuf and literal
@@ -308,3 +306,23 @@ it does **not** establish natural VM retention expiry. See the
 Hosted CI runs the local recovery suite and includes its complete `ci-recovery-local`
 work directory in the existing byte-preserving evidence archive, including on
 failure. This is additional process recovery coverage, not a power-loss test.
+
+## CI evidence
+
+The workflow always packages available `.cache/ci-*` work directories into
+`e2e-evidence.tar.gz`, then uploads that file as the `e2e-evidence` artifact.
+After downloading and unzipping the artifact, run `tar -xzf e2e-evidence.tar.gz`.
+The archive preserves original tenant paths (including colons), hidden files,
+logs, and result bytes. Failed suites may leave partial directories; an empty
+archive means setup failed before any work directory was created. Packaging and
+upload also run after test failure and do not turn a failed test into success.
+
+The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
+and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
+their build, test, race, vet, and four E2E steps, but failed artifact upload because
+the action rejected colons in nested fixture paths. Those runs were not successful
+CI runs. Historical local result files remain unchanged.
+
+
+See the [workflow](../.github/workflows/ci.yml) for the current suite matrix and
+[evidence index](evidence.md) for recorded results.

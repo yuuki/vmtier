@@ -138,7 +138,7 @@ The catalog HTTP adapter remembers observed generations within its process and
 rejects generation rollback or changed content at the same generation. Rollback
 detection across complete restarts, consistency among multiple authorities, and HA
 are not guaranteed by either deployment. SQLite restore requires a new catalog ID.
-See [legacy operations](operations.md) for optional HTTP bearer authentication and
+See [legacy operations](legacy-json-v2.md) for optional HTTP bearer authentication and
 TLS proxy deployment, and [service operation](serve.md) for shared S3 request limits.
 
 ## Scope of executed validation

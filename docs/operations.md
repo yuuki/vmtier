@@ -1,50 +1,38 @@
-# Legacy JSON v2 deployment, operation, and recovery
+# Operations and recovery
 
-The command procedures on this page describe the retained **JSON v2 MVP**, which uses separate archiver, catalog, and gateway processes. For the current SQLite runtime, use the [`serve` guide](serve.md) and [SQLite maintenance and migration guide](sqlite-catalog.md). The lateness, retention, immutable-object, and trusted-network requirements apply to both runtimes. See the [first-release design](design.md) for implemented stages and remaining work, and [compatibility](compatibility.md) for protocol coverage.
+This runbook covers the current single-owner SQLite `serve` runtime. Start with
+[getting started](getting-started.md) and the [service guide](serve.md).
+Separate catalog/archiver/gateway commands and manual JSON state recovery belong
+to the [legacy JSON v2 guide](legacy-json-v2.md).
 
-## Initial deployment
+## Deployment requirements
 
-1. Pin stock VM to the supported version and inventory every tenant, export source, shard, and replica. Use a Hot-only export endpoint, never the combined query frontend.
-2. Confirm Hot retention and verify that the oldest unarchived window can still be queried and exported. Do not shorten retention during deployment or commit a lost interval as empty.
-3. Enforce the lateness bound L on every ingestion, import, and backfill path. Restrict direct access to vminsert and VM. Include clock error, queues, and retries in the bound; without this contract, age alone cannot establish that a window is immutable.
-4. Require `H > L` and `R > H + safety_margin + window`, where H is archive age and R is Hot retention. Recovery must complete within the available headroom. Run one writer. `lateness_enforced` acknowledges this external contract; it does not implement enforcement. Use Go duration syntax, such as `720h`, not `30d`.
-5. Give the archive a dedicated S3 prefix and least-privilege access. The adapter uses ordinary PUT with Content-MD5, GET, and Range GET; it does not require conditional PUT, ETags, or LIST. Read-back SHA-256 verification precedes publication. Use a storage class that permits immediate reads.
-6. Explicitly initialize the catalog on persistent storage, start its service, and connect all clients to the same catalog ID. Run `vmtier archive -config FILE`, verify packs and indexes, and inspect tenants, sources, and coverage. The catalog must not advance until every source is complete. Schedule subsequent runs with a single-writer external scheduler.
-7. Register Hot and the Cold gateway with the query vmselect. Set `replicationFactor=1`, `globalReplicationFactor=1`, `skipSlowReplicas=false`, `denyPartialResponse=true`, `disableCache=true`, and `dedup.minScrapeInterval=1ms` using the flags shown in the README.
-8. In an isolated environment, compare Cold-only and boundary queries with a complete reference VM and confirm that a missing Cold object produces an error before deciding to use the deployment.
+Use persistent local storage for catalog state and one owner for the bucket.
+The state-directory lock only excludes owners using that directory on the same
+host; it does not fence other hosts or directories. Keep RPC and HTTP listeners
+on a trusted network with access controls and TLS termination as appropriate.
+SQLite has no catalog HTTP listener or online management API.
 
-Set `coverage_start_ms` to the start of the guaranteed history, in epoch milliseconds, aligned to a window boundary. Do not move it forward merely to pass readiness. Earlier history is outside Cold's completeness guarantee.
+Archive sources must be Hot-only stock vmselect endpoints covering all Hot shards.
+Keep tenant IDs, source IDs/URLs, and shard topology stable. Enforce the lateness
+bound on every ingestion path before setting `lateness_enforced=true`. Block
+mutation APIs at the query frontend. Validate the [time and coverage contract](limits.md)
+and run [preflight](preflight.md) before initializing a catalog.
 
-Without explicit bounds, `archive -config FILE` selects the minimum contiguous coverage across all configured tenants and sources, initially `coverage_start_ms`, through `floor((now-H)/window)*window`. It is a no-op when all currently required windows are committed. Because the catalog is the checkpoint, the same command can resume after process restart. Explicit `-start <ms> -end <ms>` bounds remain subject to alignment, age, and retention checks.
+## Maintenance and backup
 
-For example, a dedicated host can use cron with a fixed working directory and writer lock. Choose the interval to fit the window size and safety margin.
+Stop `serve` before inspection, payload verification, import, backup, or restore.
+Use the [offline catalog commands](sqlite-catalog.md); they acquire the same lock
+and refuse a live owner. Allow enough Hot retention headroom for downtime and
+catch-up. Copy complete backups to another failure domain. Do not copy only the
+main file of a live SQLite database: committed state can still be in the WAL.
 
-```cron
-*/5 * * * * cd /srv/vmtier && flock -n /srv/vmtier/archive.lock .bin/vmtier archive -config /etc/vmtier.json >> /var/log/vmtier-archive.log 2>&1
-```
-
-vmtier does not install this schedule. Monitor exit codes and structured logs, distinguishing a skipped lock acquisition from an archive failure.
-
-Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`; do not put them in configuration files, logs, or Git. General IAM role and credential-provider-chain support is unverified. Keep TLS verification enabled. The local backend is for development and does not provide S3 durability guarantees.
-
-## Catalog initialization and placement
-
-```sh
-.bin/vmtier catalog-init -path /srv/vmtier/catalog -id cluster-a-catalog-001
-.bin/vmtier catalog -path /srv/vmtier/catalog -id cluster-a-catalog-001 -http 127.0.0.1:8491
-```
-
-`catalog-init` only creates new state and refuses an existing catalog. Normal startup rejects missing state and ID mismatches; it does not recover by creating an empty catalog. The ID is not a secret, but must be stable and unique to distinguish authorities and recovery instances.
-
-The configuration uses `type`, `url`, and `id` for HTTP access, or `type`, `path`, and `id` for local development. The first commit fixes the contract: coverage origin, window size, deduplication at 1 ms, archive age H, allowed lateness L, tenant set, and source IDs/URL hashes. Subsequent changes are rejected, including moving the coverage origin forward to hide a gap.
-
-Changing H or L can reopen an archived window for writes. For example, changing `H=3h,L=30m` to `H=6h,L=5h` permits writes into previously sealed history. Archive, query, and readiness reject this configuration mismatch. Such a change needs a separate migration that preserves old windows; the MVP does not provide it. Contract validation does not prove that ingestion actually enforces L.
-
-The catalog API is intended for a trusted network. Set the same optional `VMTIER_CATALOG_TOKEN` on server and clients for bearer authentication. Use a TLS proxy and network access controls outside loopback. Do not embed the token in configuration, URLs, or logs. Commit authorization does not replace trust in the writer's export-completeness checks.
-
-Use persistent local storage that correctly supports file and directory fsync, atomic rename, and flock. Do not store authority state in an ephemeral container layer. NFS and other shared filesystems are unverified. There is no HA or automatic failover, and an empty replacement authority on another host is not a recovery mechanism. Queries fail while the catalog is unavailable.
-
-For deployment, initialize immediately below a pre-existing, durable parent directory. Initialization syncs the catalog directory and its immediate parent, not every newly created ancestor in a nested path. Initialization and commit behavior under actual power loss have not been tested.
+Restore into a fresh directory with a new catalog ID, preserve the saved contract
+and blob locator, and isolate the old owner before restarting. The scheduler
+rearchives missing windows only while Hot still retains them. Metadata backups
+cannot recover missing object bytes or expired source data. Compare Cold-only
+and Hot/Cold boundary queries before cutover; see [recovery evidence](recovery-validation.md)
+for the tested scenarios and their limits.
 
 ## Sakura Object Storage
 
@@ -125,29 +113,15 @@ descriptors under the scrape timeout; they do not add an in-memory catalog mirro
 | Missing or corrupt object, or GET failure | Fail the query. Restore the original bytes, verify them, and retest; do not replace the failure with an empty result. |
 | Hot retention deadline exceeded | Do not commit an empty window as success. Missing data needs another complete recovery copy. |
 
-Published object keys are never reused. A new attempt uses a fresh nonce and keys, so a lost PUT response or generation conflict can leave orphan objects. Queries read only catalog references. After a lost commit response, reload the authority before deciding what remains to publish. The MVP supports bounded, single-PUT objects; multipart abort and cleanup are out of scope.
-
-## Catalog backup, restore, and older formats
-
-For SQLite, use the implemented offline `catalog-backup`, `catalog-restore`, and
-JSON v2 `catalog-import` commands described in [catalog maintenance](sqlite-catalog.md).
-Stop `serve` first; its lifetime state lock rejects concurrent maintenance. After
-restore to a new path and ID, `serve` can catch up from Hot while retention permits.
-The manual authority handling below applies to legacy JSON v2 state.
-
-The catalog is the authority for committed coverage, not a disposable index reconstructible from an S3 listing. Stop the writer and quiesce commits before copying its state. Record the catalog ID, generation, contract, and referenced objects. Do not race a raw file copy with a commit. The MVP has no online backup or automatic restore command.
-
-A live HTTP client rejects decreasing generations and changed content within one generation. After all clients restart, however, they have no previous observation. Do not resume from an older backup under the same ID. Isolate the old writer, use a new catalog ID, audit missing commits and references against independent records or a complete source, and explicitly switch every client. If Hot no longer has the data and the required metadata cannot be recovered, vmtier cannot establish completeness on its own.
-
-The current implementation does not automatically import the former S3 `catalog.json`; an old object at that path is never used as the new authority. A manual migration requires stopping the old writer, preserving its catalog and all objects, auditing the contract, coverage, sources, and codec, and running differential checks with a new ID before switching. There is no conversion command, and hand-editing JSON is not a validated migration. Re-archiving into a new prefix from a source that still holds the full history is the reproducible MVP path.
+Published object keys are never reused. A new attempt uses a fresh nonce and keys, so a lost PUT response or generation conflict can leave orphan objects. Queries read only catalog references. After a lost commit response, reload the authority before deciding what remains to publish. vmtier supports bounded, single-PUT objects; multipart abort and cleanup are out of scope.
 
 ## Late writes, backfill, and deletion
 
 The `H > L` contract assumes accepted writes arrive before a window is archived. If an older sample is written to Hot afterward, vmtier does not guarantee that it will survive in Cold once Hot retention removes it. A read gateway cannot detect or reject violations on a direct write path.
 
-There are no deltas, overlap re-exports, backfill updates, or tombstones in the MVP. Treat committed windows as immutable. If exceptional backfill is necessary, rebuild the complete archive under a **new prefix** from an isolated source holding the corrected full history, compare it with the reference, and switch to a new gateway with VM result caching disabled. This is a manual migration approach, not a tested automatic backfill command.
+There are no deltas, overlap re-exports, backfill updates, or tombstones in vmtier. Treat committed windows as immutable. If exceptional backfill is necessary, rebuild the complete archive under a **new prefix** from an isolated source holding the corrected full history, compare it with the reference, and switch to a new gateway with VM result caching disabled. This is a manual migration approach, not a tested automatic backfill command.
 
-Although the gateway rejects delete, write, and administration RPCs, a delete sent through the top-level vmselect can modify Hot before Cold returns an error. Block the read frontend's HTTP mutation APIs at the access-control layer too. Deleting a series only from Hot can make it reappear from Cold. Environments requiring deletion need tombstones or a safe archive rebuild; the MVP does not provide deletion management.
+Although the gateway rejects delete, write, and administration RPCs, a delete sent through the top-level vmselect can modify Hot before Cold returns an error. Block the read frontend's HTTP mutation APIs at the access-control layer too. Deleting a series only from Hot can make it reappear from Cold. Environments requiring deletion need tombstones or a safe archive rebuild; vmtier does not provide deletion management.
 
 ## Retention changes and rollback
 
@@ -157,7 +131,7 @@ If Hot still holds the entire history, removing the Cold node restores a Hot-onl
 
 ## GC, Cold retention, and upgrades
 
-The MVP performs no GC or Cold TTL deletion. Its append-only catalog retains existing entries, and it deletes neither referenced objects nor orphans. This avoids deletion races but allows storage usage to grow. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
+vmtier performs no GC or Cold TTL deletion. Its append-only catalog retains existing entries, and it deletes neither referenced objects nor orphans. This avoids deletion races but allows storage usage to grow. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
 
 Any future deletion implementation must account for query lifetime and all readers that may still hold old references. That implementation is deferred; do not approximate it with an arbitrary lifecycle expiration.
 

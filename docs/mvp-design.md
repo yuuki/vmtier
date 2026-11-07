@@ -103,4 +103,4 @@ Stock VM retention does not consult the external catalog or archive watermark. H
 
 vmtier does not delete Hot data or shorten its retention automatically. VM's `delete_series` is not an arbitrary time-range deletion API. E2E tests replace a disposable Hot cluster with recent-only data and confirm that Cold-only selectors are empty on Hot; they do not wait for natural expiration.
 
-Late-write correction, backfill, deletion, tombstones, Cold retention enforcement, compaction, and GC are not automatically managed. Gateway write/delete RPCs return errors. Direct Hot operations cannot be rejected or detected by the gateway. See [operations](operations.md) for deployment requirements.
+Late-write correction, backfill, deletion, tombstones, Cold retention enforcement, compaction, and GC are not automatically managed. Gateway write/delete RPCs return errors. Direct Hot operations cannot be rejected or detected by the gateway. See [operations](legacy-json-v2.md) for deployment requirements.
