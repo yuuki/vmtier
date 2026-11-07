@@ -33,8 +33,11 @@ Cognitive and Cyclomatic Complexity of the Go code without its tests with
 them with [octocov](https://github.com/k1LoW/octocov) (`.octocov.complexity.yml`):
 a comment on each pull request compares them with `main`, the job summary lists
 the 20 most complex functions, and each push to `main` stores a report in the
-`octocov` branch. The numbers are a trend to watch: no threshold fails the job.
-To see them locally: `cccc --table --top-cognitive 20 cmd internal`.
+`octocov` branch. A function, method or closure with a Cognitive Complexity over
+30 (`max-cognitive` in `cccc.toml`) fails the job, with an annotation on it: split
+it rather than raise the limit. To see the numbers locally:
+`cccc --table --top-cognitive 20 cmd internal`, which also exits non-zero over the
+limit.
 
 Run stock-VM differential suites for changes to archive contents, publication,
 query results, RPC, or S3 behavior. [Testing](docs/testing.md) describes their setup
