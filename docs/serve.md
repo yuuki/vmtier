@@ -14,7 +14,7 @@ GC and HA remain outside the selected scope.
 
 ## Configuration and startup
 
-Build using the [README](../README.md). Copy [the Sakura configuration](../examples/serve-sakura.json)
+Build using [getting started](getting-started.md). Copy [the Sakura configuration](../examples/serve-sakura.json)
 and set the real bucket, fixed Hot-only source URLs, tenants, archive policy, and
 window-aligned `coverage_start_ms`. The example deliberately has an invalid coverage
 start and `lateness_enforced=false`; do not enable that assertion until all ingestion
@@ -51,13 +51,14 @@ the authority explicitly, then start the service:
 The initialization path/ID must match the service configuration. Startup refuses
 missing state, another owner, wrong identity, or a changed contract/blob locator.
 Startup does not silently create a catalog or contact S3 before those checks.
-S3 credentials use the same environment variables as the MVP; do not place them in JSON.
+Supply S3 credentials through `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
+optionally `AWS_SESSION_TOKEN`; do not place them in JSON.
 
 Keep the state directory on persistent local storage. The lock covers this directory
 on this host, not another host or another directory targeting the same bucket.
 Run only one owner for the bucket. No automatic failover is provided.
 
-Use the same stock vmselect Hot/Cold frontend as the MVP, with
+Configure the [stock vmselect Hot/Cold frontend](getting-started.md#connect-the-query-frontend) with
 `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false
 -search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`.
 The gateway RPC address is a storage node alongside Hot; the archiver's source must
@@ -184,6 +185,9 @@ They do not share another process's budget. A SQLite service must not run a sepa
 archive process or independent maintenance client against its bucket.
 
 ## Health, metrics, and shutdown
+
+See [operations](operations.md#monitoring) for shared gateway metrics, catalog
+capacity accounting, and failure handling.
 
 `/health` reports process liveness. `/ready` returns 503 until every configured stream
 has required coverage and catalog checks pass. It does not scrub all S3 payloads or

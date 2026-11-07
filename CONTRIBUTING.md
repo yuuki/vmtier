@@ -1,8 +1,8 @@
 # Contributing to vmtier
 
 vmtier is an independent Apache-2.0 project. Start with the [README](README.md),
-[MVP architecture](docs/mvp-design.md), and [first-release design](docs/design.md).
-The design distinguishes implemented behavior from the next implementation phase.
+[architecture and source map](docs/architecture.md), and [documentation index](docs/README.md).
+The [first-release design](docs/design.md) distinguishes implementation from remaining qualification.
 
 ## Language and scope
 
@@ -17,7 +17,7 @@ configuration switches without a concrete use case.
 
 ## Development and validation
 
-Use the pinned source and bootstrap instructions in the README. Do not edit
+Use the pinned source and [build instructions](docs/getting-started.md#build-from-source). Do not edit
 generated `vendor/` or `.deps/` files to make a test pass. Keep stock VictoriaMetrics
 binaries unmodified and record the revision when evaluating an upgrade.
 
@@ -50,3 +50,15 @@ Before distributing binaries, preserve the licenses and notices described in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), record linked dependencies, and
 verify a clean build. Local test success does not imply a published release or
 hosted CI run. Publication and deployment are separate maintainer actions.
+
+## Documentation changes
+
+Keep the README focused on project purpose, status, and entry points. Put setup
+steps in `docs/getting-started.md`, current behavior in the service/reference guides,
+operational procedures in `docs/operations.md`, and legacy-only procedures in
+`docs/legacy-json-v2.md`. Add new pages to `docs/README.md`.
+
+Keep design proposals separate from implemented behavior. Add measured reports to
+`docs/evidence.md`; preserve existing result bytes, paths, revisions, and caveats.
+When changing commands or defaults, check `cmd/vmtier`, `internal/config`, examples,
+and CI together. Check relative links and heading anchors after moving content.
