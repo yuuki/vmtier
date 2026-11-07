@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
 // PostgreSQL tests require an explicitly selected disposable database. Each test
@@ -459,5 +460,37 @@ func TestPostgresSnapshotAcrossPublicationBoundary(t *testing.T) {
 	latest, err := reader.Select(ctx, Selection{Tenant: "1:2", Start: 100, End: 200})
 	if err != nil || latest.Generation != 1 || latest.CoverageEnd != 200 || len(latest.Windows) != 1 || len(latest.Windows[0].Packs) != 0 {
 		t.Fatalf("later selection did not see committed empty window: %+v err=%v", latest, err)
+	}
+}
+
+// Gateway refusal metrics consume querylimit.Reason through wrapped repository
+// errors. PostgreSQL must classify the same resource boundaries as SQLite.
+func TestPostgresCatalogPlanRefusalClassification(t *testing.T) {
+	ctx, _, _, p := postgresTestStore(t, contract())
+	for i := 0; i < 2; i++ {
+		if _, err := publishPostgresTest(ctx, p, uint64(i), sqlitePublication("1:2", "a", 100+int64(i)*100, 2)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		sel  Selection
+	}{
+		{"windows", Selection{Tenant: "1:2", Start: 100, End: 300, MaxWindows: 1}},
+		{"packs", Selection{Tenant: "1:2", Start: 100, End: 200, MaxPacks: 1}},
+		{"window descriptors", Selection{Tenant: "1:2", Start: 100, End: 200, MaxPlanBytes: 300}},
+		{"pack descriptors", Selection{Tenant: "1:2", Start: 100, End: 200, MaxPlanBytes: 700}},
+		{"empty plan", Selection{Tenant: "1:2", Start: 300, End: 400, MaxPlanBytes: 127}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := p.Select(ctx, tc.sel)
+			if reason := querylimit.Reason(fmt.Errorf("select Cold references: %w", err)); reason != querylimit.CatalogPlan {
+				t.Fatalf("plan refusal reason=%q, want %q; err=%v", reason, querylimit.CatalogPlan, err)
+			}
+		})
+	}
+	_, err := p.Select(ctx, Selection{Tenant: "9:9", Start: 100, End: 200})
+	if err == nil || querylimit.Reason(err) != "" {
+		t.Fatalf("invalid tenant was classified as a resource refusal: %v", err)
 	}
 }

@@ -393,3 +393,57 @@ func FuzzNativeParser(f *testing.F) {
 		_, _, _ = Build(bytes.NewReader(data), Tenant{}, 0, 100, Limits{MaxInputBytes: 1 << 20, MaxPackBytes: 1 << 20, MaxIndexBytes: 1 << 20})
 	})
 }
+
+func TestPreviousReleasePackRejected(t *testing.T) {
+	native, _ := nativeFixture(0, 100, map[string]string{"__name__": "x"}, []int64{0}, []int64{2}, 0)
+	idx, payload, err := Build(bytes.NewReader(native), Tenant{}, 0, 100, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ version, revision string }{
+		{"v1.128.0-cluster", "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"},
+		{VMVersion, "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"},
+	} {
+		idx.VMVersion, idx.VMRevision = tc.version, tc.revision
+		if err := ValidateIndex(idx, Limits{}); err == nil {
+			t.Fatalf("old revision accepted: %s/%s", tc.version, tc.revision)
+		}
+		if _, err := LoadBlock(idx, 0, 0, payload); err == nil {
+			t.Fatalf("old revision decoded through unchecked index: %s/%s", tc.version, tc.revision)
+		}
+	}
+}
+
+func TestCurrentReleaseHTTPNativeFixture(t *testing.T) {
+	hexData, err := os.ReadFile("testdata/native-v1.155.0.hex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := hex.DecodeString(strings.TrimSpace(string(hexData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const start int64 = 1793923200000
+	idx, payload, err := Build(bytes.NewReader(data), Tenant{42, 7}, start, start+100, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.Series) != 1 || len(idx.Series[0].Blocks) != 1 || !reflect.DeepEqual(idx.Series[0].Labels, map[string]string{"__name__": "fixture_155", "job": "codec"}) {
+		t.Fatalf("unexpected fixture index: %+v", idx)
+	}
+	mb, err := LoadBlock(idx, 0, 0, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mb.Block.UnmarshalData(); err != nil {
+		t.Fatal(err)
+	}
+	ts, vs := mb.Block.AppendRowsWithTimeRangeFilter(nil, nil, storage.TimeRange{MinTimestamp: start, MaxTimestamp: start + 99})
+	if !reflect.DeepEqual(ts, []int64{start + 10, start + 50}) || !reflect.DeepEqual(vs, []float64{2, 3.5}) {
+		t.Fatalf("captured HTTP samples changed: %v %v", ts, vs)
+	}
+	var name storage.MetricName
+	if err := name.Unmarshal(mb.MetricName); err != nil || name.AccountID != 42 || name.ProjectID != 7 {
+		t.Fatalf("tenant restoration failed: %+v %v", name, err)
+	}
+}

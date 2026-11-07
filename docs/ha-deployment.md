@@ -74,6 +74,12 @@ and clients outside vmtier. SQLite keeps its existing process-local budget seman
 - The worst recoverable archive interruption depends on remaining Hot history:
   detection, lease expiry, database recovery, and catch-up must fit retention
   headroom. HA does not make an unlimited outage lossless.
+- Size `service.archive_lease_ttl` for representative database RTT and the largest
+  permitted multi-pack publication. Publication holds the catalog state lock, so
+  lease renewal can wait behind it; an expired owner is rejected when publication
+  validates its fence. Long transactions or delayed renewal can therefore fail an
+  attempt safely instead of making progress. Test this alongside archive timeout
+  and retention headroom rather than assuming the default TTL fits every workload.
 - Keep clock synchronization on database hosts. Lease decisions use database time;
   database promotion must fence the old primary and preserve acknowledged state.
 - A lost commit response is ambiguous. Reload coverage and reconcile the original

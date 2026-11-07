@@ -84,7 +84,10 @@ requirement in [ADR 0002](0002-independent-catalog.md).
 ## Validation
 
 Real PostgreSQL integration tests exercise independent clients and metadata
-transactions. Existing SQLite and stock-VM differential checks cover the interface
-refactor. These tests do not establish synchronous replication durability, automatic
-failover, provider availability, or supported HA recovery times. See the
-[PostgreSQL catalog guide](../postgres-catalog.md) for setup and current boundaries.
+transactions. SQLite and stock-VM differential checks cover the interface
+refactor. The [local HA report](../postgres-ha-validation.md) records gateway,
+migration, and synchronous-database fault checks at their original VM revision.
+Those fixtures do not qualify automatic production election, provider availability,
+or supported HA recovery times, and their older dependency pin does not validate
+a later upgrade. See the [PostgreSQL catalog guide](../postgres-catalog.md) for
+setup and current boundaries.

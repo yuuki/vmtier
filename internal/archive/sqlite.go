@@ -24,7 +24,10 @@ type Archiver struct {
 	Config        Config
 	RetryInterval time.Duration
 	WindowTimeout time.Duration
-	retryAfter    map[string]time.Time
+	// OnWindowFailure observes an attempted window, including cancellation.
+	// It must return promptly; no callback is made for a skipped retry.
+	OnWindowFailure func(tenant, source string, err error)
+	retryAfter      map[string]time.Time
 }
 
 // RunPass archives at most one oldest eligible window per tenant/source. A failed
@@ -111,6 +114,9 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 			return out, errors.New("archive window overflows timestamp range")
 		}
 		fail := func(err error) {
+			if a.OnWindowFailure != nil {
+				a.OnWindowFailure(stream.Tenant, stream.SourceID, err)
+			}
 			a.retryAfter[key] = clock().Add(retryInterval)
 			failures = append(failures, fmt.Errorf("archive tenant %s source %s window [%d,%d): %w", stream.Tenant, stream.SourceID, start, end, err))
 			slog.Error("archive stream failed", "tenant", stream.Tenant, "source", stream.SourceID, "start_ms", start, "end_ms", end, "error", err)
@@ -149,19 +155,14 @@ func (a *Archiver) publishStream(ctx context.Context, cfg Config, source Source,
 	if err != nil {
 		return generation, out, err
 	}
-	idx, data, samples, err := verifiedExport(ctx, cfg, source, tenant, start, end)
+	refs, samples, err := stageVerifiedPacks(ctx, a.Store, cfg, source, tenant, start, end)
 	if err != nil {
 		return generation, out, err
 	}
-	publication := catalog.Publication{Tenant: stream.Tenant, SourceID: stream.SourceID, Start: start, End: end, Packs: []catalog.PackRef{}}
+	publication := catalog.Publication{Tenant: stream.Tenant, SourceID: stream.SourceID, Start: start, End: end, Packs: refs}
 	var uploaded int64
-	if samples > 0 {
-		ref, err := uploadPack(ctx, a.Store, cfg, idx, data)
-		if err != nil {
-			return generation, out, err
-		}
-		publication.Packs = append(publication.Packs, ref)
-		uploaded = ref.DataBytes + ref.IndexBytes
+	for _, ref := range refs {
+		uploaded += ref.DataBytes + ref.IndexBytes
 	}
 	if err := cfg.validateTime(start, end, clock()); err != nil {
 		return generation, out, err

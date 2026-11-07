@@ -11,6 +11,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/yuuki/vmtier/internal/pack"
+	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
 const PostgreSQLSchemaVersion = 2
@@ -447,7 +448,7 @@ func (p *Postgres) Select(ctx context.Context, sel Selection) (QueryPlan, error)
 			planBytes += 256 + int64(len(sel.Tenant)+len(source.ID))
 			if len(selected) >= sel.MaxWindows || planBytes > sel.MaxPlanBytes {
 				rows.Close()
-				return out, errors.New("query catalog plan limit exceeded")
+				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan limit exceeded")
 			}
 			selected = append(selected, v)
 		}
@@ -460,7 +461,7 @@ func (p *Postgres) Select(ctx context.Context, sel Selection) (QueryPlan, error)
 	packCount := 0
 	for _, v := range selected {
 		if v.count > sel.MaxPacks-packCount {
-			return out, errors.New("query catalog pack limit exceeded")
+			return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog pack limit exceeded")
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM `+p.table("packs")+` WHERE window_id=$1 ORDER BY ordinal LIMIT $2`, v.id, v.count+1)
 		if err != nil {
@@ -481,7 +482,7 @@ func (p *Postgres) Select(ctx context.Context, sel Selection) (QueryPlan, error)
 			planBytes += 256 + int64(len(ref.DataKey)+len(ref.IndexKey)+len(ref.DataSHA256)+len(ref.IndexSHA256))
 			if planBytes > sel.MaxPlanBytes {
 				rows.Close()
-				return out, errors.New("query catalog plan byte limit exceeded")
+				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
 			}
 			v.window.Packs = append(v.window.Packs, ref)
 		}
@@ -504,7 +505,7 @@ func (p *Postgres) Select(ctx context.Context, sel Selection) (QueryPlan, error)
 		out.Windows = append(out.Windows, v.window)
 	}
 	if planBytes > sel.MaxPlanBytes {
-		return out, errors.New("query catalog plan byte limit exceeded")
+		return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
 	}
 	return out, tx.Commit()
 }

@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import socket
 import subprocess
@@ -25,7 +26,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from e2e import (ROOT, HTTP, Cluster, Processes, api, compare, fixture,
+from e2e import (ROOT, HTTP, Cluster, Processes, api, check_metadata, compare, fixture,
                  fixture_horizon, free_port, metrics, positive_int, remote_write, request)
 from e2e_serve import ControlledSource, expressions, provenance, snapshot, start_tiered_select, wait_ready
 from s3_compat_proxy import S3CompatibilityProxy
@@ -110,14 +111,14 @@ def recover_query(expected, fn, label, timeout=20):
 def write_proxy(path, listen, backends, health_ports=None):
     stats_port = free_port()
     lines = ['global', '  maxconn 256', '  nbthread 1', f'  stats socket ipv4@127.0.0.1:{stats_port} level user', 'defaults', '  mode tcp',
-             '  timeout connect 1s', '  timeout client 60s', '  timeout server 60s',
+             '  timeout connect 1s', '  timeout check 3s', '  timeout client 60s', '  timeout server 60s',
              'frontend cold', f'  bind 127.0.0.1:{listen}', '  default_backend gateways',
              'backend gateways', '  balance first']
     if health_ports:
         lines += ['  option httpchk GET /ready', '  http-check expect status 200']
     for i, port in enumerate(backends):
         health = f' port {health_ports[i]}' if health_ports else ''
-        lines.append(f'  server node{i} 127.0.0.1:{port} check{health} inter 100ms fall 2 rise 1 on-marked-down shutdown-sessions')
+        lines.append(f'  server node{i} 127.0.0.1:{port} check{health} inter 1s fall 2 rise 1 on-marked-down shutdown-sessions')
     path.write_text('\n'.join(lines) + '\n')
     return stats_port
 
@@ -150,6 +151,31 @@ def normalized_catalog(value):
             'windows': windows}
 
 
+def assert_fixture_layout(windows, total_packs, start, boundary, window_ms,
+                          tenants, empty_tenant=None, require_multiple=False):
+    """Assert complete logical coverage independently of physical pack rotation."""
+    expected = {(tenant, 'hot', stamp) for tenant in tenants
+                for stamp in range(start, boundary, window_ms)}
+    actual = [(window['tenant'], window['source_id'], window['start_ms']) for window in windows]
+    assert len(actual) == len(expected) and set(actual) == expected, 'incomplete or duplicate fixture windows'
+    assert sorted(window['generation'] for window in windows) == list(range(1, len(expected) + 1)), 'noncontiguous publication generations'
+    empty = 0
+    counts = []
+    for window in windows:
+        assert window['end_ms'] == window['start_ms'] + window_ms, 'incorrect logical window end'
+        count = window['pack_count']
+        if window['tenant'] == empty_tenant and window['start_ms'] == start:
+            assert count == 0, 'verified empty window acquired payload references'
+            empty += 1
+        else:
+            assert count >= (2 if require_multiple else 1), 'nonempty fixture window did not satisfy pack layout'
+        counts.append(count)
+    assert sum(counts) == total_packs, 'pack rows differ from committed window counts'
+    assert empty == (1 if empty_tenant in tenants else 0)
+    return {'windows': len(windows), 'packs': total_packs, 'empty_windows': empty,
+            'pack_counts': counts, 'forced_multiple_packs': require_multiple}
+
+
 def run(work, args):
     procs = Processes(work, args.gomaxprocs)
     source = proxy = None
@@ -158,9 +184,13 @@ def run(work, args):
     report = {'architecture': 'PostgreSQL catalog; two fenced serve candidates; two HAProxy gateways behind a stable L4 fixture',
               'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'comparison': 'exact timestamps, labels and numeric strings; no tolerance or partial results',
+              'tiered_vm_labels_api_max_duration': args.labels_api_duration,
+              'cache_bytes': 0,
+              'proxy_health_check': {'interval_seconds': 1, 'timeout_seconds': 3, 'fall': 2, 'rise': 1},
               'limitations': ['single PostgreSQL server, no DB promotion in this harness',
                               'outer L4 fixture is single; production needs a redundant managed LB or fenced VIP',
-                              'loopback Moto; no real Sakura/provider qualification'],
+                              'loopback Moto; no real Sakura/provider qualification',
+                              'functional streaming/multipack parity; source fixture buffers export bodies and does not qualify streaming memory bounds'],
               'migrated_sqlite': args.migrate_sqlite, 'checks': [], 'runtime': procs.runtime}
     env = {'AWS_ACCESS_KEY_ID': 'vmtier-test', 'AWS_SECRET_ACCESS_KEY': 'vmtier-test-secret'}
     try:
@@ -190,6 +220,11 @@ def run(work, args):
         binary = ROOT / '.bin/vmtier'
         report['provenance'] = provenance()
         report['provenance']['harness_sha256']['e2e_postgres.py'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        report['environment'] = {'python': platform.python_version(), 'moto': None}
+        moto_python = Path(moto).resolve().parent / 'python'
+        if moto_python.is_file():
+            report['environment']['moto'] = subprocess.check_output(
+                [moto_python, '-c', 'from importlib.metadata import version; print(version("moto"))'], text=True).strip()
         report['haproxy_version'] = subprocess.check_output([haproxy, '-v'], text=True).splitlines()[0]
         endpoint = f'http://127.0.0.1:{free_port()}'
         procs.start('moto-s3', [moto, '-H', '127.0.0.1', '-p', endpoint.rsplit(':', 1)[1]], endpoint, env)
@@ -216,12 +251,16 @@ def run(work, args):
         ref.flush()
         hot.flush()
         report['fixture'] = dict(horizon, tenants=tenants, vm_storage_replicas=args.replicas)
+        report['fixture']['max_pack_blocks'] = args.pack_max_blocks or 100000
+        empty_tenant = tenants[0] if args.migrate_sqlite else None
         source = ControlledSource(hot.select)
         cfg = {'store': store, 'catalog': {'type': 'postgres', 'dsn_env': 'VMTIER_POSTGRES_DSN', 'id': 'ha-e2e'},
                'tenants': tenants, 'sources': [{'id': 'hot', 'url': source.url}],
                'archive_age': f'{horizon["archive_age_ms"]}ms', 'hot_retention': '240h', 'lateness': '30m',
-               'safety_margin': '30m', 'window': '1h', 'lateness_enforced': True, 'coverage_start_ms': start,
+               'safety_margin': '30m', 'window': '1h', 'lateness_enforced': True, 'coverage_start_ms': start, 'cache_bytes': 0,
                'service': {'archive_interval': '100ms', 'archive_lease_ttl': '3s', 'max_replicas': 2}}
+        if args.pack_max_blocks:
+            cfg['max_pack_blocks'] = args.pack_max_blocks
         config = work / 'config.json'
         config.write_text(json.dumps(cfg, indent=2) + '\n')
         imported = source_snapshot = None
@@ -255,15 +294,16 @@ def run(work, args):
                                       "'packs',(SELECT json_agg(p) FROM packs p))"))
             compare(normalized_catalog(source_snapshot), normalized_catalog(imported), 'SQLite import portable metadata')
             assert imported['state']['catalog_id'] == 'ha-e2e' != source_snapshot['state']['catalog_id']
-            empty = sum(window['pack_count'] == 0 for window in imported['windows'])
-            assert empty == 1 and len(imported['packs']) == 2
+            layout = assert_fixture_layout(imported['windows'], len(imported['packs']), start, boundary,
+                                           horizon['window_ms'], tenants[:1], empty_tenant, bool(args.pack_max_blocks))
             assert int(sql('SELECT count(*) FROM object_keys')) == 2 * len(imported['packs'])
             procs.command_stats([binary, 'verify', '-config', config], work / 'verify-imported-payloads.log', env)
             assert proxy.snapshot()['put_requests'] == puts_before
             assert snapshot(sqlite_dir / 'catalog.db') == source_snapshot
             report['migration'] = {'source_id': 'ha-sqlite-source', 'destination_id': 'ha-e2e',
-                                   'preserved_generation': 3, 'preserved_windows': 3, 'preserved_packs': 2,
-                                   'preserved_empty_windows': empty, 'additional_blob_puts': 0,
+                                   'preserved_generation': 3, 'preserved_windows': 3, 'preserved_packs': layout['packs'],
+                                   'preserved_empty_windows': layout['empty_windows'], 'additional_blob_puts': 0,
+                                   'pack_layout': layout,
                                    'portable_metadata_equal': True, 'payload_verification': 'passed'}
             report['checks'].append('stopped SQLite owner imports into a new PostgreSQL identity with identical contract, locator, coverage, digests and refs; verified empty window and payloads preserved without blob PUTs')
         else:
@@ -285,6 +325,7 @@ def run(work, args):
         def state():
             return json.loads(sql("SELECT json_build_object('generation',(SELECT generation FROM catalog_state),"
                                   "'coverage',(SELECT json_agg(c ORDER BY tenant,source_id) FROM coverage c),"
+                                  "'window_layout',(SELECT json_agg(w ORDER BY generation) FROM windows w),"
                                   "'windows',(SELECT count(*) FROM windows),'packs',(SELECT count(*) FROM packs))"))
 
         services.extend(start_service(i) for i in range(2))
@@ -294,7 +335,11 @@ def run(work, args):
         wait_until(lambda: state()['generation'] == 3, 'healthy tenant coverage while other source is unavailable')
         before = state()
         initial_token = int(sql('SELECT token FROM archive_lease'))
-        assert before['windows'] == 3 and before['packs'] == (2 if args.migrate_sqlite else 3)
+        assert before['windows'] == 3
+        assert_fixture_layout(before['window_layout'], before['packs'], start, boundary,
+                              horizon['window_ms'], tenants[:1], empty_tenant, bool(args.pack_max_blocks))
+        compare([{'tenant': tenant, 'source_id': 'hot', 'end_ms': boundary if i == 0 else start}
+                 for i, tenant in enumerate(tenants)], before['coverage'], 'partial stream coverage')
         began = time.monotonic()
         services[active].kill()
         services[active].wait(timeout=5)
@@ -313,8 +358,11 @@ def run(work, args):
         for i in range(2):
             wait_ready(services[i], http_ports[i], work)
         stable = state()
-        assert stable['windows'] == 6 and stable['packs'] == (5 if args.migrate_sqlite else 6)
-        assert all(row['end_ms'] == boundary for row in stable['coverage'])
+        assert stable['windows'] == 6
+        report['pack_layout'] = assert_fixture_layout(stable['window_layout'], stable['packs'], start, boundary,
+                                                      horizon['window_ms'], tenants, empty_tenant, bool(args.pack_max_blocks))
+        compare([{'tenant': tenant, 'source_id': 'hot', 'end_ms': boundary} for tenant in tenants],
+                stable['coverage'], 'complete stream coverage')
 
         # Separate HAProxy processes give one logical Cold node to vmselect.
         edge_ports, edge_processes, edge_stats = [free_port(), free_port()], [], []
@@ -329,7 +377,7 @@ def run(work, args):
         wait_until(lambda: proxy_stats(front_stats)['node0']['status'] == 'UP' and
                    proxy_stats(edge_stats[0])['node0']['status'] == 'UP', 'preferred proxy and gateway health')
         cold_select = free_port()
-        start_tiered_select(procs, 'cold-only-select', cold_select, [endpoint_port])
+        start_tiered_select(procs, 'cold-only-select', cold_select, [endpoint_port], args.labels_api_duration)
         baseline_query = {'query': 'cold_only', 'time': (boundary - 600000) / 1000, 'timeout': '3s'}
         expected = api(ref.select, tenants[0], 'query', baseline_query)
         recover_query(expected, lambda: api(cold_select, tenants[0], 'query', baseline_query), 'initial stable endpoint')
@@ -337,7 +385,7 @@ def run(work, args):
         direct_selects = []
         for i, rpc in enumerate(rpc_ports):
             port = free_port()
-            start_tiered_select(procs, f'direct-select-{i}', port, [rpc])
+            start_tiered_select(procs, f'direct-select-{i}', port, [rpc], args.labels_api_duration)
             direct_selects.append(port)
             compare(expected, api(port, tenants[0], 'query', baseline_query), f'direct gateway {i}')
         report['checks'].append('both read gateways return exact Cold results from the same catalog through independent RPC connections')
@@ -367,7 +415,7 @@ def run(work, args):
             remote_write(hot.insert, tenant, fixture(start, boundary, end, i), start=boundary)
         hot.flush()
         top = free_port()
-        start_tiered_select(procs, 'tiered-select', top, hot.storage_read + [endpoint_port])
+        start_tiered_select(procs, 'tiered-select', top, hot.storage_read + [endpoint_port], args.labels_api_duration)
         count = 0
         for tenant in tenants:
             for label, (lo, hi) in {'cold': (start + 600000, boundary - 600000), 'hot': (boundary + 600000, end),
@@ -378,14 +426,22 @@ def run(work, args):
                         compare(api(ref.select, tenant, method, params), api(top, tenant, method, params),
                                 f'{tenant} {label} {method} {expression}')
                         count += 1
+        assert count == 360
+        report['differential_checks'] = count
+        # A dedicated tiered client pins the gateway whose counters are sampled;
+        # the public endpoint can retain pools to either healthy gateway.
+        metadata_select = free_port()
+        start_tiered_select(procs, 'metadata-select', metadata_select, hot.storage_read + [rpc_ports[1]], args.labels_api_duration)
+        report['metadata_measurements'] = []
+        check_metadata(ref.select, metadata_select, http_ports[1], tenants, start, end,
+                       'uncached', cfg['cache_bytes'], report['metadata_measurements'])
+        for tenant in tenants:
             for path in ('labels', 'label/cold_label/values', 'label/__name__/values', 'series'):
                 params = {'start': start / 1000, 'end': end / 1000, 'match[]': '{__name__!=""}'}
                 expected_meta, actual = api(ref.select, tenant, path, params), api(top, tenant, path, params)
                 if expected_meta and isinstance(expected_meta[0], str):
                     expected_meta, actual = sorted(expected_meta), sorted(actual)
-                compare(expected_meta, actual, f'{tenant} metadata {path}')
-        assert count == 360
-        report['differential_checks'] = count
+                compare(expected_meta, actual, f'{tenant} stable endpoint metadata {path}')
         report['checks'].append('360 exact Cold/Hot/boundary queries and both tenants metadata match full-data reference after gateway/proxy failover')
 
         for port in direct_selects:
@@ -435,6 +491,9 @@ def run(work, args):
         report['status'] = 'passed'
     except Exception as error:
         report['status'], report['failure'] = 'failed', str(error)
+        if isinstance(error, urllib.error.HTTPError):
+            report['failure_http'] = {'status': error.code, 'url': error.url,
+                                      'body': error.read().decode(errors='replace')}
         raise
     finally:
         procs.close()
@@ -461,7 +520,11 @@ def main():
     parser.add_argument('--migrate-sqlite', action='store_true', help='archive and stop SQLite, import metadata, then qualify the PostgreSQL cutover')
     parser.add_argument('--replicas', choices=(1, 2), default=1, type=int, help='Hot/reference VM storage replication')
     parser.add_argument('--gomaxprocs', type=positive_int)
+    parser.add_argument('--labels-api-duration', choices=('5s', '30s'), default='30s', help='stock tiered vmselect labels API deadline')
+    parser.add_argument('--pack-max-blocks', type=positive_int, help='Force physical pack rotation (for example 4), while preserving logical windows')
     args = parser.parse_args()
+    if args.pack_max_blocks and args.pack_max_blocks > 100000:
+        parser.error('--pack-max-blocks must be at most 100000')
     work = (args.workdir or Path(tempfile.mkdtemp(prefix='vmtier-postgres-e2e-'))).resolve()
     if work.exists() and any(work.iterdir()):
         parser.error('--workdir must be new or empty')

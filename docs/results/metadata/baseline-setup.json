@@ -1,0 +1,15 @@
+{
+  "base_commit": "4a33e5b",
+  "binary_source": "copied from /workspace/vmtier-foundations/.bin; no baseline rebuild",
+  "instrumentation": "Only scripts/e2e.py and scripts/e2e_serve.py copied from integration worktree",
+  "binary_sha256": {
+    "vminsert": "f7d52efaae90c90585832893f926422b457a643722e55c4e13cffbc22a739685",
+    "vmselect": "a1f8fc3b7efd708c734f1817a1eea777319bfb4baae50292994336ded1f9998c",
+    "vmstorage": "4fd7f1fe6fa9e32af350ecbec5517c5a0d7633637b031e4b61fbaad862544131",
+    "vmtier": "44bf5973c9e3eb4e2083b4e2ccaf05c5de5c2c3e8ba14869a67decc7addd64a7"
+  },
+  "harness_sha256": {
+    "e2e.py": "d1cb61f6d5808ea070a0d6668a6d71c87044c24c7bac277ae526b7cb83baff65",
+    "e2e_serve.py": "6e89d7e7d492de9b3aa7ab28436dd934e33ea78aa007723c3766a476cc77c968"
+  }
+}

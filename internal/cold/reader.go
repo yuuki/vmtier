@@ -3,10 +3,12 @@ package cold
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
-	"sync"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/yuuki/vmtier/internal/gateway"
 	"github.com/yuuki/vmtier/internal/objectstore"
 	"github.com/yuuki/vmtier/internal/pack"
+	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
 type Reader struct {
@@ -33,9 +36,8 @@ type Reader struct {
 	Age, Window        time.Duration
 	MaxQueryBytes      int64
 	CacheBytes         int64
-	mu                 sync.Mutex
-	cache              map[string][]byte
-	used               int64
+	cache              immutableCache
+	work               workCounters
 	CacheHits          atomic.Uint64
 	CacheMisses        atomic.Uint64
 }
@@ -168,46 +170,40 @@ func (r *Reader) cached(ctx context.Context, key string, offset, length int64, s
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	ck := fmt.Sprintf("%s:%d:%d:%s", key, offset, length, sum)
-	r.mu.Lock()
-	b, ok := r.cache[ck]
-	r.mu.Unlock()
+	ck := cacheKey(key, offset, length, sum)
+	b, ok := r.cacheGet(ck)
 	if ok {
 		r.CacheHits.Add(1)
 		return b, nil
 	}
 	r.CacheMisses.Add(1)
-	var e error
-	if length < 0 {
-		b, e = r.Store.Get(ctx, key)
-	} else {
-		b, e = r.Store.GetRange(ctx, key, offset, length)
-	}
-	if e != nil {
-		return nil, e
-	}
-	if length >= 0 && int64(len(b)) != length {
-		return nil, errors.New("Range GET length differs from directory")
-	}
-	if pack.Sum(b) != sum {
-		return nil, errors.New("immutable object checksum mismatch")
-	}
-	if r.CacheBytes > 0 && int64(len(b)) <= r.CacheBytes {
-		r.mu.Lock()
-		if r.cache == nil {
-			r.cache = map[string][]byte{}
+	return r.sharedRead(ctx, ck, func(readCtx context.Context) ([]byte, error) {
+		// A previous flight may have filled the cache after our first lookup.
+		if cached, ok := r.cacheGet(ck); ok {
+			return cached, nil
 		}
-		if _, ok := r.cache[ck]; !ok {
-			if r.used+int64(len(b)) > r.CacheBytes {
-				r.cache = map[string][]byte{}
-				r.used = 0
-			}
-			r.cache[ck] = b
-			r.used += int64(len(b))
+		var data []byte
+		var err error
+		if length < 0 {
+			data, err = r.Store.Get(readCtx, key)
+		} else {
+			data, err = r.Store.GetRange(readCtx, key, offset, length)
 		}
-		r.mu.Unlock()
-	}
-	return b, nil
+		if err != nil {
+			return nil, err
+		}
+		if length >= 0 && int64(len(data)) != length {
+			return nil, errors.New("Range GET length differs from directory")
+		}
+		if pack.Sum(data) != sum {
+			return nil, errors.New("immutable object checksum mismatch")
+		}
+		if err := readCtx.Err(); err != nil {
+			return nil, err
+		}
+		r.cachePut(ck, data)
+		return data, nil
+	})
 }
 func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage.MetricBlock, error) {
 	a, p, e := gateway.Tenant(sq)
@@ -237,27 +233,37 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 	if e != nil {
 		return nil, e
 	}
-	var used int64
+	var work queryWork
+	defer r.recordWork(&work)
 	var result []storage.MetricBlock
 	for _, entry := range selected {
 		if e := ctx.Err(); e != nil {
 			return nil, e
 		}
 		ref := entry.Ref
-		if entry.CheckDescriptor && ref.IndexBytes > limit-used {
-			return nil, errors.New("query index/read byte limit exceeded")
+		if entry.CheckDescriptor && ref.IndexBytes > limit-work.used() {
+			return nil, querylimit.Errorf(querylimit.ReadBytes, "query index/read byte limit exceeded")
 		}
 		data, e := r.cached(ctx, ref.IndexKey, 0, -1, ref.IndexSHA256)
 		if e != nil {
 			return nil, e
 		}
-		used += int64(len(data))
-		if used > limit {
-			return nil, errors.New("query index/read byte limit exceeded")
+		work.read += int64(len(data))
+		work.observe()
+		if work.used() > limit {
+			return nil, querylimit.Errorf(querylimit.ReadBytes, "query index/read byte limit exceeded")
 		}
 		idx, e := pack.ParseIndex(data, pack.Limits{})
 		if e != nil {
 			return nil, e
+		}
+		// Only one parsed directory is needed at a time. Charge its structural
+		// estimate while processing this pack, rather than summing historical
+		// directories that are no longer retained by the query.
+		work.index = pack.IndexMemoryEstimate(idx)
+		work.observe()
+		if work.used() > limit {
+			return nil, querylimit.Errorf(querylimit.DecodedBytes, "query parsed-index work budget exceeded")
 		}
 		if idx.Tenant.String() != tenant || idx.Start != entry.Start || idx.End != entry.End {
 			return nil, errors.New("index disagrees with committed catalog")
@@ -265,6 +271,7 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 		if entry.CheckDescriptor && (int64(len(data)) != ref.IndexBytes || idx.Size != ref.DataBytes || idx.SHA256 != ref.DataSHA256) {
 			return nil, errors.New("index disagrees with committed pack descriptor")
 		}
+		var blocks []selectedBlock
 		for i, s := range idx.Series {
 			if !matcher.MatchLabels(s.Labels) {
 				continue
@@ -273,23 +280,146 @@ func (r *Reader) Search(ctx context.Context, sq *storage.SearchQuery) ([]storage
 				if b.MaxTimestamp < sq.MinTimestamp || b.MinTimestamp > sq.MaxTimestamp {
 					continue
 				}
-				used += b.Length + int64(b.Rows)*16
-				if used > limit || len(result) >= 100000 {
-					return nil, errors.New("query decoded/read budget exceeded")
+				// No gaps are fetched: the sum of original lengths is exactly the
+				// combined response size. Reserve all bytes before any payload I/O,
+				// including cache hits and physical rows before clipping.
+				// Decoding temporarily owns portable timestamp/value arrays as
+				// well as the retained VM arrays. Charge both, plus copied native
+				// names and per-block/selection/response bookkeeping allowances.
+				read, decoded := b.Length, int64(b.Rows)*32
+				resultEstimate := int64(len(s.NativeName))*2 + 512
+				if read+decoded+resultEstimate > limit-work.used() || len(result)+len(blocks) >= 100000 {
+					return nil, querylimit.Errorf(querylimit.DecodedBytes, "query decoded/read budget exceeded")
 				}
-				raw, e := r.cached(ctx, ref.DataKey, b.Offset, b.Length, b.SHA256)
-				if e != nil {
-					return nil, e
-				}
-				mb, e := pack.LoadBlock(idx, i, j, raw)
-				if e != nil {
-					return nil, e
-				}
-				if mb != nil {
-					result = append(result, *mb)
-				}
+				work.read += read
+				work.decoded += decoded
+				work.result += resultEstimate
+				work.observe()
+				blocks = append(blocks, selectedBlock{i, j, b})
 			}
 		}
+		sort.Slice(blocks, func(i, j int) bool { return blocks[i].ref.Offset < blocks[j].ref.Offset })
+		decoded, e := r.readBlocks(ctx, ref.DataKey, idx, blocks)
+		if e != nil {
+			return nil, e
+		}
+		result = append(result, decoded...)
+		work.index = 0
+	}
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	return result, nil
+}
+
+// Range groups stay within one immutable object and never overfetch gaps.
+// A single block is bounded to at most 512 KiB by ParseIndex's default limits.
+const maxCombinedRangeBytes int64 = 4 << 20
+
+type selectedBlock struct {
+	series, block int
+	ref           pack.BlockRef
+}
+
+func (r *Reader) readBlocks(ctx context.Context, key string, idx *pack.Index, blocks []selectedBlock) ([]storage.MetricBlock, error) {
+	var result []storage.MetricBlock
+	for first := 0; first < len(blocks); {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		b := blocks[first].ref
+		raw, hit := r.cacheGet(cacheKey(key, b.Offset, b.Length, b.SHA256))
+		last := first + 1
+		if hit {
+			r.CacheHits.Add(1)
+		} else {
+			length := b.Length
+			for last < len(blocks) {
+				next := blocks[last].ref
+				if next.Offset != b.Offset+length || next.Length > maxCombinedRangeBytes-length {
+					break
+				}
+				if _, cached := r.cacheGet(cacheKey(key, next.Offset, next.Length, next.SHA256)); cached {
+					break
+				}
+				length += next.Length
+				last++
+			}
+			r.CacheMisses.Add(uint64(last - first))
+			var err error
+			group := blocks[first:last]
+			// Hash the original block checksums as part of the immutable flight
+			// identity: equal offsets with a changed directory cannot share data.
+			sums := sha256.New()
+			for _, selected := range group {
+				_, _ = sums.Write([]byte(selected.ref.SHA256))
+			}
+			flightKey := cacheKey(key, b.Offset, length, hex.EncodeToString(sums.Sum(nil)))
+			raw, err = r.sharedRead(ctx, flightKey, func(readCtx context.Context) ([]byte, error) {
+				// Recheck every block after admission. A flight that just finished
+				// may have populated all of this range while we were planning it.
+				var cached []byte
+				for _, selected := range group {
+					ref := selected.ref
+					part, ok := r.cacheGet(cacheKey(key, ref.Offset, ref.Length, ref.SHA256))
+					if !ok {
+						cached = nil
+						break
+					}
+					cached = append(cached, part...)
+				}
+				if cached != nil {
+					return cached, nil
+				}
+				data, err := r.Store.GetRange(readCtx, key, b.Offset, length)
+				if err != nil {
+					return nil, err
+				}
+				if int64(len(data)) != length {
+					return nil, errors.New("Range GET length differs from directory")
+				}
+				// Verify the entire combined response before publishing any cache
+				// entries or waking followers. Native decoding remains per query.
+				for _, selected := range group {
+					ref := selected.ref
+					offset := ref.Offset - b.Offset
+					if pack.Sum(data[offset:offset+ref.Length]) != ref.SHA256 {
+						return nil, errors.New("immutable object checksum mismatch")
+					}
+				}
+				if err := readCtx.Err(); err != nil {
+					return nil, err
+				}
+				for _, selected := range group {
+					ref := selected.ref
+					offset := ref.Offset - b.Offset
+					r.cachePut(cacheKey(key, ref.Offset, ref.Length, ref.SHA256), data[offset:offset+ref.Length])
+				}
+				return data, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+		for _, selected := range blocks[first:last] {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			ref := selected.ref
+			offset := ref.Offset - b.Offset
+			data := raw[offset : offset+ref.Length]
+			// LoadBlock verifies each original checksum and native payload,
+			// then clips to committed coverage. A combined checksum is not a
+			// substitute, and any bad block discards the entire query result.
+			mb, err := pack.LoadBlock(idx, selected.series, selected.block, data)
+			if err != nil {
+				return nil, err
+			}
+			if mb != nil {
+				result = append(result, *mb)
+			}
+		}
+		first = last
 	}
 	return result, nil
 }

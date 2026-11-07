@@ -16,9 +16,10 @@ remain part of the legacy JSON v2 deployment. The catalog HTTP service also rema
 a JSON v2 tool. SQLite has no public catalog HTTP API.
 
 The [stage 1 validation](sqlite-catalog-validation.md) records the original repository
-and offline-command checks. Current runtime evidence and unexecuted checks are in
-[service validation](serve-validation.md); the remaining implementation stages are
-tracked in the [first-release design](design.md).
+and offline-command checks. The [evidence index](evidence.md) links subsequent
+implementation and recovery reports at their recorded revisions; older reports
+do not qualify a new VM dependency pin. Remaining qualification and acceptance
+work is tracked in the [first-release design](design.md).
 
 ## Repository behavior
 
@@ -44,8 +45,13 @@ VM or independently prove that an empty publication represents an empty source.
 
 ## Build and initialization
 
-Use normal bootstrap/build commands. Bootstrap verifies the pinned `go-sqlite3
-v1.14.32` archive and generates vendor files. CGO compiles bundled SQLite, so a C
+Catalogs and packs also pin the VM release and revision. A dependency upgrade to a
+new VM pin requires the [VM upgrade procedure](compatibility.md#codec-and-upgrades);
+SQLite backup/restore or JSON import does not change that compatibility contract.
+
+Use normal bootstrap/build commands. Bootstrap downloads and verifies the pinned
+`go-sqlite3 v1.14.53` module through the committed Go module checksums and
+regenerates vendor files. CGO compiles bundled SQLite 3.54.1, so a C
 compiler is required. The default build needs no separate SQLite service or system
 SQLite library. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 
@@ -179,8 +185,9 @@ Restore checks database length/checksum, schema, metadata, contiguous coverage,
 publication digests, and pack references. A new ID and nonexistent destination are
 required. Existing state is never overwritten. Restore does not contact S3, scrub
 payloads, discover orphans, or recover commits missing from an older backup.
-Repository tests exercise restored publication/catch-up mechanics; those checks do
-not establish recovery from a real VM or object-store disaster.
+The [offline recovery suite](recovery-validation.md) exercises a real stock VM
+cutover, older-backup catch-up, and process crashes using local disposable objects.
+It does not establish recovery from a physical disk or object-store disaster.
 
 Set a service configuration to `catalog.type="sqlite"`, the restored path, and
 the new ID, preserving the saved contract and blob locator. Once the old owner is
@@ -197,12 +204,15 @@ are rejected; no schema upgrade exists yet.
 
 This is a single-host component requiring correct local filesystem locks and sync.
 A directory lock does not exclude another host or directory targeting the same
-bucket. HA, distributed fencing, online backups, and automatic restore are absent.
+bucket. This SQLite backend has no HA, distributed fencing, online backups, or
+automatic restore. Use the [PostgreSQL service](postgres-catalog.md) for renewable
+archiver ownership and multiple gateways, and the [stopped-writer importer](postgres-migration.md)
+to preserve existing metadata and objects when moving between backends.
 
 The repository and reader support multiple packs and independent streams. The
-SQLite archiver publishes independently per tenant/source/window, emits zero packs
-for a verified empty window, and still emits one pack for a nonempty window. The
-service shares one S3 request budget across archival and reads. Streaming pack
-rotation, incremental oracle parsing, LRU caching, and range coalescing remain
-separate implementation stages. Actual Sakura compatibility, capacity, natural Hot
-retention transitions, and deployment ingress enforcement still require testing.
+SQLite archiver publishes independently per tenant/source/window, rotates bounded
+packs for nonempty windows, and emits zero packs for a verified empty window.
+The service shares one S3 request budget across archival and reads. Current pack,
+oracle, cache, and range evidence is in [implementation validation](implementation-validation.md).
+Actual Sakura compatibility, natural Hot retention transitions, deployment ingress
+enforcement, and larger workload qualification remain separate requirements.

@@ -7,6 +7,10 @@ windows. Existing S3 objects are neither downloaded nor rewritten by the importe
 
 ## Prepare and stop the source
 
+Both source and destination must use the current compatible VM pin. This metadata
+import does not convert old VM pack encodings or bypass catalog version checks;
+follow the [VM upgrade procedure](compatibility.md#codec-and-upgrades) separately.
+
 Provision a dedicated PostgreSQL database/schema and prepare the
 [PostgreSQL configuration](postgres-catalog.md). Preserve the SQLite configuration's
 tenants, source IDs and URLs, coverage origin, timing policy, and exact S3 locator.

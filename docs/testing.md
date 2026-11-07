@@ -1,38 +1,43 @@
 # Reproducing validation
 
-## CI evidence
-
-The workflow always packages available `.cache/ci-*` work directories into
-`e2e-evidence.tar.gz`, then uploads that file as the `e2e-evidence` artifact.
-After downloading and unzipping the artifact, run `tar -xzf e2e-evidence.tar.gz`.
-The archive preserves original tenant paths (including colons), hidden files,
-logs, and result bytes. Failed suites may leave partial directories; an empty
-archive means setup failed before any work directory was created. Packaging and
-upload also run after test failure and do not turn a failed test into success.
-
-The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
-and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
-their build, test, race, vet, and four E2E steps, but failed artifact upload because
-the action rejected colons in nested fixture paths. Those runs were not successful
-CI runs. Historical local result files remain unchanged.
-
 ## Pinned environment
 
-The target is **VictoriaMetrics OSS v1.128.0-cluster**, commit
-`9a009c491da4c17531893ab4acb6a5f1b5e0eaf2`. No VM patches are applied.
+The target is **VictoriaMetrics OSS v1.155.0-cluster**, commit
+`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. No VM patches are applied.
 `build-vm.sh` verifies the SHA-256 of a pinned source archive and builds
 vmstorage, vminsert, and vmselect using upstream vendored dependencies.
-Use Go 1.25.3 or newer and Python 3.10 or newer.
+The pinned toolchains are Go 1.27.3 and Python 3.15.2. Bootstrap verifies the
+committed Go modules and regenerates vmtier's vendor tree independently of the
+stock VM vendor tree. Historical result files retain their original toolchains
+and VM revisions; they do not establish validation of an upgraded dependency set.
 The retained JSON v2 suite tests an independent persistent HTTP catalog authority and
-a blob store using ordinary PUT/GET/Range requests. The SQLite service has a separate
-harness described below. Evidence from the previous
+a blob store using ordinary PUT/GET/Range requests. SQLite and PostgreSQL service
+harnesses are described below. Evidence from the previous
 all-S3 catalog architecture is kept under [legacy-v1](results/legacy-v1/README.md)
 and is not included in current results.
+
+## Setup and quick checks
+
+Follow [getting started](getting-started.md#build-from-source) for prerequisites.
+From the repository root:
+
+```sh
+./scripts/bootstrap.sh
+make build test race vet stock
+python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 -m venv .venv-e2e
+. .venv-e2e/bin/activate
+python -m pip install -r scripts/requirements-e2e.txt
+```
+
+Use a fresh work directory for every suite. The commands below assume this setup,
+including the active virtual environment for S3 tests. For documentation-only
+changes, check links, CLI flags, and implementation claims; no benchmarks are needed.
 
 ## SQLite service
 
 After building vmtier and the pinned stock VM binaries and installing the Python
-dependencies shown below, run:
+dependencies in the setup above, run:
 
 ```sh
 python3 scripts/e2e_serve.py --backend local --workdir .cache/serve-local-fresh
@@ -48,11 +53,44 @@ It uses the same strict S3 proxy and disposable VM fixture as the JSON v2 suite.
 The archive-age boundary is held between complete windows by a fixture-specific H;
 there is no runtime clock override or scheduler pause mode.
 
-The combined stock vmselect uses `-search.maxLabelsAPIDuration=30s`. The default
-five-second label API deadline was exceeded by an uncached S3 metadata scan; the
-reader still validates full payload blocks and is not optimized for metadata.
+The combined stock vmselect defaults to `-search.maxLabelsAPIDuration=30s` in
+the harness. The earlier uncached S3 metadata scan exceeded the stock five-second
+deadline. After the reader changes, [measured JSON and SQLite runs](metadata-validation.md)
+passed with `--labels-api-duration 5s`, while still validating full payload blocks.
 See [service validation](serve-validation.md) for results, preserved failure evidence,
 provenance, and unexecuted checks. Loopback timings do not qualify provider performance.
+
+## PostgreSQL repository and HA suites
+
+Use a disposable PostgreSQL 17 database and set `VMTIER_TEST_POSTGRES_DSN` before
+`make test race`; integration tests otherwise skip explicitly. Tests isolate
+themselves in temporary schemas. See [PostgreSQL setup](postgres-catalog.md#build-and-integration-tests).
+
+With HAProxy, `psql`, Moto, and the pinned stock VM binaries installed:
+
+```sh
+export VMTIER_TEST_POSTGRES_DSN='postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable'
+make build test race vet stock
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir .cache/postgres-gateways-fresh
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir .cache/postgres-migration-fresh
+python3 scripts/postgres_ha.py --postgres-bin /usr/lib/postgresql/17/bin \
+  --race --workdir .cache/postgres-faults-fresh
+```
+
+The gateway harness exercises two candidates, archiver takeover, gateway/proxy
+loss, static S3 budget allocation, and exact stock-VM comparisons. The commands
+above force multiple packs per nonempty window. Migration mode
+first archives into SQLite and verifies a stopped-writer metadata cutover without
+object PUTs. The database fault harness initializes its own primary and synchronous
+standby and exercises commit-response loss, stale writers, transport failures,
+and explicitly fenced promotion. It runs as an unprivileged user and needs no
+existing database server. All work directories must be fresh.
+
+The [HA report](postgres-ha-validation.md) separates retained v1.128.0-cluster stage
+evidence from v1.155.0-cluster integration runs. Reproduction commands use the
+current checkout and pin; preserve new reports separately from earlier artifacts. These local
+suites do not qualify production HA controllers, multi-AZ partitions, the outer
+L4 endpoint, or actual S3 providers.
 
 ## Legacy JSON v2 suite
 
@@ -64,24 +102,21 @@ configuration. See [stage 2 validation](serve-validation.md) for the default-dea
 failure and subsequent regression results.
 
 ```sh
-./scripts/build-vm.sh
-# Build vmtier using the bootstrap/build instructions in the README.
-python3 -m venv .venv-e2e
-.venv-e2e/bin/pip install -r scripts/requirements-e2e.txt
 python3 scripts/e2e.py --backend local --workdir .cache/v2-local-fresh
 MOTO_SERVER="$PWD/.venv-e2e/bin/moto_server" python3 scripts/e2e.py \
   --backend s3 --replicas 2 --workdir .cache/v2-s3-fresh
 ```
 
-`GO_BIN` selects the Go binary, and `VM_SOURCE_DIR` selects an existing unmodified
-VM source tree. To validate only fixture ingestion into VM, use
+`GO_BIN` selects the Go binary. `VM_SOURCE_DIR` selects where the verified pinned
+VM source is extracted; use a new directory or one already prepared by these
+scripts. An arbitrary existing source tree is rejected. To validate only fixture ingestion into VM, use
 `python3 scripts/e2e.py --vm-only`.
 
 Each run creates an isolated directory and starts dedicated processes on available
 loopback ports. Pass an **unused directory** to `--workdir PATH`; the suite does not
 reuse existing data. At exit it stops only the processes it started and leaves
 logs, configurations, `results.json`, and isolated VM data. It has no option to
-connect to an external VM or a real S3 service. S3 tests use Moto 5.1.15 and public,
+connect to an external VM or a real S3 service. S3 tests use Moto 5.2.5 and public,
 test-only credentials.
 
 `scripts/s3_compat_proxy.py` sits in front of Moto. It rejects requests containing
@@ -100,7 +135,7 @@ without S3 conditional PUT, ETags, or LIST.
 and Go source tree, start/end UTC timestamps, and OS/Python/Moto versions.
 Set `GO_BIN` or put Go on `PATH` to record its version.
 
-## End-to-end checks
+## Legacy JSON v2 end-to-end checks
 
 - Load the same fixture into a reference VM retaining the full period and into
   Hot before archive. Standard Python generates remote-write protobuf and literal
@@ -240,3 +275,86 @@ Run the focused harness regressions with:
 ```sh
 python3 -m unittest discover -s scripts -p 'test_e2e_harness.py' -v
 ```
+
+## Metadata measurement
+
+Both harnesses record `metadata_measurements` for label names, two label-value
+selectors, and series discovery for both tenants. Each observation includes exact
+reference comparison status, tiered latency, and deltas in object GET requests,
+Range GET requests, and downloaded bytes. The initial `uncached` phase disables
+the immutable cache; stock vmselect result caching stays disabled throughout.
+
+To reevaluate the stock five-second labels deadline after reader changes and
+collect repeat measurements on the same fixture, use fresh work directories:
+
+```sh
+python3 scripts/e2e.py --backend s3 --replicas 2 --labels-api-duration 5s \
+  --measure-warm-metadata --workdir .cache/metadata-json-5s
+python3 scripts/e2e_serve.py --backend s3 --replicas 2 --labels-api-duration 5s \
+  --measure-warm-metadata --workdir .cache/metadata-sqlite-5s
+```
+
+`--labels-api-duration` accepts `5s` or the retained default `30s`; the effective
+value appears in the report and the child vmselect command. A deadline failure
+remains a failed suite and the partial metadata measurement is retained. Do not
+interpret a successful query with fewer returned series as an improvement: all
+phases keep the exact reference comparisons.
+
+The optional `prime` and `warm` passes run after the existing 32 MiB cache test.
+The prime pass may reuse entries from prior calls, so it is not a cold-cache
+measurement. The subsequent warm pass is a repeated workload, not a guarantee
+that every entry fits or that zero GETs occur. These per-call counters are process
+observations; in this fixture archival has completed and does not upload during
+the measurement. On S3, request counts include transport retries. Loopback latency
+and this small fixture do not establish a general metadata deadline guarantee.
+
+## Offline recovery and cutover
+
+The dedicated recovery suite starts disposable stock VM clusters and a JSON v2
+authority, then performs the documented offline import, backup, restore, and
+SQLite service operations:
+
+```sh
+python3 scripts/e2e_recovery.py --workdir .cache/recovery-local
+python3 scripts/e2e_recovery.py --replicas 2 --workdir .cache/recovery-replicated
+```
+
+The work directory must not already exist. `--gomaxprocs` uses the same precedence
+as the other suites. `--rollover-delay` defaults to 60 seconds: the archive policy
+is chosen so a real wall-clock eligibility boundary advances during the run,
+without a production clock override or a changed archive contract. If import and
+backup fail to finish before that deadline, the suite fails and asks for a larger
+delay; it never silently skips the older-backup recovery check.
+
+`report.json` retains provenance, each process command, exact comparison counts,
+catalog IDs and coverage, unchanged import object hashes/stat identities, backup
+age, downtime, retention headroom, and failure evidence. SIGKILL is injected after
+native objects have been uploaded and before the independent raw oracle completes,
+and again after a committed recovery. The expired-source negative case uses a
+short configured recovery deadline and reconstructs an empty disposable Hot;
+it does **not** establish natural VM retention expiry. See the
+[measured recovery report](recovery-validation.md) for results and limitations.
+
+Hosted CI runs the local recovery suite and includes its complete `ci-recovery-local`
+work directory in the existing byte-preserving evidence archive, including on
+failure. This is additional process recovery coverage, not a power-loss test.
+
+## CI evidence
+
+The workflow always packages available `.cache/ci-*` work directories into
+`e2e-evidence.tar.gz`, then uploads that file as the `e2e-evidence` artifact.
+After downloading and unzipping the artifact, run `tar -xzf e2e-evidence.tar.gz`.
+The archive preserves original tenant paths (including colons), hidden files,
+logs, and result bytes. Failed suites may leave partial directories; an empty
+archive means setup failed before any work directory was created. Packaging and
+upload also run after test failure and do not turn a failed test into success.
+
+The initial [PR run](https://github.com/yuuki/vmtier/actions/runs/42209065311)
+and [push run](https://github.com/yuuki/vmtier/actions/runs/42209044949) passed
+their build, test, race, vet, and four E2E steps, but failed artifact upload because
+the action rejected colons in nested fixture paths. Those runs were not successful
+CI runs. Historical local result files remain unchanged.
+
+
+See the [workflow](../.github/workflows/ci.yml) for the current suite matrix and
+[evidence index](evidence.md) for recorded results.

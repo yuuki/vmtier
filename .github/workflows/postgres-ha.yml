@@ -7,14 +7,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
-          go-version: '1.27.3'
+          go-version-file: go.mod
           cache: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.15.2'
       - name: Install PostgreSQL 17 test binaries
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -25,7 +25,7 @@ jobs:
       - run: make bootstrap
       - name: Exercise synchronous failover and transport faults
         run: python scripts/postgres_ha.py --postgres-bin /usr/lib/postgresql/17/bin --race --workdir .cache/ci-postgres-faults
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: postgres-fault-evidence

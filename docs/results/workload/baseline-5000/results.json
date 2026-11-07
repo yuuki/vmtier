@@ -1,0 +1,3495 @@
+{
+  "admission_burst": {
+    "after": {
+      "vmtier_archive_bytes_total": 0.0,
+      "vmtier_archive_committed_windows_total": 0.0,
+      "vmtier_archive_failed_passes_total": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"10:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"1:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"2:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"3:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"4:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"5:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"6:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"7:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"8:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"9:1\"}": 0.0,
+      "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+      "vmtier_archive_pack_bytes": 0.0,
+      "vmtier_archive_pack_peak_bytes": 0.0,
+      "vmtier_archive_passes_total": 181.0,
+      "vmtier_archive_samples_total": 0.0,
+      "vmtier_archive_verifier_bytes": 0.0,
+      "vmtier_archive_verifier_peak_bytes": 0.0,
+      "vmtier_blocks_total": 531791.0,
+      "vmtier_cache_entries": 20061.0,
+      "vmtier_cache_evictions_total": 90884.0,
+      "vmtier_cache_hits_total": 421222.0,
+      "vmtier_cache_inflight_reads": 0.0,
+      "vmtier_cache_limit_bytes": 16777216.0,
+      "vmtier_cache_misses_total": 110945.0,
+      "vmtier_cache_used_bytes": 15545835.0,
+      "vmtier_catalog_capacity_available": 1.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 10640835.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 53915057.0,
+      "vmtier_catalog_file_bytes{file=\"database\"}": 245760.0,
+      "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+      "vmtier_catalog_file_bytes{file=\"wal\"}": 0.0,
+      "vmtier_catalog_generation": 240.0,
+      "vmtier_catalog_packs": 240.0,
+      "vmtier_catalog_windows": 240.0,
+      "vmtier_coverage_end_ms{tenant=\"10:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"1:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"2:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"3:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"4:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"5:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"6:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"7:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"8:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"9:1\"}": 1793962800000.0,
+      "vmtier_go_heap_alloc_bytes_total": 10409466744.0,
+      "vmtier_go_heap_objects_bytes": 74444000.0,
+      "vmtier_go_heap_released_bytes": 5890048.0,
+      "vmtier_go_memory_total_bytes": 151058728.0,
+      "vmtier_object_download_bytes_total": 62456744.0,
+      "vmtier_object_get_requests_total": 242.0,
+      "vmtier_object_put_requests_total": 0.0,
+      "vmtier_object_range_requests_total": 292.0,
+      "vmtier_query_decoded_bytes_total": 4133221120.0,
+      "vmtier_query_errors_total": 4.0,
+      "vmtier_query_index_estimate_peak_bytes": 5778960.0,
+      "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 4.0,
+      "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+      "vmtier_query_memory_limit_bytes": 268435456.0,
+      "vmtier_query_memory_reserved_bytes": 0.0,
+      "vmtier_query_read_bytes_total": 278277597.0,
+      "vmtier_query_requests_total": 87.0,
+      "vmtier_query_result_estimate_bytes_total": 324404710.0,
+      "vmtier_query_work_bytes": 134217728.0,
+      "vmtier_query_work_peak_bytes": 92230309.0,
+      "vmtier_ready": 1.0,
+      "vmtier_retention_headroom_seconds{tenant=\"10:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"1:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"2:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"3:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"4:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"5:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"6:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"7:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"8:1\"}": 851867.209,
+      "vmtier_retention_headroom_seconds{tenant=\"9:1\"}": 851867.209,
+      "vmtier_stream_archive_lag_seconds{tenant=\"10:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"1:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"2:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"3:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"4:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"5:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"6:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"7:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"8:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"9:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"10:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"1:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"2:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"3:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"4:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"5:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"6:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"7:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"8:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"9:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"10:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"1:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"2:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"3:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"4:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"5:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"6:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"7:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"8:1\",source=\"hot\"}": 851867.209,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"9:1\",source=\"hot\"}": 851867.209
+    },
+    "before": {
+      "vmtier_archive_bytes_total": 0.0,
+      "vmtier_archive_committed_windows_total": 0.0,
+      "vmtier_archive_failed_passes_total": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"10:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"1:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"2:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"3:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"4:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"5:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"6:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"7:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"8:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"9:1\"}": 0.0,
+      "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+      "vmtier_archive_pack_bytes": 0.0,
+      "vmtier_archive_pack_peak_bytes": 0.0,
+      "vmtier_archive_passes_total": 177.0,
+      "vmtier_archive_samples_total": 0.0,
+      "vmtier_archive_verifier_bytes": 0.0,
+      "vmtier_archive_verifier_peak_bytes": 0.0,
+      "vmtier_blocks_total": 511787.0,
+      "vmtier_cache_entries": 20061.0,
+      "vmtier_cache_evictions_total": 90884.0,
+      "vmtier_cache_hits_total": 401214.0,
+      "vmtier_cache_inflight_reads": 0.0,
+      "vmtier_cache_limit_bytes": 16777216.0,
+      "vmtier_cache_misses_total": 110945.0,
+      "vmtier_cache_used_bytes": 15545835.0,
+      "vmtier_catalog_capacity_available": 1.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 10640835.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 53915057.0,
+      "vmtier_catalog_file_bytes{file=\"database\"}": 245760.0,
+      "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+      "vmtier_catalog_file_bytes{file=\"wal\"}": 0.0,
+      "vmtier_catalog_generation": 240.0,
+      "vmtier_catalog_packs": 240.0,
+      "vmtier_catalog_windows": 240.0,
+      "vmtier_coverage_end_ms{tenant=\"10:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"1:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"2:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"3:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"4:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"5:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"6:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"7:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"8:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"9:1\"}": 1793962800000.0,
+      "vmtier_go_heap_alloc_bytes_total": 10061971576.0,
+      "vmtier_go_heap_objects_bytes": 72792752.0,
+      "vmtier_go_heap_released_bytes": 21094400.0,
+      "vmtier_go_memory_total_bytes": 112343336.0,
+      "vmtier_object_download_bytes_total": 62456744.0,
+      "vmtier_object_get_requests_total": 242.0,
+      "vmtier_object_put_requests_total": 0.0,
+      "vmtier_object_range_requests_total": 292.0,
+      "vmtier_query_decoded_bytes_total": 3978914560.0,
+      "vmtier_query_errors_total": 0.0,
+      "vmtier_query_index_estimate_peak_bytes": 5778960.0,
+      "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+      "vmtier_query_memory_limit_bytes": 268435456.0,
+      "vmtier_query_memory_reserved_bytes": 0.0,
+      "vmtier_query_read_bytes_total": 271869751.0,
+      "vmtier_query_requests_total": 81.0,
+      "vmtier_query_result_estimate_bytes_total": 312202270.0,
+      "vmtier_query_work_bytes": 134217728.0,
+      "vmtier_query_work_peak_bytes": 92230309.0,
+      "vmtier_ready": 1.0,
+      "vmtier_retention_headroom_seconds{tenant=\"10:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"1:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"2:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"3:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"4:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"5:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"6:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"7:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"8:1\"}": 851867.6,
+      "vmtier_retention_headroom_seconds{tenant=\"9:1\"}": 851867.6,
+      "vmtier_stream_archive_lag_seconds{tenant=\"10:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"1:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"2:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"3:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"4:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"5:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"6:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"7:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"8:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"9:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"10:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"1:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"2:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"3:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"4:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"5:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"6:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"7:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"8:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"9:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"10:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"1:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"2:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"3:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"4:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"5:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"6:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"7:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"8:1\",source=\"hot\"}": 851867.6,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"9:1\",source=\"hot\"}": 851867.6
+    },
+    "requests": [
+      {
+        "http_status": 422,
+        "message": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:58173: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:58173\\\": Cold query memory admission limit exceeded: 268435456 bytes reserved, 134217728 requested, 268435456 limit\"}",
+        "milliseconds": 12.508460000390187,
+        "outcome": "memory_admission_refusal"
+      },
+      {
+        "http_status": 422,
+        "message": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:58173: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:58173\\\": Cold query memory admission limit exceeded: 268435456 bytes reserved, 134217728 requested, 268435456 limit\"}",
+        "milliseconds": 67.12264399902779,
+        "outcome": "memory_admission_refusal"
+      },
+      {
+        "milliseconds": 379.6319599987328,
+        "outcome": "exact_success"
+      },
+      {
+        "http_status": 422,
+        "message": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:58173: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:58173\\\": Cold query memory admission limit exceeded: 268435456 bytes reserved, 134217728 requested, 268435456 limit\"}",
+        "milliseconds": 21.844562999831396,
+        "outcome": "memory_admission_refusal"
+      },
+      {
+        "http_status": 422,
+        "message": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:58173: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:58173\\\": Cold query memory admission limit exceeded: 268435456 bytes reserved, 134217728 requested, 268435456 limit\"}",
+        "milliseconds": 21.98049900107435,
+        "outcome": "memory_admission_refusal"
+      },
+      {
+        "milliseconds": 383.5576269993908,
+        "outcome": "exact_success"
+      }
+    ]
+  },
+  "archive": {
+    "catchup_seconds": 43.27699921400017,
+    "coverage": [
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "10:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "1:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "2:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "3:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "4:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "5:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "6:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "7:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "8:1"
+      },
+      {
+        "end_ms": 1793962800000,
+        "source_id": "hot",
+        "tenant": "9:1"
+      }
+    ],
+    "dense_payload_hours_per_wall_hour": 166.370130340987,
+    "generation": 240,
+    "initial_retention_safety_headroom_seconds": 763798.74,
+    "logical_samples_per_second": 277893.57437956193,
+    "logical_windows_per_second": 5.545671011366233,
+    "metrics": {
+      "vmtier_archive_bytes_total": 64555892.0,
+      "vmtier_archive_committed_windows_total": 240.0,
+      "vmtier_archive_failed_passes_total": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"10:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"1:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"2:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"3:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"4:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"5:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"6:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"7:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"8:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"9:1\"}": 0.0,
+      "vmtier_archive_last_commit_timestamp_seconds": 1793974913.0,
+      "vmtier_archive_pack_bytes": 0.0,
+      "vmtier_archive_pack_peak_bytes": 11651352.0,
+      "vmtier_archive_passes_total": 46.0,
+      "vmtier_archive_samples_total": 12026400.0,
+      "vmtier_archive_verifier_bytes": 0.0,
+      "vmtier_archive_verifier_peak_bytes": 22758840.0,
+      "vmtier_blocks_total": 820492.0,
+      "vmtier_cache_entries": 10004.0,
+      "vmtier_cache_evictions_total": 0.0,
+      "vmtier_cache_hits_total": 810816.0,
+      "vmtier_cache_inflight_reads": 0.0,
+      "vmtier_cache_limit_bytes": 16777216.0,
+      "vmtier_cache_misses_total": 10004.0,
+      "vmtier_cache_used_bytes": 7743580.0,
+      "vmtier_catalog_capacity_available": 1.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 10640835.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 53915057.0,
+      "vmtier_catalog_file_bytes{file=\"database\"}": 212992.0,
+      "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+      "vmtier_catalog_file_bytes{file=\"wal\"}": 4194192.0,
+      "vmtier_catalog_generation": 240.0,
+      "vmtier_catalog_packs": 240.0,
+      "vmtier_catalog_windows": 240.0,
+      "vmtier_coverage_end_ms{tenant=\"10:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"1:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"2:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"3:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"4:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"5:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"6:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"7:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"8:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"9:1\"}": 1793962800000.0,
+      "vmtier_go_heap_alloc_bytes_total": 24850206048.0,
+      "vmtier_go_heap_objects_bytes": 22622712.0,
+      "vmtier_go_heap_released_bytes": 67739648.0,
+      "vmtier_go_memory_total_bytes": 181074216.0,
+      "vmtier_object_download_bytes_total": 67759815.0,
+      "vmtier_object_get_requests_total": 482.0,
+      "vmtier_object_put_requests_total": 480.0,
+      "vmtier_object_range_requests_total": 2.0,
+      "vmtier_query_decoded_bytes_total": 6356797440.0,
+      "vmtier_query_errors_total": 0.0,
+      "vmtier_query_index_estimate_peak_bytes": 5761680.0,
+      "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+      "vmtier_query_memory_limit_bytes": 268435456.0,
+      "vmtier_query_memory_reserved_bytes": 0.0,
+      "vmtier_query_read_bytes_total": 482825184.0,
+      "vmtier_query_requests_total": 164.0,
+      "vmtier_query_result_estimate_bytes_total": 500500120.0,
+      "vmtier_query_work_bytes": 134217728.0,
+      "vmtier_query_work_peak_bytes": 92220103.0,
+      "vmtier_ready": 1.0,
+      "vmtier_retention_headroom_seconds{tenant=\"10:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"1:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"2:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"3:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"4:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"5:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"6:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"7:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"8:1\"}": 851886.133,
+      "vmtier_retention_headroom_seconds{tenant=\"9:1\"}": 851886.133,
+      "vmtier_stream_archive_lag_seconds{tenant=\"10:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"1:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"2:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"3:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"4:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"5:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"6:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"7:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"8:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"9:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"10:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"1:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"2:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"3:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"4:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"5:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"6:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"7:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"8:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"9:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"10:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"1:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"2:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"3:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"4:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"5:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"6:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"7:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"8:1\",source=\"hot\"}": 851886.133,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"9:1\",source=\"hot\"}": 851886.133
+    },
+    "object_sizes": {
+      "data_bytes": 10640835,
+      "index_bytes": 53915057
+    },
+    "packs": 240,
+    "physical_rows_in_committed_indexes": 49341604,
+    "windows": 240
+  },
+  "backend": "local",
+  "cache_pressure": {
+    "exercised": true,
+    "interpretation": "Positive revisit GETs show entries displaced by later tenants; absent GETs mean this fixture did not pressure the configured cache.",
+    "limit_bytes": 16777216,
+    "metrics": {
+      "vmtier_archive_bytes_total": 0.0,
+      "vmtier_archive_committed_windows_total": 0.0,
+      "vmtier_archive_failed_passes_total": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"10:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"1:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"2:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"3:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"4:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"5:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"6:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"7:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"8:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"9:1\"}": 0.0,
+      "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+      "vmtier_archive_pack_bytes": 0.0,
+      "vmtier_archive_pack_peak_bytes": 0.0,
+      "vmtier_archive_passes_total": 177.0,
+      "vmtier_archive_samples_total": 0.0,
+      "vmtier_archive_verifier_bytes": 0.0,
+      "vmtier_archive_verifier_peak_bytes": 0.0,
+      "vmtier_blocks_total": 511787.0,
+      "vmtier_cache_entries": 20061.0,
+      "vmtier_cache_evictions_total": 90884.0,
+      "vmtier_cache_hits_total": 401214.0,
+      "vmtier_cache_inflight_reads": 0.0,
+      "vmtier_cache_limit_bytes": 16777216.0,
+      "vmtier_cache_misses_total": 110945.0,
+      "vmtier_cache_used_bytes": 15545835.0,
+      "vmtier_catalog_capacity_available": 1.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 10640835.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 53915057.0,
+      "vmtier_catalog_file_bytes{file=\"database\"}": 245760.0,
+      "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+      "vmtier_catalog_file_bytes{file=\"wal\"}": 0.0,
+      "vmtier_catalog_generation": 240.0,
+      "vmtier_catalog_packs": 240.0,
+      "vmtier_catalog_windows": 240.0,
+      "vmtier_coverage_end_ms{tenant=\"10:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"1:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"2:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"3:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"4:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"5:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"6:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"7:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"8:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"9:1\"}": 1793962800000.0,
+      "vmtier_go_heap_alloc_bytes_total": 10061925656.0,
+      "vmtier_go_heap_objects_bytes": 72746832.0,
+      "vmtier_go_heap_released_bytes": 21094400.0,
+      "vmtier_go_memory_total_bytes": 112343336.0,
+      "vmtier_object_download_bytes_total": 62456744.0,
+      "vmtier_object_get_requests_total": 242.0,
+      "vmtier_object_put_requests_total": 0.0,
+      "vmtier_object_range_requests_total": 292.0,
+      "vmtier_query_decoded_bytes_total": 3978914560.0,
+      "vmtier_query_errors_total": 0.0,
+      "vmtier_query_index_estimate_peak_bytes": 5778960.0,
+      "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+      "vmtier_query_memory_limit_bytes": 268435456.0,
+      "vmtier_query_memory_reserved_bytes": 0.0,
+      "vmtier_query_read_bytes_total": 271869751.0,
+      "vmtier_query_requests_total": 81.0,
+      "vmtier_query_result_estimate_bytes_total": 312202270.0,
+      "vmtier_query_work_bytes": 134217728.0,
+      "vmtier_query_work_peak_bytes": 92230309.0,
+      "vmtier_ready": 1.0,
+      "vmtier_retention_headroom_seconds{tenant=\"10:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"1:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"2:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"3:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"4:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"5:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"6:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"7:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"8:1\"}": 851867.601,
+      "vmtier_retention_headroom_seconds{tenant=\"9:1\"}": 851867.601,
+      "vmtier_stream_archive_lag_seconds{tenant=\"10:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"1:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"2:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"3:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"4:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"5:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"6:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"7:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"8:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"9:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"10:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"1:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"2:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"3:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"4:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"5:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"6:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"7:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"8:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"9:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"10:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"1:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"2:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"3:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"4:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"5:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"6:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"7:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"8:1\",source=\"hot\"}": 851867.601,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"9:1\",source=\"hot\"}": 851867.601
+    },
+    "revisit_io_delta": {
+      "vmtier_object_download_bytes_total": 3203923.0,
+      "vmtier_object_get_requests_total": 2.0,
+      "vmtier_object_range_requests_total": 2.0
+    }
+  },
+  "checks": [
+    "Identical bounded-batch logical input ingested into separate reference and Hot clusters",
+    "Source outage publishes nothing; subsequent archive catch-up makes commits while exact Cold queries run",
+    "Concurrent requests either match the reference or explicitly refuse memory admission; all reservations drain",
+    "1 KiB query allowance refuses the broad query without partial success or catalog change and releases its reservation"
+  ],
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "concurrent_archive_queries": {
+    "admission_refusals": 0,
+    "commits_after_queries_started": 18,
+    "failures": [],
+    "finished_generation": 240,
+    "latencies_ms": [
+      427.1210879996943,
+      88.74030900005891,
+      300.0134360008815,
+      90.04992500013032,
+      271.11045599849604,
+      52.75544899996021,
+      321.0541079988616,
+      91.62601400021231,
+      309.56727800003137,
+      64.50814500021806,
+      345.23567100040964,
+      79.40037499975006,
+      344.6841300010419,
+      75.18492199960747,
+      381.6852410000138,
+      52.598710000893334,
+      330.952170999808,
+      52.4569919998612,
+      310.8416369996121,
+      129.7774289996596,
+      314.88427400108776,
+      60.22252799994021,
+      324.47364700055914,
+      80.44838999921922,
+      314.90171999939776,
+      87.57377499932772,
+      311.43497599987313,
+      80.6790810001985,
+      342.540800000279,
+      96.36183800103026,
+      310.5996129997948,
+      62.782148001133464,
+      311.09956900036195,
+      82.52229100071418,
+      309.0280739997979,
+      64.92850100039504,
+      314.98063200160686,
+      83.45144099985191,
+      333.884053001384,
+      80.35608800128102,
+      313.23376600084885,
+      75.21502999952645,
+      280.2666989991849,
+      50.88449200047762,
+      302.30849599865905,
+      65.50085900016711,
+      327.82425900040835,
+      67.36857900068571,
+      287.9965419997461,
+      57.11537500064878,
+      290.41419600071094,
+      51.02907999935269,
+      284.39382100077637,
+      56.124622000425006,
+      337.7448319988616,
+      68.55596499917738,
+      338.07898700069927,
+      67.22362199980125,
+      315.17162199997983,
+      55.85966400030884,
+      260.7827899992117,
+      65.77857699994638,
+      302.94995100121014,
+      95.9497799995006,
+      345.2867290016002,
+      108.14541000036115,
+      281.2794860001304,
+      56.2089039995044,
+      309.77770699973917,
+      52.55796699930215,
+      280.4848630003107,
+      56.41865799952939,
+      340.85890899950755,
+      87.55952400133538,
+      376.37175700001535,
+      87.3168819998682,
+      301.36304999905406,
+      69.95351200021105,
+      286.571583001205,
+      66.79615499888314,
+      329.3593239995971,
+      76.83951599938155,
+      374.15400099962426,
+      83.00229499945999,
+      405.6098990004102,
+      82.3992179994093,
+      352.82215000006545,
+      75.30766600029892,
+      328.83453800059215,
+      92.0633869991434,
+      339.30871700067655,
+      78.94633499927295,
+      441.64511899907666,
+      102.35403299884638,
+      327.881196000817,
+      95.14083300018683,
+      313.24881799992,
+      50.565655999889714,
+      279.80138500061,
+      55.51752999963355,
+      327.12418700066337,
+      77.55292399997415,
+      378.4584259992698,
+      58.90586500026984,
+      282.8239869995741,
+      64.52357200032566,
+      304.3823539992445,
+      60.064909999709926,
+      302.16482000105316,
+      75.42020700020657,
+      333.21572600107174,
+      105.07488000075682,
+      298.9451329995063,
+      55.28595999930985,
+      281.15197099941724,
+      72.99347600019246,
+      294.98226899886504,
+      63.96057399979327,
+      346.90238300026977,
+      67.69588899987866,
+      373.23429100069916,
+      67.92997299999115,
+      324.24204499875486,
+      84.8638210009085,
+      338.97584400074265,
+      56.47674200008623,
+      323.40860399926896,
+      70.4843189996609,
+      324.6801469995262,
+      80.67741999911959,
+      299.76757199983695,
+      55.031866000717855,
+      261.5976800007047,
+      66.46244100011245,
+      300.8609600001364,
+      91.20434000033129,
+      381.57236900042335,
+      94.02362499895389,
+      363.8219450003817,
+      56.33226399913838,
+      330.871134001427,
+      61.17734799954633,
+      269.16999599961855,
+      94.84289499960141,
+      296.32962999858137,
+      63.04745399938838,
+      327.8927270002896,
+      95.24450299977616,
+      290.81844599932083,
+      63.93426599970553,
+      298.6175790010748,
+      52.56935000033991,
+      293.80205100096646,
+      68.7703089988645,
+      349.4979050010443,
+      86.48152800014941,
+      337.87513700008276,
+      57.42467699928966,
+      284.73385799952666,
+      67.718567999691,
+      278.2842310007254,
+      62.888847998692654,
+      314.451153999471,
+      59.145539000382996
+    ],
+    "started_generation": 222,
+    "successes": 164
+  },
+  "config": {
+    "archive_age": "10201260ms",
+    "cache_bytes": 16777216,
+    "catalog": {
+      "id": "workload-qualification",
+      "path": "/workspace/vmtier/.cache/qualification-5000/catalog",
+      "type": "sqlite"
+    },
+    "coverage_start_ms": 1793876400000,
+    "hot_retention": "240h",
+    "lateness": "30m",
+    "lateness_enforced": true,
+    "max_query_bytes": 134217728,
+    "query_memory_bytes": 268435456,
+    "safety_margin": "30m",
+    "service": {
+      "archive_interval": "100ms",
+      "archive_timeout": "2m"
+    },
+    "sources": [
+      {
+        "id": "hot",
+        "url": "http://127.0.0.1:45263"
+      }
+    ],
+    "store": {
+      "path": "/workspace/vmtier/.cache/qualification-5000/objects",
+      "type": "local"
+    },
+    "tenants": [
+      "1:1",
+      "2:1",
+      "3:1",
+      "4:1",
+      "5:1",
+      "6:1",
+      "7:1",
+      "8:1",
+      "9:1",
+      "10:1"
+    ],
+    "window": "1h"
+  },
+  "effective_limits": {
+    "dedup_interval": "1ms",
+    "query_memory_bytes": 268435456,
+    "query_work_bytes": 134217728,
+    "raw_cache_bytes": 16777216,
+    "rpc_concurrency": 8,
+    "rpc_duration_seconds": 30,
+    "shared_read_flights": 16,
+    "stock_process_memory_allowed_bytes": 134217728,
+    "stock_result_cache": "disabled"
+  },
+  "exact_comparisons": 248,
+  "explicit_refusal": {
+    "http_status": 422,
+    "max_query_bytes": 1024,
+    "message": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:58173: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:58173\\\": Cold search: query catalog plan byte limit exceeded\"}",
+    "metrics": {
+      "vmtier_archive_bytes_total": 0.0,
+      "vmtier_archive_committed_windows_total": 0.0,
+      "vmtier_archive_failed_passes_total": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"error\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"10:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"1:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"2:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"3:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"4:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"5:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"6:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"7:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"8:1\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"9:1\"}": 0.0,
+      "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+      "vmtier_archive_pack_bytes": 0.0,
+      "vmtier_archive_pack_peak_bytes": 0.0,
+      "vmtier_archive_passes_total": 2.0,
+      "vmtier_archive_samples_total": 0.0,
+      "vmtier_archive_verifier_bytes": 0.0,
+      "vmtier_archive_verifier_peak_bytes": 0.0,
+      "vmtier_blocks_total": 0.0,
+      "vmtier_cache_entries": 0.0,
+      "vmtier_cache_evictions_total": 0.0,
+      "vmtier_cache_hits_total": 0.0,
+      "vmtier_cache_inflight_reads": 0.0,
+      "vmtier_cache_limit_bytes": 0.0,
+      "vmtier_cache_misses_total": 0.0,
+      "vmtier_cache_used_bytes": 0.0,
+      "vmtier_catalog_capacity_available": 1.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 10640835.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 53915057.0,
+      "vmtier_catalog_file_bytes{file=\"database\"}": 245760.0,
+      "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+      "vmtier_catalog_file_bytes{file=\"wal\"}": 0.0,
+      "vmtier_catalog_generation": 240.0,
+      "vmtier_catalog_packs": 240.0,
+      "vmtier_catalog_windows": 240.0,
+      "vmtier_coverage_end_ms{tenant=\"10:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"1:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"2:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"3:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"4:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"5:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"6:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"7:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"8:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"9:1\"}": 1793962800000.0,
+      "vmtier_go_heap_alloc_bytes_total": 456160.0,
+      "vmtier_go_heap_objects_bytes": 456160.0,
+      "vmtier_go_heap_released_bytes": 5775360.0,
+      "vmtier_go_memory_total_bytes": 12015880.0,
+      "vmtier_object_download_bytes_total": 0.0,
+      "vmtier_object_get_requests_total": 0.0,
+      "vmtier_object_put_requests_total": 0.0,
+      "vmtier_object_range_requests_total": 0.0,
+      "vmtier_query_decoded_bytes_total": 0.0,
+      "vmtier_query_errors_total": 1.0,
+      "vmtier_query_index_estimate_peak_bytes": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 1.0,
+      "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+      "vmtier_query_memory_limit_bytes": 2048.0,
+      "vmtier_query_memory_reserved_bytes": 0.0,
+      "vmtier_query_read_bytes_total": 0.0,
+      "vmtier_query_requests_total": 1.0,
+      "vmtier_query_result_estimate_bytes_total": 0.0,
+      "vmtier_query_work_bytes": 1024.0,
+      "vmtier_query_work_peak_bytes": 0.0,
+      "vmtier_ready": 1.0,
+      "vmtier_retention_headroom_seconds{tenant=\"10:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"1:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"2:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"3:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"4:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"5:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"6:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"7:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"8:1\"}": 851866.971,
+      "vmtier_retention_headroom_seconds{tenant=\"9:1\"}": 851866.971,
+      "vmtier_stream_archive_lag_seconds{tenant=\"10:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"1:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"2:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"3:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"4:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"5:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"6:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"7:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"8:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"9:1\",source=\"hot\"}": 0.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"10:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"1:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"2:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"3:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"4:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"5:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"6:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"7:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"8:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"9:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"10:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"1:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"2:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"3:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"4:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"5:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"6:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"7:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"8:1\",source=\"hot\"}": 851866.971,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"9:1\",source=\"hot\"}": 851866.971
+    }
+  },
+  "final_metrics": {
+    "vmtier_archive_bytes_total": 0.0,
+    "vmtier_archive_committed_windows_total": 0.0,
+    "vmtier_archive_failed_passes_total": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"10:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"2:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"3:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"4:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"5:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"6:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"8:1\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"9:1\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+    "vmtier_archive_pack_bytes": 0.0,
+    "vmtier_archive_pack_peak_bytes": 0.0,
+    "vmtier_archive_passes_total": 4.0,
+    "vmtier_archive_samples_total": 0.0,
+    "vmtier_archive_verifier_bytes": 0.0,
+    "vmtier_archive_verifier_peak_bytes": 0.0,
+    "vmtier_blocks_total": 10002.0,
+    "vmtier_cache_entries": 10004.0,
+    "vmtier_cache_evictions_total": 0.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_inflight_reads": 0.0,
+    "vmtier_cache_limit_bytes": 16777216.0,
+    "vmtier_cache_misses_total": 10004.0,
+    "vmtier_cache_used_bytes": 7743580.0,
+    "vmtier_catalog_capacity_available": 1.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 10640835.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 53915057.0,
+    "vmtier_catalog_file_bytes{file=\"database\"}": 245760.0,
+    "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+    "vmtier_catalog_file_bytes{file=\"wal\"}": 0.0,
+    "vmtier_catalog_generation": 240.0,
+    "vmtier_catalog_packs": 240.0,
+    "vmtier_catalog_windows": 240.0,
+    "vmtier_coverage_end_ms{tenant=\"10:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"1:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"2:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"3:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"4:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"5:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"6:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"8:1\"}": 1793962800000.0,
+    "vmtier_coverage_end_ms{tenant=\"9:1\"}": 1793962800000.0,
+    "vmtier_go_heap_alloc_bytes_total": 191089808.0,
+    "vmtier_go_heap_objects_bytes": 50637360.0,
+    "vmtier_go_heap_released_bytes": 4612096.0,
+    "vmtier_go_memory_total_bytes": 81897752.0,
+    "vmtier_object_download_bytes_total": 3203923.0,
+    "vmtier_object_get_requests_total": 2.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 2.0,
+    "vmtier_query_decoded_bytes_total": 77153280.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_index_estimate_peak_bytes": 5761680.0,
+    "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+    "vmtier_query_memory_limit_bytes": 268435456.0,
+    "vmtier_query_memory_reserved_bytes": 0.0,
+    "vmtier_query_read_bytes_total": 3203923.0,
+    "vmtier_query_requests_total": 1.0,
+    "vmtier_query_result_estimate_bytes_total": 6101220.0,
+    "vmtier_query_work_bytes": 134217728.0,
+    "vmtier_query_work_peak_bytes": 92220103.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"10:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"1:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"2:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"3:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"4:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"5:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"6:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"7:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"8:1\"}": 851866.555,
+    "vmtier_retention_headroom_seconds{tenant=\"9:1\"}": 851866.555,
+    "vmtier_stream_archive_lag_seconds{tenant=\"10:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"2:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"3:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"4:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"5:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"6:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"8:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"9:1\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"10:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"2:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"3:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"4:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"5:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"6:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"8:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"9:1\",source=\"hot\"}": 1793962800000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"10:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"2:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"3:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"4:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"5:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"6:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"8:1\",source=\"hot\"}": 851866.555,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"9:1\",source=\"hot\"}": 851866.555
+  },
+  "finished_at_utc": "2026-11-06T14:22:14.299179+00:00",
+  "fixture": {
+    "archive_age_ms": 10201260,
+    "boundary_ms": 1793962800000,
+    "created_at_ms": 1793974801260,
+    "dense_hours": 2,
+    "dense_start_ms": 1793955600000,
+    "history_hours": 24,
+    "ingestion_batch_series": 100,
+    "logical_samples": 12026400,
+    "next_eligible_at_ms": 1793976601260,
+    "replicas": 2,
+    "sample_interval_ms": 30000,
+    "series_per_tenant": 5000,
+    "sparse_history_series_per_tenant": 1,
+    "start_ms": 1793876400000,
+    "tenants": [
+      "1:1",
+      "2:1",
+      "3:1",
+      "4:1",
+      "5:1",
+      "6:1",
+      "7:1",
+      "8:1",
+      "9:1",
+      "10:1"
+    ],
+    "window_ms": 3600000
+  },
+  "hardware": {
+    "cgroup_cpu.max": "400000 100000",
+    "cgroup_memory.max": "17179869184",
+    "cgroup_memory.swap.max": "max",
+    "cpu_affinity_count": 5,
+    "cpu_model": "AMD EPYC 7763 64-Core Processor",
+    "host_mem_total_bytes": 18882662400,
+    "kernel": "6.18.57",
+    "machine": "x86_64",
+    "python": "3.12.14"
+  },
+  "ingestion_seconds": 66.99402035800085,
+  "latency_distributions_ms": {
+    "broad_1h": {
+      "count": 10,
+      "max": 306.5097609996883,
+      "median": 268.35330949961644,
+      "min": 240.50431400064554,
+      "p95": 306.5097609996883
+    },
+    "broad_complete_1h_sample_count": {
+      "count": 10,
+      "max": 296.4748189988313,
+      "median": 246.5258915008235,
+      "min": 234.02628199983155,
+      "p95": 296.4748189988313
+    },
+    "cache_pressure_revisit": {
+      "count": 1,
+      "max": 260.384705999968,
+      "median": 260.384705999968,
+      "min": 260.384705999968,
+      "p95": 260.384705999968
+    },
+    "metadata_label_names": {
+      "count": 10,
+      "max": 275.2673180002603,
+      "median": 248.3602250003969,
+      "min": 220.11489900069137,
+      "p95": 275.2673180002603
+    },
+    "metadata_label_values": {
+      "count": 10,
+      "max": 262.09907500015106,
+      "median": 235.4563959997904,
+      "min": 219.89694499825418,
+      "p95": 262.09907500015106
+    },
+    "metadata_series": {
+      "count": 10,
+      "max": 278.74529600012465,
+      "median": 242.50506850057718,
+      "min": 221.82327800146595,
+      "p95": 278.74529600012465
+    },
+    "narrow_1h_cold": {
+      "count": 10,
+      "max": 81.2831430012011,
+      "median": 65.561235000132,
+      "min": 54.437845001302776,
+      "p95": 81.2831430012011
+    },
+    "narrow_1h_warm": {
+      "count": 10,
+      "max": 73.36569300059637,
+      "median": 62.54156449904258,
+      "min": 51.08068600020488,
+      "p95": 73.36569300059637
+    },
+    "narrow_24h": {
+      "count": 10,
+      "max": 160.8060510006908,
+      "median": 128.0179510004018,
+      "min": 110.51831700024195,
+      "p95": 160.8060510006908
+    }
+  },
+  "measurements": [
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2684189.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 81.2831430012011,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 73.36569300059637,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 519734.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 275.9916790000716,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 268.431167000017,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2702729.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 110.51831700024195,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 254.71845799984294,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 235.43039799915277,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 245.80049700125528,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "1:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2684226.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 58.3574080010294,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 59.872263998840936,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 528924.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 262.3291870004323,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 262.6407249990734,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2702766.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 115.12936300096044,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 228.0839830000332,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 236.3357129997894,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 239.36492099892348,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "2:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2684235.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 65.41587799983972,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 52.36705600145797,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 529894.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 269.30374600124196,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 250.1903920001496,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2702815.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 112.60311899968656,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 230.41735799961316,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 226.97594499913976,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 235.52161199950206,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "3:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2684235.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 54.437845001302776,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 51.89826700006961,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 529894.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 240.50431400064554,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 257.75600299857615,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2702815.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 132.9005870011315,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 244.6474450007372,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 219.89694499825418,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 239.54328100080602,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "4:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2684235.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 67.1630519991595,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 65.97285399948305,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 529894.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 284.4332929998927,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 234.02628199983155,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2702815.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 119.8755830009759,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 252.07300500005658,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 252.69672200010973,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 224.46054900137824,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "5:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2693103.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 78.75737400172511,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 51.648478000061004,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 534710.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 268.0298880004557,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 239.5429759999388,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2709185.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 129.04220900054497,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 220.11489900069137,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 234.58414000015182,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 258.75726499907614,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "6:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2691499.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 62.7646779994393,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 67.83287799953541,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 534054.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 268.33370799977274,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 240.4791809985909,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2707239.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 129.3135579999216,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 222.4679560004006,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 228.92995699839958,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 264.30633299969486,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "7:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2693445.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 65.70659200042428,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 65.34911500057206,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 534870.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 268.37291099946015,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 240.58398799934366,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2708126.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 131.36814199970104,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 275.00603000044066,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 262.09907500015106,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 278.74529600012465,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "8:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2692031.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 77.36690700039617,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 65.21086499924422,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 534112.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 306.5097609996883,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 296.4748189988313,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2708301.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 126.99369300025865,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 270.83521299937274,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 241.83696299951407,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 245.46685600034834,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "9:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2693806.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "narrow_1h_cold",
+      "latency_ms": 58.00244899910467,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "narrow_1h_warm",
+      "latency_ms": 51.08068600020488,
+      "params": {
+        "end": 1793959170.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 535374.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 3.0
+      },
+      "kind": "broad_1h",
+      "latency_ms": 260.4187249999086,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "independent_expected_sample_count": 600000,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "broad_complete_1h_sample_count",
+      "latency_ms": 242.8613910014974,
+      "params": {
+        "query": "sum(count_over_time(qualify_load[1h]))",
+        "time": 1793959199.999,
+        "timeout": "30s"
+      },
+      "path": "query",
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 2709566.0,
+        "vmtier_object_get_requests_total": 22.0,
+        "vmtier_object_range_requests_total": 23.0
+      },
+      "kind": "narrow_24h",
+      "latency_ms": 160.8060510006908,
+      "params": {
+        "end": 1793962770.0,
+        "query": "qualify_load{instance=\"00000\"}",
+        "start": 1793876400.0,
+        "step": "5m",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_names",
+      "latency_ms": 275.2673180002603,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "labels",
+      "result_items": 4,
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_label_values",
+      "latency_ms": 235.48239400042803,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "label/instance/values",
+      "result_items": 5000,
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 0.0,
+        "vmtier_object_get_requests_total": 0.0,
+        "vmtier_object_range_requests_total": 0.0
+      },
+      "kind": "metadata_series",
+      "latency_ms": 221.82327800146595,
+      "params": {
+        "end": 1793959199.999,
+        "match[]": "qualify_load",
+        "start": 1793955600.0
+      },
+      "path": "series",
+      "result_items": 5000,
+      "tenant": "10:1"
+    },
+    {
+      "exact": true,
+      "io_delta": {
+        "vmtier_object_download_bytes_total": 3203923.0,
+        "vmtier_object_get_requests_total": 2.0,
+        "vmtier_object_range_requests_total": 2.0
+      },
+      "kind": "cache_pressure_revisit",
+      "latency_ms": 260.384705999968,
+      "params": {
+        "end": 1793959170.0,
+        "query": "sum(qualify_load)",
+        "start": 1793955900.0,
+        "step": "60s",
+        "timeout": "30s"
+      },
+      "path": "query_range",
+      "tenant": "1:1"
+    }
+  ],
+  "memory": {
+    "metric_peaks": {
+      "vmtier_archive_bytes_total": 64555892.0,
+      "vmtier_archive_committed_windows_total": 240.0,
+      "vmtier_archive_failed_passes_total": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"10:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"1:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"2:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"3:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"4:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"5:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"6:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"7:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"8:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"canceled\"}": 0.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"error\"}": 21.0,
+      "vmtier_archive_failed_windows_total{tenant=\"9:1\",source=\"hot\",reason=\"timeout\"}": 0.0,
+      "vmtier_archive_lag_seconds{tenant=\"10:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"1:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"2:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"3:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"4:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"5:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"6:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"7:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"8:1\"}": 86400.0,
+      "vmtier_archive_lag_seconds{tenant=\"9:1\"}": 86400.0,
+      "vmtier_archive_last_commit_timestamp_seconds": 1793974913.0,
+      "vmtier_archive_pack_bytes": 2403.0,
+      "vmtier_archive_pack_peak_bytes": 11651352.0,
+      "vmtier_archive_passes_total": 180.0,
+      "vmtier_archive_samples_total": 12026400.0,
+      "vmtier_archive_verifier_bytes": 22758840.0,
+      "vmtier_archive_verifier_peak_bytes": 22758840.0,
+      "vmtier_blocks_total": 820492.0,
+      "vmtier_cache_entries": 20168.0,
+      "vmtier_cache_evictions_total": 90884.0,
+      "vmtier_cache_hits_total": 810816.0,
+      "vmtier_cache_inflight_reads": 0.0,
+      "vmtier_cache_limit_bytes": 16777216.0,
+      "vmtier_cache_misses_total": 110945.0,
+      "vmtier_cache_used_bytes": 16777004.0,
+      "vmtier_catalog_capacity_available": 1.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 10640835.0,
+      "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 53915057.0,
+      "vmtier_catalog_file_bytes{file=\"database\"}": 245760.0,
+      "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+      "vmtier_catalog_file_bytes{file=\"wal\"}": 4194192.0,
+      "vmtier_catalog_generation": 240.0,
+      "vmtier_catalog_packs": 240.0,
+      "vmtier_catalog_windows": 240.0,
+      "vmtier_coverage_end_ms{tenant=\"10:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"1:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"2:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"3:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"4:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"5:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"6:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"7:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"8:1\"}": 1793962800000.0,
+      "vmtier_coverage_end_ms{tenant=\"9:1\"}": 1793962800000.0,
+      "vmtier_go_heap_alloc_bytes_total": 24850221904.0,
+      "vmtier_go_heap_objects_bytes": 129672016.0,
+      "vmtier_go_heap_released_bytes": 96944128.0,
+      "vmtier_go_memory_total_bytes": 181074216.0,
+      "vmtier_object_download_bytes_total": 67759815.0,
+      "vmtier_object_get_requests_total": 482.0,
+      "vmtier_object_put_requests_total": 480.0,
+      "vmtier_object_range_requests_total": 292.0,
+      "vmtier_query_decoded_bytes_total": 6356797440.0,
+      "vmtier_query_errors_total": 4.0,
+      "vmtier_query_index_estimate_peak_bytes": 5778960.0,
+      "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 4.0,
+      "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+      "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+      "vmtier_query_memory_limit_bytes": 268435456.0,
+      "vmtier_query_memory_reserved_bytes": 268435456.0,
+      "vmtier_query_read_bytes_total": 482825184.0,
+      "vmtier_query_requests_total": 164.0,
+      "vmtier_query_result_estimate_bytes_total": 500500120.0,
+      "vmtier_query_work_bytes": 134217728.0,
+      "vmtier_query_work_peak_bytes": 92230309.0,
+      "vmtier_ready": 1.0,
+      "vmtier_retention_headroom_seconds{tenant=\"10:1\"}": 851902.974,
+      "vmtier_retention_headroom_seconds{tenant=\"1:1\"}": 851900.753,
+      "vmtier_retention_headroom_seconds{tenant=\"2:1\"}": 851898.782,
+      "vmtier_retention_headroom_seconds{tenant=\"3:1\"}": 851896.903,
+      "vmtier_retention_headroom_seconds{tenant=\"4:1\"}": 851895.33,
+      "vmtier_retention_headroom_seconds{tenant=\"5:1\"}": 851893.401,
+      "vmtier_retention_headroom_seconds{tenant=\"6:1\"}": 851891.46,
+      "vmtier_retention_headroom_seconds{tenant=\"7:1\"}": 851889.522,
+      "vmtier_retention_headroom_seconds{tenant=\"8:1\"}": 851887.954,
+      "vmtier_retention_headroom_seconds{tenant=\"9:1\"}": 851886.07,
+      "vmtier_stream_archive_lag_seconds{tenant=\"10:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"1:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"2:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"3:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"4:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"5:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"6:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"7:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"8:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_archive_lag_seconds{tenant=\"9:1\",source=\"hot\"}": 86400.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"10:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"1:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"2:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"3:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"4:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"5:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"6:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"7:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"8:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_coverage_end_ms{tenant=\"9:1\",source=\"hot\"}": 1793962800000.0,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"10:1\",source=\"hot\"}": 851902.974,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"1:1\",source=\"hot\"}": 851900.753,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"2:1\",source=\"hot\"}": 851898.782,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"3:1\",source=\"hot\"}": 851896.903,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"4:1\",source=\"hot\"}": 851895.33,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"5:1\",source=\"hot\"}": 851893.401,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"6:1\",source=\"hot\"}": 851891.46,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"7:1\",source=\"hot\"}": 851889.522,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"8:1\",source=\"hot\"}": 851887.954,
+      "vmtier_stream_retention_headroom_seconds{tenant=\"9:1\",source=\"hot\"}": 851886.07
+    },
+    "metrics_every_samples": 3,
+    "metrics_timeout_seconds": 1,
+    "minimum_observed_retention_headroom_seconds": 765529.213,
+    "nominal_proc_interval_seconds": 0.1,
+    "observed_proc_interval_seconds": {
+      "max": 0.28230123100001947,
+      "median": 0.10585485299998254
+    },
+    "per_process_peaks": {
+      "cold-select": {
+        "VmHWM_bytes": 28925952,
+        "VmRSS_bytes": 28782592
+      },
+      "cold-select-measured": {
+        "VmHWM_bytes": 27856896,
+        "VmRSS_bytes": 26324992
+      },
+      "cold-select-recovered": {
+        "VmHWM_bytes": 15855616,
+        "VmRSS_bytes": 15855616
+      },
+      "cold-select-refusal": {
+        "VmHWM_bytes": 17051648,
+        "VmRSS_bytes": 17051648
+      },
+      "hot-insert-full": {
+        "VmHWM_bytes": 54538240,
+        "VmRSS_bytes": 54112256
+      },
+      "hot-select-full": {
+        "VmHWM_bytes": 38338560,
+        "VmRSS_bytes": 38109184
+      },
+      "hot-storage-0-full": {
+        "VmHWM_bytes": 126844928,
+        "VmRSS_bytes": 125796352
+      },
+      "hot-storage-1-full": {
+        "VmHWM_bytes": 140218368,
+        "VmRSS_bytes": 137912320
+      },
+      "reference-insert-full": {
+        "VmHWM_bytes": 53260288,
+        "VmRSS_bytes": 53260288
+      },
+      "reference-select-full": {
+        "VmHWM_bytes": 29609984,
+        "VmRSS_bytes": 28520448
+      },
+      "reference-storage-0-full": {
+        "VmHWM_bytes": 133279744,
+        "VmRSS_bytes": 130625536
+      },
+      "reference-storage-1-full": {
+        "VmHWM_bytes": 136445952,
+        "VmRSS_bytes": 134574080
+      },
+      "serve-cold-cache": {
+        "VmHWM_bytes": 154406912,
+        "VmRSS_bytes": 154398720
+      },
+      "serve-explicit-refusal": {
+        "VmHWM_bytes": 15380480,
+        "VmRSS_bytes": 15380480
+      },
+      "serve-recovered": {
+        "VmHWM_bytes": 66101248,
+        "VmRSS_bytes": 66101248
+      },
+      "serve-workload": {
+        "VmHWM_bytes": 183836672,
+        "VmRSS_bytes": 183836672
+      }
+    },
+    "phases": {
+      "archive-catchup-with-queries": {
+        "cgroup_memory_current_bytes_peak": 3517509632,
+        "combined_children_rss_bytes_peak": 782548992,
+        "samples": 413,
+        "vmtier_rss_bytes_peak": 183836672
+      },
+      "budget-restored-recovery": {
+        "cgroup_memory_current_bytes_peak": 3359973376,
+        "combined_children_rss_bytes_peak": 601497600,
+        "samples": 3,
+        "vmtier_rss_bytes_peak": 66101248
+      },
+      "cache-cold-warm-pressure": {
+        "cgroup_memory_current_bytes_peak": 3476246528,
+        "combined_children_rss_bytes_peak": 714547200,
+        "samples": 175,
+        "vmtier_rss_bytes_peak": 117309440
+      },
+      "concurrent-query-admission": {
+        "cgroup_memory_current_bytes_peak": 3455840256,
+        "combined_children_rss_bytes_peak": 698322944,
+        "samples": 4,
+        "vmtier_rss_bytes_peak": 154398720
+      },
+      "explicit-read-budget-refusal": {
+        "cgroup_memory_current_bytes_peak": 3309244416,
+        "combined_children_rss_bytes_peak": 551972864,
+        "samples": 3,
+        "vmtier_rss_bytes_peak": 15380480
+      },
+      "ingestion": {
+        "cgroup_memory_current_bytes_peak": 3316539392,
+        "combined_children_rss_bytes_peak": 626388992,
+        "samples": 541,
+        "vmtier_rss_bytes_peak": 14819328
+      },
+      "setup": {
+        "cgroup_memory_current_bytes_peak": 2793390080,
+        "combined_children_rss_bytes_peak": 119758848,
+        "samples": 10,
+        "vmtier_rss_bytes_peak": 0
+      },
+      "source-outage": {
+        "cgroup_memory_current_bytes_peak": 3279880192,
+        "combined_children_rss_bytes_peak": 598704128,
+        "samples": 20,
+        "vmtier_rss_bytes_peak": 18391040
+      }
+    },
+    "raw_samples_file": "memory-samples.json",
+    "raw_samples_sha256": "2b5c4f038d1d7e01d5bbe50f16e55eb23c4bcc54c6bad227acc6912463f9aa5c",
+    "sample_count": 1169,
+    "scope": "RSS includes shared pages in each process; synchronized sums are not unique physical memory. VmHWM values are individual, never summed. cgroup includes other session work. Python proxy/ingestion harness RSS is separate. Sampling can miss shorter peaks."
+  },
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "f7d52efaae90c90585832893f926422b457a643722e55c4e13cffbc22a739685",
+      "vmselect": "a1f8fc3b7efd708c734f1817a1eea777319bfb4baae50292994336ded1f9998c",
+      "vmstorage": "4fd7f1fe6fa9e32af350ecbec5517c5a0d7633637b031e4b61fbaad862544131",
+      "vmtier": "783f9cf6072cf2248c9fecb119f2a807ce3f8c1274d52f798772ee153c978fba"
+    },
+    "executor_hostname": "36765b6c3f29",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "a21e9a75ab811085b1ef84ce528b564ed6cd582e619d213ec3c5aed591e03790",
+    "harness_sha256": {
+      "e2e.py": "d1cb61f6d5808ea070a0d6668a6d71c87044c24c7bac277ae526b7cb83baff65",
+      "e2e_serve.py": "6e89d7e7d492de9b3aa7ab28436dd934e33ea78aa007723c3766a476cc77c968",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    },
+    "qualification_harness_sha256": "00dfe578085c155f6f106491c73987863a28f1381f3ee8ad31dd29a2fe0295a7"
+  },
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:46443",
+          "-vminsertAddr=127.0.0.1:38637",
+          "-vmselectAddr=127.0.0.1:40813",
+          "-storageDataPath=/workspace/vmtier/.cache/qualification-5000/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 69811
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:40699",
+          "-vminsertAddr=127.0.0.1:57483",
+          "-vmselectAddr=127.0.0.1:53997",
+          "-storageDataPath=/workspace/vmtier/.cache/qualification-5000/reference-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-1-full",
+        "pid": 69818
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:48251",
+          "-storageNode=127.0.0.1:38637,127.0.0.1:57483",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 69825
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:33141",
+          "-storageNode=127.0.0.1:40813,127.0.0.1:53997",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/qualification-5000/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 69832
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:49381",
+          "-vminsertAddr=127.0.0.1:45057",
+          "-vmselectAddr=127.0.0.1:34347",
+          "-storageDataPath=/workspace/vmtier/.cache/qualification-5000/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 69839
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:44191",
+          "-vminsertAddr=127.0.0.1:57257",
+          "-vmselectAddr=127.0.0.1:53993",
+          "-storageDataPath=/workspace/vmtier/.cache/qualification-5000/hot-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-1-full",
+        "pid": 69846
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:37811",
+          "-storageNode=127.0.0.1:45057,127.0.0.1:57257",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 69853
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:48643",
+          "-storageNode=127.0.0.1:34347,127.0.0.1:53993",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/qualification-5000/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 69860
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "catalog-init",
+          "-backend",
+          "sqlite",
+          "-config",
+          "/workspace/vmtier/.cache/qualification-5000/config.json",
+          "-path",
+          "/workspace/vmtier/.cache/qualification-5000/catalog",
+          "-id",
+          "workload-qualification"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "init"
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/qualification-5000/config.json",
+          "-listen",
+          "127.0.0.1:58173",
+          "-http",
+          "127.0.0.1:53061"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-workload",
+        "pid": 69898
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:33493",
+          "-storageNode=127.0.0.1:58173",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/qualification-5000/cold-select",
+          "-search.maxLabelsAPIDuration=30s"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-select",
+        "pid": 69915
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/qualification-5000/config.json",
+          "-listen",
+          "127.0.0.1:58173",
+          "-http",
+          "127.0.0.1:53061"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-cold-cache",
+        "pid": 71088
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:32781",
+          "-storageNode=127.0.0.1:58173",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/qualification-5000/cold-select-measured",
+          "-search.maxLabelsAPIDuration=30s"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-select-measured",
+        "pid": 71095
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/qualification-5000/config.json",
+          "-listen",
+          "127.0.0.1:58173",
+          "-http",
+          "127.0.0.1:53061"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-explicit-refusal",
+        "pid": 71139
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:43195",
+          "-storageNode=127.0.0.1:58173",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/qualification-5000/cold-select-refusal",
+          "-search.maxLabelsAPIDuration=30s"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-select-refusal",
+        "pid": 71146
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "serve",
+          "-config",
+          "/workspace/vmtier/.cache/qualification-5000/config.json",
+          "-listen",
+          "127.0.0.1:58173",
+          "-http",
+          "127.0.0.1:53061"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-recovered",
+        "pid": 71154
+      },
+      {
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:55097",
+          "-storageNode=127.0.0.1:58173",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/vmtier/.cache/qualification-5000/cold-select-recovered",
+          "-search.maxLabelsAPIDuration=30s"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-select-recovered",
+        "pid": 71162
+      }
+    ],
+    "selected_GOMAXPROCS": "2",
+    "selection": "default"
+  },
+  "scope": "Disposable loopback local filesystem. No real provider, natural retention, external ingress enforcement, or universal latency SLO.",
+  "source_outage": {
+    "failed_http_requests": 200,
+    "generation_before_recovery": 0,
+    "seconds": 2.00111000600009
+  },
+  "started_at_utc": "2026-11-06T14:20:00.325525+00:00",
+  "status": "passed",
+  "vm_revision": "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"
+}

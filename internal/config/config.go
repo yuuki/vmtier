@@ -17,6 +17,7 @@ import (
 	"github.com/yuuki/vmtier/internal/archive"
 	"github.com/yuuki/vmtier/internal/catalog"
 	"github.com/yuuki/vmtier/internal/cold"
+	"github.com/yuuki/vmtier/internal/gateway"
 	"github.com/yuuki/vmtier/internal/objectstore"
 	"github.com/yuuki/vmtier/internal/pack"
 )
@@ -71,6 +72,8 @@ type Config struct {
 	CoverageStart                            int64    `json:"coverage_start_ms"`
 	CacheBytes                               int64    `json:"cache_bytes"`
 	MaxQueryBytes                            int64    `json:"max_query_bytes"`
+	MaxPackBlocks                            int      `json:"max_pack_blocks,omitempty"`
+	QueryMemoryBytes                         int64    `json:"query_memory_bytes,omitempty"`
 	age, retention, lateness, safety, window time.Duration
 	archiveInterval                          time.Duration
 	archiveLeaseTTL                          time.Duration
@@ -254,7 +257,26 @@ func (c *Config) Validate() error {
 	if c.CacheBytes < 0 || c.CacheBytes > 256<<20 || c.MaxQueryBytes < 0 || c.MaxQueryBytes > 1<<30 {
 		return errors.New("cache/query budgets outside safe bounds")
 	}
+	if c.MaxPackBlocks < 0 || c.MaxPackBlocks > pack.DefaultLimits().MaxBlocks {
+		return errors.New("max_pack_blocks must be 0 (default) or 1..100000")
+	}
+	limits := c.GatewayLimits()
+	if c.QueryMemoryBytes < 0 || limits.QueryMemoryBytes < limits.QueryWorkBytes || limits.QueryMemoryBytes > 8<<30 {
+		return errors.New("query_memory_bytes must cover max_query_bytes and be at most 8 GiB (defaults: 256 MiB shared, 128 MiB per query)")
+	}
 	return nil
+}
+
+// GatewayLimits reserves the reader's full logical work budget before each query.
+func (c *Config) GatewayLimits() gateway.Limits {
+	work, shared := c.MaxQueryBytes, c.QueryMemoryBytes
+	if work == 0 {
+		work = 128 << 20
+	}
+	if shared == 0 {
+		shared = 256 << 20
+	}
+	return gateway.Limits{QueryWorkBytes: work, QueryMemoryBytes: shared}
 }
 
 // ValidateArchiveRange prevents partial or differently aligned windows from
@@ -302,7 +324,7 @@ func (c *Config) Archive(start, end int64) archive.Config {
 	for i, s := range c.Sources {
 		sources[i] = archive.Source{ID: s.ID, URL: s.URL}
 	}
-	return archive.Config{CoverageStart: c.CoverageStart, Tenants: c.Tenants, Sources: sources, StartMS: start, EndMS: end, Age: c.age, Retention: c.retention, Lateness: c.lateness, SafetyMargin: c.safety, Window: c.window, LatenessEnforced: c.LatenessEnforced}
+	return archive.Config{CoverageStart: c.CoverageStart, Tenants: c.Tenants, Sources: sources, StartMS: start, EndMS: end, Age: c.age, Retention: c.retention, Lateness: c.lateness, SafetyMargin: c.safety, Window: c.window, LatenessEnforced: c.LatenessEnforced, PackLimits: pack.Limits{MaxBlocks: c.MaxPackBlocks}}
 }
 func (c *Config) Reader(s objectstore.BlobStore, cs catalog.Store) *cold.Reader {
 	r := &cold.Reader{Store: s, CatalogStore: cs, DedupMS: 1, LatenessMS: c.lateness.Milliseconds(), Tenants: map[string]bool{}, SourceFingerprints: map[string]string{}, CoverageStart: c.CoverageStart, Age: c.age, Window: c.window, CacheBytes: c.CacheBytes, MaxQueryBytes: c.MaxQueryBytes}

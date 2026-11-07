@@ -23,28 +23,33 @@ jobs:
     env:
       VMTIER_TEST_POSTGRES_DSN: postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
-          go-version: '1.27.3'
+          go-version-file: go.mod
           cache: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.15.2'
       - run: python -m unittest discover -s scripts -p 'test_*.py'
       - run: make bootstrap build test race vet stock
+      - name: Exercise workload qualification harness
+        run: python scripts/qualify_workload.py --tenants 2 --series 1000 --history-hours 4 --dense-hours 2 --replicas 2 --workdir .cache/ci-workload
+      - name: Exercise catalog qualification harness
+        run: python scripts/catalog_capacity.py --hours 24 --tenants 2 --repeats 1 --output .cache/ci-catalog/results.json --workdir .cache/ci-catalog/work
       - run: python -m pip install -r scripts/requirements-e2e.txt
       - run: sudo apt-get update && sudo apt-get install -y haproxy postgresql-client
       - run: python scripts/e2e.py --backend local --workdir .cache/ci-local
       - run: python scripts/e2e.py --backend s3 --replicas 2 --workdir .cache/ci-s3
       - run: python scripts/e2e_serve.py --backend local --workdir .cache/ci-serve-local
-      - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --workdir .cache/ci-serve-s3
-      - run: python scripts/e2e_postgres.py --replicas 2 --workdir .cache/ci-postgres-ha
-      - run: python scripts/e2e_postgres.py --replicas 2 --migrate-sqlite --workdir .cache/ci-postgres-migration
+      - run: python scripts/e2e_serve.py --backend s3 --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-serve-s3
+      - run: python scripts/e2e_recovery.py --workdir .cache/ci-recovery-local
+      - run: python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir .cache/ci-postgres-ha
+      - run: python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir .cache/ci-postgres-migration
       - name: Package E2E evidence
         if: always()
         run: python scripts/package_evidence.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: e2e-evidence

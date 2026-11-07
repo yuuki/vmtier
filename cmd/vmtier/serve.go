@@ -119,10 +119,9 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	if err != nil {
 		return err
 	}
-	api := gateway.New(serviceBackend{ctx, reader}, gateway.Limits{})
+	api := gateway.NewWithContext(ctx, serviceBackend{ctx, reader}, c.GatewayLimits())
 	rpc, err := vmselectapi.NewServer(rpcAddr, api, vmselectapi.Limits{
-		MaxLabelNames: 10000, MaxLabelValues: 100000, MaxTagValueSuffixes: 10000,
-		MaxConcurrentRequests: 8, MaxQueueDuration: 5 * time.Second,
+		MaxConcurrentRequests: 8, MaxQueueDuration: 0,
 		MaxQueueDurationFlagName: "vmtier queue timeout", MaxConcurrentRequestsFlagName: "vmtier concurrency",
 	}, false)
 	if err != nil {
@@ -134,6 +133,7 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 		return err
 	}
 	var stats serviceStats
+	stats.windowFailures.init(c)
 	web := &http.Server{Handler: serveMux(c, reader, api, blobs, &stats), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
 	defer func() {
 		cancel()
@@ -145,18 +145,20 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}()
 	webDone := make(chan error, 1)
 	go func() { webDone <- web.Serve(ln) }()
-	archiver := &archive.Archiver{Store: blobs, Catalog: db, Config: c.Archive(0, 0), RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout()}
+	newArchiver := func(repo catalog.Repository) archivePassRunner {
+		cfg := c.Archive(0, 0)
+		cfg.Memory = &stats.archiveMemory
+		return &archive.Archiver{Store: blobs, Catalog: repo, Config: cfg, RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
+	}
 	archiveDone := make(chan struct{})
 	go func() {
 		defer close(archiveDone)
 		if pg, ok := db.(*catalog.Postgres); ok {
-			runPostgresArchiveLoop(ctx, pg, func(repo catalog.Repository) archivePassRunner {
-				return &archive.Archiver{Store: blobs, Catalog: repo, Config: c.Archive(0, 0), RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout()}
-			}, c.ArchiveInterval(), c.ArchiveLeaseTTL(), &stats)
+			runPostgresArchiveLoop(ctx, pg, newArchiver, c.ArchiveInterval(), c.ArchiveLeaseTTL(), &stats)
 		} else {
 			stats.leader.Store(true)
 			defer stats.leader.Store(false)
-			runArchiveLoop(ctx, archiver, c.ArchiveInterval(), &stats)
+			runArchiveLoop(ctx, newArchiver(db), c.ArchiveInterval(), &stats)
 		}
 	}()
 	defer func() { cancel(); <-archiveDone }()
@@ -186,6 +188,8 @@ func (b serviceBackend) Search(ctx context.Context, q *storage.SearchQuery) ([]s
 }
 
 type serviceStats struct {
+	windowFailures                            windowFailureMetrics
+	archiveMemory                             archive.MemoryStats
 	passes, failures, windows, samples, bytes atomic.Uint64
 	lastCommit                                atomic.Int64
 	leader                                    atomic.Bool
@@ -256,6 +260,7 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
+		writeCapacityMetrics(ctx, w, reader, api, stats)
 		state, err := reader.CatalogStatus(ctx)
 		ready := 0
 		if err == nil {

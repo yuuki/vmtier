@@ -33,7 +33,9 @@ export VMTIER_POSTGRES_DSN='postgres://USER@DB-ENDPOINT/DATABASE?sslmode=verify-
 ```
 
 Replace the example source, bucket, identity, coverage origin, and lateness
-assertion before initialization. Normal startup never initializes missing state.
+assertion before initialization. Both backends pin the current VM release and
+revision; an older catalog requires the [VM upgrade procedure](compatibility.md#codec-and-upgrades),
+not a schema upgrade or backend import. Normal startup never initializes missing state.
 Contract, identity, and blob-locator checks precede object-store access. The
 service's read readiness does not require owning the archive lease; a standby can
 serve all covered queries. S3 or catalog failures still fail required reads.
@@ -46,7 +48,9 @@ token is checked under the same transaction lock used for publication, so an old
 owner cannot publish after takeover. Raw unfenced PostgreSQL publication is rejected.
 Already uploaded objects from a losing attempt can remain unreferenced; no GC runs.
 
-Schema 2 introduces leases. Stop schema-1 writers before an explicit upgrade:
+Schema 2 introduces leases. The schema upgrade requires an already compatible
+VM pin; it does not convert v1.128.0 catalogs or packs to v1.155.0. Stop schema-1
+writers before an explicit upgrade:
 
 ```sh
 .bin/vmtier catalog-upgrade -backend postgres -config postgres.json
@@ -97,9 +101,9 @@ means a prolonged synchronous-replication wait can return an error to the caller
 
 ## Build and integration tests
 
-Bootstrap pins and verifies the `github.com/lib/pq v1.10.9` archive in addition to
-the existing VM and SQLite dependencies. It generates the vendor tree without
-updating unrelated modules. See [third-party notices](../THIRD_PARTY_NOTICES.md).
+Bootstrap downloads the committed Go module versions, verifies their checksums,
+and regenerates the vendor tree with `go mod vendor`. The PostgreSQL driver is
+`github.com/lib/pq v1.10.9`; dependencies are not updated during bootstrap. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 Use a **disposable test database** with permission to create/drop test schemas.
 The integration suite creates isolated schemas and removes them on completion.
