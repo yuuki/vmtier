@@ -1,4 +1,11 @@
-# First-release design
+# First-release design and roadmap
+
+For the architecture that exists today, read the [architecture and source map](architecture.md).
+For deployment, use the [SQLite service guide](serve.md) or
+[PostgreSQL HA guide](ha-deployment.md). This document records the target design
+and delivery plan, including requirements that are not yet implemented.
+The status table and delivery stages below distinguish current behavior from that
+target; proposed capacity fixtures are not support claims.
 
 The [PostgreSQL catalog and service](postgres-catalog.md) and
 [ADR 0004](adr/0004-postgresql-catalog.md) extend the original single-host design

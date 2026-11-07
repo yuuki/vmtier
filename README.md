@@ -66,6 +66,8 @@ the committed Go modules, and regenerates `vendor/`. CI uses Go 1.27.3 and Pytho
 Follow [getting started](docs/getting-started.md) to run a disposable SQLite demo
 or configure a service for an existing Hot cluster. It covers prerequisites,
 capacity preflight, explicit catalog initialization, and query frontend setup.
+The [configuration example guide](examples/README.md) explains which template to
+use and which deployment values to supply.
 For PostgreSQL, follow the [catalog guide](docs/postgres-catalog.md) or
 [stopped-SQLite migration procedure](docs/postgres-migration.md).
 

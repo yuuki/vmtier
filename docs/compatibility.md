@@ -19,7 +19,9 @@ The SQLite and [PostgreSQL](postgres-catalog.md) `serve` backends and legacy JSO
 
 ## RPC and HTTP support
 
-Stock vmselect serves the HTTP API; vmtier implements storage RPC only.
+Stock vmselect serves the metric query HTTP API. vmtier implements storage read
+RPC and its own health/readiness/metrics HTTP endpoints; it does not expose a
+Prometheus query endpoint.
 
 | RPC | Gateway behavior | Use |
 | --- | --- | --- |
@@ -41,7 +43,7 @@ A tenant is an accountID/projectID pair. Native exported metric names omit it, s
 
 The gateway uses the storage query's actual time range. VM evaluates `rate`, `increase`, rollups, offsets, subqueries, and `@`. Before sending results, vmtier validates query limits, tenant, codec, and checksums of all selected blocks. Missing, corrupt, or timed-out Cold data is an error rather than an empty result.
 
-The top-level vmselect requires `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false -search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`. Cold is not a replica of Hot. Consistency with the frontend result cache enabled is outside the MVP contract; immutable S3 block caching is independent and remains available.
+The top-level vmselect requires `-replicationFactor=1 -globalReplicationFactor=1 -search.skipSlowReplicas=false -search.denyPartialResponse=true -search.disableCache=true -dedup.minScrapeInterval=1ms`. Cold is not a replica of Hot. Consistency with the frontend result cache enabled is outside the current contract; immutable S3 block caching is independent and remains available.
 
 Cold metadata is calculated from actual Cold data ranges. Upstream Hot metadata can return broader ranges because its index uses daily granularity; parity is evaluated per API in E2E tests. Support does not extend to Graphite, cross-tenant discovery, or administrative statistics.
 
@@ -54,6 +56,11 @@ and recovery evidence in their separate reports. These fixture results do not
 establish a production latency guarantee or qualify every dependency version.
 
 The public RPC API passes a context with a deadline to the gateway. The gateway propagates it to Cold reads and applies its own maximum request duration. The upstream server constructs this context from a second-level RPC deadline and cancels it when the storage RPC connection closes. Immediate propagation of an HTTP client disconnect through stock vmselect has not been validated. Limits on concurrency, queueing, response bytes, and series/blocks produce explicit errors when exceeded.
+
+Both service backends and the retained JSON v2 gateway reserve logical query work
+before backend search, without a deliberate admission queue. Configured S3 request
+budgets use a separate bounded queue. [Memory accounting](query-memory.md) explains the allowances and
+why they are not a process RSS limit.
 
 ## Codec and upgrades
 
@@ -101,8 +108,6 @@ a collision containing only stale markers remains stale. vmtier uses upstream
 old release's stale-marker precedence and is another reason to rearchive and
 compare queries during an upgrade.
 
-
-
 ## S3 and catalog backends
 
 | Area | Implemented requirement |
@@ -124,6 +129,11 @@ objects; see [SQLite maintenance](sqlite-catalog.md). The
 a new ID without rewriting objects. SQLite `inspect` and `verify` are offline;
 PostgreSQL supports online inspection and verification with allocated S3 budget.
 Standalone `archive` and `gateway` reject both service catalog types.
+
+Both service writers rotate bounded packs within one logical window and publish
+zero packs for a verified empty window; the retained JSON v2 writer emits one pack
+per window. [Capacity preflight](preflight.md) sizes the shared service pipeline
+without opening a catalog or object store.
 
 The following HTTP API belongs only to the legacy JSON v2 catalog. `serve` has no
 catalog HTTP listener. Catalog HTTP is an internal API for trusted networks, not a
@@ -155,7 +165,8 @@ The native pack-to-gateway-to-stock-vmselect spike and exact comparisons after r
 
 Differential tests normalize label/series ordering, compare timestamps and values without tolerance, disable result caches, and use 1ms deduplication on both sides. They provide evidence for the fixture, not every MetricsQL function, cardinality, or VM release. Local S3 test doubles and the restriction proxy do not establish real Sakura/AWS IAM, SigV4 authentication, consistency SLAs, durability, or performance.
 
-GitHub Actions workflows exercise build, repository, and differential checks.
+GitHub Actions workflows exercise build, repository, and differential checks; see
+[testing](testing.md) for commands and evidence locations.
 Evaluate hosted results against their exact commit; local runs and historical
 reports do not substitute for successful CI on a new dependency set. The
 [PostgreSQL HA report](postgres-ha-validation.md) retains earlier gateway,

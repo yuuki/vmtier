@@ -9,7 +9,11 @@ read [limits](limits.md) and [compatibility](compatibility.md).
 ## Build from source
 
 Use Linux amd64, Go 1.27.3 and Python 3.15.2 (the pinned toolchains),
-a C compiler with CGO enabled, make, curl, tar, and sha256sum. Allow enough disk space for Go module/build caches and disposable test data. Docker is not required.
+a C compiler with CGO enabled, make, curl, tar, and sha256sum. Allow enough disk
+space for Go module/build caches and disposable test data. Bootstrap needs network
+access to GitHub source archives and the Go module proxy; S3 test setup also needs
+Python package repositories. Docker and a real S3 account are not required for
+the disposable demos.
 
 ```sh
 ./scripts/bootstrap.sh
@@ -34,11 +38,13 @@ python3 scripts/e2e_serve.py --backend local --workdir .cache/demo-serve-local
 ```
 
 The harness starts isolated VM processes, ingests synthetic data, archives it,
-reconstructs Hot with recent samples only, and compares Cold/Hot/boundary queries
-with a full-history reference. It stops its processes when finished and retains
-logs and `results.json`. The work directory must not already exist, and the host
-must permit local TCP listeners. This is an automated demonstration, not a
-long-running deployment or a natural retention-expiry test.
+reconstructs Hot with recent samples only, and runs 360 exact Cold/Hot/boundary
+query comparisons with a full-history reference. It creates its own configuration,
+SQLite state, and local objects. The host must permit local TCP listeners. Use a
+new or empty work directory; omitting `--workdir` creates a temporary directory.
+The harness stops its processes when finished and retains logs and `results.json`.
+This is an automated demonstration, not a long-running deployment or a natural
+retention-expiry test.
 
 For S3 API testing using a disposable Moto backend:
 
@@ -49,12 +55,15 @@ python -m pip install -r scripts/requirements-e2e.txt
 python scripts/e2e_serve.py --backend s3 --replicas 2 --workdir .cache/demo-serve-s3
 ```
 
-These tests do not connect to an existing VM or real S3 bucket. See
+The activated environment supplies `moto_server`. A local proxy rejects conditional
+requests and removes ETags to exercise the supported S3 API subset. These tests
+use disposable credentials and do not connect to an existing VM or real S3 bucket. See
 [testing](testing.md) for regression suites and interpretation of results.
 
 ## Configure an existing Hot cluster
 
-1. Copy [examples/serve-sakura.json](../examples/serve-sakura.json) to `serve.json`.
+1. Copy [examples/serve-sakura.json](../examples/serve-sakura.json) to `serve.json`
+   (see the [example guide](../examples/README.md) for other backends).
    Set the endpoint, region, existing bucket, prefix, tenants, and Hot-only
    vmselect source URLs. Do not export from a combined Hot/Cold frontend.
 2. Choose archive age H, enforced lateness L, Hot retention R, safety margin, and

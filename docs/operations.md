@@ -118,8 +118,9 @@ Each capacity scrape aggregates the complete `packs` and `windows` tables on
 the catalog's single SQLite connection. The shared five-second scrape context
 bounds the observation time, not the number of rows scanned. Large catalogs or
 frequent scrapes can therefore contend with publication and query selection;
-include scrape load in the catalog-capacity qualification tracked by
-[#14](https://github.com/yuuki/vmtier/issues/14).
+include scrape load when sizing the deployment. The
+[catalog-capacity report](catalog-capacity-validation.md) records scan and
+selection contention for its 87,600-window fixture at the reported revision.
 Compare rising failed-window/refusal rates with declining retention headroom
 before increasing workloads or resource limits. These signals do not extend the
 time available to recover an unarchived suffix.

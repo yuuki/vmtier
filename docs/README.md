@@ -11,6 +11,7 @@ tests; older VM revisions do not qualify the current dependency set.
 | Task | Read |
 | --- | --- |
 | Build, try a disposable demo, or connect an existing cluster | [Getting started](getting-started.md) |
+| Choose a configuration template and supply deployment values | [Configuration examples](../examples/README.md) |
 | Understand scheduling, ownership, request limits, and health | [SQLite service](serve.md) or [PostgreSQL service](postgres-catalog.md) |
 | Deploy multiple gateways and a fenced archiver | [HA deployment](ha-deployment.md) |
 | Move an existing SQLite catalog to PostgreSQL | [Stopped-writer migration](postgres-migration.md) |

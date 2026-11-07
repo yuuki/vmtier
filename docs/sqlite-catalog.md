@@ -21,27 +21,22 @@ implementation and recovery reports at their recorded revisions; older reports
 do not qualify a new VM dependency pin. Remaining qualification and acceptance
 work is tracked in the [first-release design](design.md).
 
-## Repository behavior
+## Choose an operation
 
-- Explicit initialization, pinned catalog identity, and an exclusive state-directory
-  lock. Missing, corrupt, wrong-ID, and unsupported-schema state are rejected.
-- SQLite schema 1 with WAL, FULL synchronization, foreign keys, and one connection
-  for short metadata transactions. S3 operations stay outside transactions.
-- Immutable archive contract and blob locator: an absolute local path or S3
-  endpoint/region/bucket/prefix, without credentials.
-- Atomic publication per tenant/source/window, with multiple packs or an explicit
-  empty interval. Coverage is contiguous per stream; unrelated streams can advance.
-- Expected-generation checks and idempotent replay, including after later commits.
-  Different content for a committed window and reuse of published keys are rejected.
-- Indexed, bounded tenant/time selection. The returned references outlive the short
-  transaction because objects are immutable and GC is not implemented.
-- Offline v2 import, consistent backup, and restore to a fresh directory and new ID.
+| Task | Command | Blob-store access |
+| --- | --- | --- |
+| Create a new authority | `catalog-init -backend sqlite` | None |
+| Read metadata or a bounded reference plan | `catalog-inspect` | None |
+| Check status against a runtime configuration | `inspect -config FILE` | None |
+| Scrub every referenced index and payload | `verify -config FILE` | Required |
+| Migrate a stopped local JSON v2 catalog | `catalog-import` | Required to validate indexes |
+| Create or restore a consistent backup | `catalog-backup`, `catalog-restore` | None |
+| Migrate stopped SQLite state to PostgreSQL | [`catalog-import-postgres`](postgres-migration.md) | None; metadata-only import |
 
-The repository deliberately does not implement the old whole-manifest `catalog.Store`
-interface. Its operations are `CreateSQLite`, `OpenSQLite`, `Status`, `PublishWindow`,
-`Select`, `ImportV2`, `Backup`, and `RestoreSQLite`. Publication assumes the caller
-has verified source completeness and uploaded objects. The catalog does not contact
-VM or independently prove that an empty publication represents an empty source.
+These commands require an offline SQLite directory. For a live SQLite service,
+use `/ready` and `/metrics` instead. The examples below run from the repository
+root. Relative paths resolve from the current working directory, including paths
+inside configuration files.
 
 ## Build and initialization
 
@@ -58,18 +53,19 @@ SQLite library. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 Use a valid configuration for archive policy and blob location, such as the
 [SQLite service example](../examples/serve-sakura.json).
 The usual tenant/source, timing, and `lateness_enforced` checks apply. Initialization
-does not prove capacity or enforce ingestion policy. S3 credentials and connectivity
+does not prove capacity or enforce ingestion policy. Run [capacity preflight](preflight.md)
+before binding the window policy. S3 credentials and connectivity
 are not needed to initialize or inspect catalog metadata.
 
 ```sh
 .bin/vmtier catalog-init -backend sqlite \
-  -config config.json -path .state/sqlite-catalog -id catalog-sqlite-001
+  -config serve.json -path .state/sqlite-catalog -id catalog-sqlite-001
 .bin/vmtier catalog-inspect \
   -path .state/sqlite-catalog -id catalog-sqlite-001
 ```
 
 The explicit `-id` identifies the new catalog. For runtime use, set the configuration
-to the same path and ID:
+to the same path and ID. This is a fragment of `serve.json`, not a complete configuration:
 
 ```json
 {
@@ -103,8 +99,8 @@ The configuration-based maintenance commands are also available while `serve` is
 stopped:
 
 ```sh
-.bin/vmtier inspect -config config.json
-.bin/vmtier verify -config config.json
+.bin/vmtier inspect -config serve.json
+.bin/vmtier verify -config serve.json
 ```
 
 `inspect` reports SQLite status. `verify` performs a full historical payload scrub
@@ -124,11 +120,13 @@ old 10,000-entry archive lifetime limit.
 Stop the old archiver and catalog service, retaining their state and objects for
 rollback. The importer reads the local v2 directory, not its HTTP API. Configuration
 `catalog.id` pins the source identity, and the configured policy must match it.
-The destination must not exist; its parent must already exist.
+Here `legacy.json` is the source's complete configuration, not the new SQLite
+configuration. The destination must not exist, its parent must already exist,
+and its new ID must differ from the source ID.
 
 ```sh
 mkdir -p .state
-.bin/vmtier catalog-import -config config.json \
+.bin/vmtier catalog-import -config legacy.json \
   -from .state/json-catalog -path .state/imported-sqlite -id catalog-sqlite-002
 .bin/vmtier catalog-inspect -path .state/imported-sqlite -id catalog-sqlite-002
 ```
@@ -199,6 +197,28 @@ does not restore missing object bytes or expired Hot history.
 Operational recovery still requires backup age plus restore/catch-up time to fit Hot
 headroom. A backup cannot restore expired source history. Unsupported schema versions
 are rejected; no schema upgrade exists yet.
+
+## Repository behavior
+
+- Explicit initialization, pinned catalog identity, and an exclusive state-directory
+  lock. Missing, corrupt, wrong-ID, and unsupported-schema state are rejected.
+- SQLite schema 1 with WAL, FULL synchronization, foreign keys, and one connection
+  for short metadata transactions. S3 operations stay outside transactions.
+- Immutable archive contract and blob locator: an absolute local path or S3
+  endpoint/region/bucket/prefix, without credentials.
+- Atomic publication per tenant/source/window, with multiple packs or an explicit
+  empty interval. Coverage is contiguous per stream; unrelated streams can advance.
+- Expected-generation checks and idempotent replay, including after later commits.
+  Different content for a committed window and reuse of published keys are rejected.
+- Indexed, bounded tenant/time selection. The returned references outlive the short
+  transaction because objects are immutable and GC is not implemented.
+- Offline v2 import, consistent backup, and restore to a fresh directory and new ID.
+
+The repository deliberately does not implement the old whole-manifest `catalog.Store`
+interface. Its operations are `CreateSQLite`, `OpenSQLite`, `Status`, `PublishWindow`,
+`Select`, `ImportV2`, `Backup`, and `RestoreSQLite`. Publication assumes the caller
+has verified source completeness and uploaded objects. The catalog does not contact
+VM or independently prove that an empty publication represents an empty source.
 
 ## Remaining scope
 
