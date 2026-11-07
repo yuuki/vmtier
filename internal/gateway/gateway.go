@@ -166,56 +166,82 @@ func (a *API) search(requestCtx context.Context, sq *storage.SearchQuery) (block
 	if len(blocks) > a.limits.MaxBlocks {
 		return nil, nil, querylimit.Errorf(querylimit.Blocks, "Cold block limit exceeded")
 	}
-	maxSeries := a.limits.MaxSeries
-	if sq.MaxMetrics > 0 && sq.MaxMetrics < maxSeries {
-		maxSeries = sq.MaxMetrics
-	}
-	names := make(map[string]struct{})
-	var byteCount int64
+	filter := a.newBlockFilter(sq, account, project, matcher)
 	result := blocks[:0]
-	var ts []int64
-	var vs []float64
 	for i := range blocks {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		mb := &blocks[i]
-		var mn storage.MetricName
-		if err := mn.Unmarshal(mb.MetricName); err != nil {
-			return nil, nil, fmt.Errorf("invalid Cold metric name: %w", err)
+		keep, err := filter.keep(&blocks[i])
+		if err != nil {
+			return nil, nil, err
 		}
-		if mn.AccountID != account || mn.ProjectID != project {
-			return nil, nil, fmt.Errorf("Cold tenant mismatch")
+		if keep {
+			result = append(result, blocks[i])
 		}
-		if !matcher.Match(&mn) {
-			continue
-		}
-		if mb.Block.RowsCount() <= 0 {
-			return nil, nil, fmt.Errorf("invalid empty Cold block")
-		}
-		if err := mb.Block.UnmarshalData(); err != nil {
-			return nil, nil, fmt.Errorf("invalid Cold block: %w", err)
-		}
-		ts, vs = mb.Block.AppendRowsWithTimeRangeFilter(ts[:0], vs[:0], sq.GetTimeRange())
-		if len(ts) == 0 {
-			continue
-		}
-		// Preserve the pinned VM's native tag order. vmselect groups blocks by
-		// these exact bytes; lexical sorting would split a Hot/Cold series
-		// because VM prioritizes job-like and instance-like tags.
-		names[string(mb.MetricName)] = struct{}{}
-		if len(names) > maxSeries {
-			return nil, nil, querylimit.Errorf(querylimit.Series, "Cold series limit exceeded")
-		}
-		h, t, v := mb.Block.MarshalData(0, 0)
-		byteCount += int64(len(mb.MetricName) + len(h) + len(t) + len(v) + 32)
-		if byteCount > a.limits.MaxResponseBytes {
-			return nil, nil, querylimit.Errorf(querylimit.ResponseBytes, "Cold response byte limit exceeded")
-		}
-		result = append(result, *mb)
 	}
 	a.Blocks.Add(uint64(len(result)))
 	return result, lease, nil
+}
+
+// blockFilter selects the backend blocks that answer one search, bounding the
+// distinct series and response bytes that it keeps.
+type blockFilter struct {
+	sq               *storage.SearchQuery
+	account, project uint32
+	matcher          *Matcher
+	maxSeries        int
+	maxBytes         int64
+	names            map[string]struct{}
+	byteCount        int64
+	ts               []int64
+	vs               []float64
+}
+
+func (a *API) newBlockFilter(sq *storage.SearchQuery, account, project uint32, matcher *Matcher) *blockFilter {
+	maxSeries := a.limits.MaxSeries
+	if sq.MaxMetrics > 0 && sq.MaxMetrics < maxSeries {
+		maxSeries = sq.MaxMetrics
+	}
+	return &blockFilter{sq: sq, account: account, project: project, matcher: matcher, maxSeries: maxSeries, maxBytes: a.limits.MaxResponseBytes, names: make(map[string]struct{})}
+}
+
+// keep validates a backend block and reports whether it matches the query and
+// has rows in its time range.
+func (f *blockFilter) keep(mb *storage.MetricBlock) (bool, error) {
+	var mn storage.MetricName
+	if err := mn.Unmarshal(mb.MetricName); err != nil {
+		return false, fmt.Errorf("invalid Cold metric name: %w", err)
+	}
+	if mn.AccountID != f.account || mn.ProjectID != f.project {
+		return false, fmt.Errorf("Cold tenant mismatch")
+	}
+	if !f.matcher.Match(&mn) {
+		return false, nil
+	}
+	if mb.Block.RowsCount() <= 0 {
+		return false, fmt.Errorf("invalid empty Cold block")
+	}
+	if err := mb.Block.UnmarshalData(); err != nil {
+		return false, fmt.Errorf("invalid Cold block: %w", err)
+	}
+	f.ts, f.vs = mb.Block.AppendRowsWithTimeRangeFilter(f.ts[:0], f.vs[:0], f.sq.GetTimeRange())
+	if len(f.ts) == 0 {
+		return false, nil
+	}
+	// Preserve the pinned VM's native tag order. vmselect groups blocks by
+	// these exact bytes; lexical sorting would split a Hot/Cold series
+	// because VM prioritizes job-like and instance-like tags.
+	f.names[string(mb.MetricName)] = struct{}{}
+	if len(f.names) > f.maxSeries {
+		return false, querylimit.Errorf(querylimit.Series, "Cold series limit exceeded")
+	}
+	h, t, v := mb.Block.MarshalData(0, 0)
+	f.byteCount += int64(len(mb.MetricName) + len(h) + len(t) + len(v) + 32)
+	if f.byteCount > f.maxBytes {
+		return false, querylimit.Errorf(querylimit.ResponseBytes, "Cold response byte limit exceeded")
+	}
+	return true, nil
 }
 
 func (a *API) InitSearch(ctx context.Context, _ *querytracer.Tracer, sq *storage.SearchQuery) (vmselectapi.BlockIterator, error) {
