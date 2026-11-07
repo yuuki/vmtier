@@ -448,41 +448,27 @@ func (s *SQLite) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
 		return out, err
 	}
 	out.ID, out.Generation = state.ID, state.Generation
-	out.CoverageEnd = math.MaxInt64
-	for _, c := range state.Coverage {
-		if c.Tenant == sel.Tenant && c.End < out.CoverageEnd {
-			out.CoverageEnd = c.End
-		}
-	}
+	out.CoverageEnd = tenantCoverageEnd(state.Coverage, sel.Tenant)
 	if out.CoverageEnd == math.MaxInt64 {
 		return out, errors.New("tenant is not configured")
 	}
-	lower := (sel.Start / state.Contract.WindowMS) * state.Contract.WindowMS
-	upper := ((sel.End - 1) / state.Contract.WindowMS) * state.Contract.WindowMS
-	if lower < state.Contract.CoverageStart {
-		lower = state.Contract.CoverageStart
-	}
-	plan := sqlitePlan{tx: tx, sel: sel, state: state, planBytes: 128}
+	lower, upper := windowStarts(sel, state.Contract)
+	plan := newPlanReader(tx, sel, state)
 	for _, source := range state.Contract.Sources {
-		if err = plan.selectWindows(ctx, source.ID, lower, upper); err != nil {
+		if err = s.selectWindows(ctx, plan, source.ID, lower, upper); err != nil {
 			return out, err
 		}
 	}
-	packCount := 0
 	for _, v := range plan.selected {
-		if v.count > sel.MaxPacks-packCount {
-			return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog pack limit exceeded")
-		}
-		if err = plan.loadPacks(ctx, &v); err != nil {
+		if err = plan.reservePacks(v.count); err != nil {
 			return out, err
 		}
-		if len(v.window.Packs) != v.count {
-			return out, errors.New("stored window is missing pack references")
-		}
-		if _, err = validatePublication(state.Contract, v.window.Publication); err != nil {
+		if err = s.loadPacks(ctx, plan, &v); err != nil {
 			return out, err
 		}
-		packCount += v.count
+		if _, err = plan.checkPacks(v); err != nil {
+			return out, err
+		}
 		out.Windows = append(out.Windows, v.window)
 	}
 	if plan.planBytes > sel.MaxPlanBytes {
@@ -491,81 +477,33 @@ func (s *SQLite) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
 	return out, tx.Commit()
 }
 
-// sqlitePlan reads the windows and pack references of one query plan in a
-// read transaction, charging their descriptors against the plan byte limit.
-type sqlitePlan struct {
-	tx        *sql.Tx
-	sel       Selection
-	state     SQLiteStatus
-	planBytes int64
-	selected  []selectedWindow
-}
-
-// selectedWindow is a stored window whose pack references are not loaded yet.
-type selectedWindow struct {
-	id     int64
-	count  int
-	window Window
-}
-
-// selectWindows appends the stored windows of one source that start in
-// [lower,upper], within the window and plan byte limits.
-func (p *sqlitePlan) selectWindows(ctx context.Context, sourceID string, lower, upper int64) error {
-	rows, err := p.tx.QueryContext(ctx, `SELECT id,start_ms,end_ms,generation,pack_count FROM windows WHERE tenant=? AND source_id=? AND start_ms>=? AND start_ms<=? ORDER BY start_ms LIMIT ?`, p.sel.Tenant, sourceID, lower, upper, p.sel.MaxWindows-len(p.selected)+1)
+// selectWindows adds the stored windows of one source that start in
+// [lower,upper] to the plan.
+func (s *SQLite) selectWindows(ctx context.Context, plan *planReader, sourceID string, lower, upper int64) error {
+	rows, err := plan.tx.QueryContext(ctx, `SELECT id,start_ms,end_ms,generation,pack_count FROM windows WHERE tenant=? AND source_id=? AND start_ms>=? AND start_ms<=? ORDER BY start_ms LIMIT ?`, plan.sel.Tenant, sourceID, lower, upper, plan.windowLimit())
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		v, err := p.scanWindow(rows, sourceID)
-		if err != nil {
+		v := plan.newWindow(sourceID)
+		var generation int64
+		if err := rows.Scan(&v.id, &v.window.Start, &v.window.End, &generation, &v.count); err != nil {
 			return err
 		}
-		p.planBytes += 256 + int64(len(p.sel.Tenant)+len(sourceID))
-		if len(p.selected) >= p.sel.MaxWindows || p.planBytes > p.sel.MaxPlanBytes {
-			return querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan limit exceeded")
+		if err := plan.addWindow(v, generation); err != nil {
+			return err
 		}
-		p.selected = append(p.selected, v)
 	}
 	return rows.Err()
-}
-
-func (p *sqlitePlan) scanWindow(rows *sql.Rows, sourceID string) (selectedWindow, error) {
-	var v selectedWindow
-	var generation int64
-	v.window.Tenant, v.window.SourceID = p.sel.Tenant, sourceID
-	if err := rows.Scan(&v.id, &v.window.Start, &v.window.End, &generation, &v.count); err != nil {
-		return v, err
-	}
-	if generation < 1 || generation > int64(p.state.Generation) || v.count < 0 || v.count > SQLiteMaxPacksPerWindow || v.window.End-v.window.Start != p.state.Contract.WindowMS {
-		return v, errors.New("invalid stored window")
-	}
-	v.window.Generation = uint64(generation)
-	return v, nil
 }
 
 // loadPacks reads the pack references of a selected window in ordinal order.
-func (p *sqlitePlan) loadPacks(ctx context.Context, v *selectedWindow) error {
-	rows, err := p.tx.QueryContext(ctx, `SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM packs WHERE window_id=? ORDER BY ordinal`, v.id)
+func (s *SQLite) loadPacks(ctx context.Context, plan *planReader, v *selectedWindow) error {
+	rows, err := plan.tx.QueryContext(ctx, `SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM packs WHERE window_id=? ORDER BY ordinal`, v.id)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	v.window.Packs = []PackRef{}
-	for rows.Next() {
-		var ordinal int
-		var ref PackRef
-		if err = rows.Scan(&ordinal, &ref.DataKey, &ref.IndexKey, &ref.DataSHA256, &ref.IndexSHA256, &ref.DataBytes, &ref.IndexBytes); err != nil {
-			return err
-		}
-		if ordinal != len(v.window.Packs) || ordinal >= v.count {
-			return errors.New("invalid stored pack order/count")
-		}
-		p.planBytes += 256 + int64(len(ref.DataKey)+len(ref.IndexKey)+len(ref.DataSHA256)+len(ref.IndexSHA256))
-		if p.planBytes > p.sel.MaxPlanBytes {
-			return querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
-		}
-		v.window.Packs = append(v.window.Packs, ref)
-	}
-	return rows.Err()
+	return plan.readPacks(rows, v)
 }
