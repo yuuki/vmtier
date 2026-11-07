@@ -1,9 +1,9 @@
 {
   "repository": "yuuki/vmtier/complexity",
   "ref": "refs/heads/main",
-  "commit": "b136f4474aa4ca574b00d36695e4c9c85a463681",
+  "commit": "44262947297d340bf46ba420e49bc168f3f91a74",
   "base_ref": "refs/heads/main",
-  "timestamp": "2026-11-07T03:56:07.070054198Z",
+  "timestamp": "2026-11-07T05:24:19.481217037Z",
   "custom_metrics": [
     {
       "key": "code_complexity",
@@ -12,47 +12,47 @@
         {
           "key": "function_count",
           "name": "Function count",
-          "value": 366
+          "value": 449
         },
         {
           "key": "cognitive_sum",
           "name": "Cognitive: total",
-          "value": 2616
+          "value": 2399
         },
         {
           "key": "cognitive_max",
           "name": "Cognitive: max",
-          "value": 102
+          "value": 30
         },
         {
           "key": "cognitive_median",
           "name": "Cognitive: median",
-          "value": 2
+          "value": 3
         },
         {
           "key": "cognitive_p90",
           "name": "Cognitive: p90",
-          "value": 19
+          "value": 15
         },
         {
           "key": "cyclomatic_sum",
           "name": "Cyclomatic: total",
-          "value": 2538
+          "value": 2627
         },
         {
           "key": "cyclomatic_max",
           "name": "Cyclomatic: max",
-          "value": 117
+          "value": 40
         },
         {
           "key": "cyclomatic_median",
           "name": "Cyclomatic: median",
-          "value": 3
+          "value": 4
         },
         {
           "key": "cyclomatic_p90",
           "name": "Cyclomatic: p90",
-          "value": 19
+          "value": 13
         }
       ]
     }
