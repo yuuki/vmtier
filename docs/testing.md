@@ -330,10 +330,13 @@ See the [workflow](../.github/workflows/ci.yml) for the current suite matrix and
 ## Release and supply-chain checks
 
 The `test` workflow's `release-check` job builds two release snapshots of the
-pushed commit in the pinned builder. It requires identical `SHA256SUMS` and runs
-the archive smoke test. The smoke test checks the license record, static linking,
-the license files, `vmtier version`, and SQLite catalog initialization in the
-static binary. The job uploads the snapshot as `release-snapshot`. The `security`
+pushed commit in the pinned builder. The first also runs `go test` with release
+tags and static musl linking. Each build checks the linked modules, their license
+digests, and the embedded C library versions against `release/licenses.json`. The
+job requires identical file hashes and `SHA256SUMS`, then runs the archive smoke
+test. That test checks the exact asset set, static linking, the presence of every
+recorded notice, `vmtier version`, and SQLite catalog initialization in the static
+binary. The job uploads the snapshot as `release-snapshot`. The `security`
 workflow runs `make vulncheck` (govulncheck) on every push and weekly. It also
 checks workflow syntax with actionlint and workflow security with zizmor.
 `python3 -m unittest discover -s scripts -p 'test_*.py'` covers the packaging

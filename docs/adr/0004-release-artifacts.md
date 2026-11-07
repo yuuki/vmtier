@@ -3,8 +3,9 @@
 ## Status
 
 Accepted. The builder, packaging script, CI check, and tag workflow are
-implemented; no release has been published. The procedure and support scope are
-in [releases](../releasing.md). This addresses the artifact part of #19.
+implemented but have not run on GitHub, and no release has been published. The
+procedure and support scope are in [releases](../releasing.md). This addresses
+the artifact part of #19.
 
 ## Context
 
@@ -31,12 +32,15 @@ and what it contains, without trusting the person who uploaded it.
 - Run the stock-VM differential suites, `go test` with release tags and static
   musl linking, and `govulncheck` against the packaged binary rather than the
   development build.
-- Package every linked module's license and notice files, the Go license, and the
-  musl notice. Keep reviewed SPDX expressions in `release/licenses.json`, and fail
-  when the linked module set and the record differ.
+- Package every linked module's license and notice files, reviewed header
+  notices of bundled C code, and the Go and musl notices. Keep reviewed SPDX
+  expressions and license-file digests in `release/licenses.json`, and fail when
+  the linked set, a license file, or an embedded library version changes.
 - Publish a CycloneDX SBOM, SLSA provenance, and an SBOM attestation through
-  GitHub artifact attestations (Sigstore). Create only a draft release, in a
-  protected `release` environment, so publishing stays a maintainer action.
+  GitHub artifact attestations (Sigstore). Fix the checksum list's digest before
+  any job runs untrusted code or the binary. The signing job verifies that digest
+  by hashes alone, never executes the artifacts, and creates only a draft release
+  in a protected `release` environment, so publishing stays a maintainer action.
 - Implement packaging in a standard-library Python script with unit tests,
   consistent with the existing harnesses, rather than adding a release tool.
 
@@ -53,11 +57,12 @@ and what it contains, without trusting the person who uploaded it.
 
 ## Consequences
 
-Release builds need Docker and network access to the module proxy, the checksum
-database, and Alpine mirrors. A later rebuild can differ if Alpine has updated
+Release builds need Docker and network access to the module proxy and Alpine
+mirrors. A later rebuild can differ if Alpine has updated
 GCC, binutils, or musl. The build record shows which input changed. Adding a
 dependency, changing musl, or changing Go requires updating the license record,
 the notice, or the builder pin. Other platforms require their own qualification.
-Attestations are verified with `gh attestation verify` or another Sigstore
-verifier, and are only as trustworthy as the repository's tag and environment
-protections.
+Attestations are verified with `gh attestation verify`, pinned to
+`release.yml` and the tag, or with another Sigstore verifier. They are only as
+trustworthy as the repository's tag and environment protections, because a tag
+push runs the workflow from the tagged commit.

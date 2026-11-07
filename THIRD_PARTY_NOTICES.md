@@ -7,14 +7,14 @@ The repository's existing Apache-2.0 `LICENSE` is preserved. vmtier is an indepe
 | Module | Pinned version | License / notice source |
 | --- | --- | --- |
 | `github.com/VictoriaMetrics/VictoriaMetrics` | `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c` | [Apache-2.0 LICENSE](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/LICENSE), including Copyright 2019-2026 VictoriaMetrics, Inc. No root NOTICE file was present in the inspected archive. |
-| `github.com/aws/aws-sdk-go-v2` | `v1.47.7` | Generated `vendor/github.com/aws/aws-sdk-go-v2/LICENSE.txt` and `NOTICE.txt`, Apache-2.0. |
+| `github.com/aws/aws-sdk-go-v2` | `v1.47.7` | Generated `vendor/github.com/aws/aws-sdk-go-v2/LICENSE.txt` and `NOTICE.txt`, Apache-2.0; `internal/sync/singleflight/LICENSE`, BSD-3-Clause. |
 | `github.com/aws/aws-sdk-go-v2/credentials` | `v1.20.15` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
 | `github.com/aws/aws-sdk-go-v2/service/s3` | `v1.114.8` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
-| `github.com/aws/smithy-go` | `v1.28.8` | Generated `vendor/github.com/aws/smithy-go/LICENSE` and `NOTICE`, Apache-2.0. |
+| `github.com/aws/smithy-go` | `v1.28.8` | Generated `vendor/github.com/aws/smithy-go/LICENSE` and `NOTICE`, Apache-2.0; nested Go-derived `LICENSE` files, BSD-3-Clause. |
 | `github.com/klauspost/compress` | `v1.20.3` | Generated `vendor/github.com/klauspost/compress/LICENSE`, BSD-style three-clause terms; copyright notices include The Go Authors and Klaus Post. Subdirectories may contain additional licenses/notices, which are retained. |
 | `github.com/mattn/go-sqlite3` | `v1.14.53` | Generated `vendor/github.com/mattn/go-sqlite3/LICENSE`, MIT, Copyright (c) 2014 Yasuhiro Matsumoto. The bundled SQLite 3.54.1 amalgamation retains its upstream copyright-disclaimer/blessing notices in `sqlite3-binding.c` and related headers; see [SQLite's copyright statement](https://www.sqlite.org/copyright.html). |
 | `golang.org/x/sys` | `v0.49.0` | Generated `vendor/golang.org/x/sys/LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors. |
-| Go runtime / standard library | See build toolchain version | Go distribution `LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors. |
+| Go runtime / standard library | See build toolchain version | Go distribution `LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors, and `PATENTS`; `runtime/memmove_amd64.s` also carries an MIT notice (see below). |
 
 ## Reproducible source acquisition
 
@@ -53,15 +53,16 @@ For a binary distribution, record its actual linked module set with `go version 
 
 ## Release binaries
 
-[Release archives](docs/releasing.md) contain one static `linux/amd64` binary. `scripts/release.py` reads the linked module set from the binary with `go version -m` and copies every license, notice, and patent file of those modules, nested ones included, into `licenses/<module path>/`. For example, `gozstd` links prebuilt zstd code; the zstd distribution is dual-licensed, and its BSD `LICENSE` and GPL-2.0 `COPYING` are both retained. The archive also contains this file, `LICENSE`, `NOTICE`, the Go distribution license, and musl's `COPYRIGHT`.
+[Release archives](docs/releasing.md) contain one static `linux/amd64` binary. `scripts/release.py` reads the linked module set from the binary with `go version -m` and copies every license, notice, and patent file of those modules, nested ones included, into `licenses/<module path>/`. For example, `gozstd` links prebuilt zstd code; the zstd distribution is dual-licensed, and its BSD `LICENSE` and GPL-2.0 `COPYING` are both retained. The archive also contains this file, `LICENSE`, `NOTICE`, and the toolchain notices below. Links in this file point into the source repository.
 
-[`release/licenses.json`](release/licenses.json) records the reviewed SPDX expression of every linked module. The build fails when a linked module is missing from the record, or the record lists a module that is not linked. The same expressions appear in the build record and the CycloneDX SBOM published with each release.
+[`release/licenses.json`](release/licenses.json) records the reviewed SPDX expression and a digest of the license files of every linked module. The build fails when a module is linked or dropped, or its license files change, until the record is updated after review. The same expressions appear in the build record and the CycloneDX SBOM. The version table above is maintained by hand. Each release's build record and SBOM are the authoritative inventory.
 
-| Statically linked toolchain component | License and notice |
+| Code compiled into the binary | License and notice |
 | --- | --- |
-| Go runtime and standard library | BSD-3-Clause; `licenses/go/LICENSE` is copied from the builder's `GOROOT` |
-| musl 1.2.6 (Alpine package) | MIT; [`release/notices/musl-1.2.6-COPYRIGHT`](release/notices/musl-1.2.6-COPYRIGHT) is the `COPYRIGHT` file of `musl-1.2.6.tar.gz` (SHA-256 `d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a`), whose signature verifies with the musl release key `8364 8929 0BB6 B70F 99FF DA05 56BC DB59 3020 450F` |
-| GCC support code (`libgcc`, start files) | GPL-3.0 with the GCC Runtime Library Exception, which covers binaries produced by GCC |
-| SQLite amalgamation in `go-sqlite3` | Public-domain dedication (SPDX `blessing`), recorded with the driver's MIT license |
+| Go runtime and standard library | BSD-3-Clause, plus MIT for `runtime/memmove_amd64.s`, which derives from Inferno (Lucent Technologies, Vita Nuova). The builder copies `LICENSE`, `PATENTS`, and that file's header notice from its `GOROOT` into `licenses/go/` |
+| zstd 1.5.7, prebuilt in `gozstd` | BSD-3-Clause, selected from BSD-3-Clause OR GPL-2.0-only. The linked `divsufsort.c` (MIT, Yuta Mori) and `threading.c` (Tino Reichardt) carry their own headers. [`release/notices/gozstd-v1.27.0-zstd-NOTICE`](release/notices/gozstd-v1.27.0-zstd-NOTICE) reproduces them verbatim, and the build fails if a different `gozstd` version is linked |
+| SQLite 3.54.1, the amalgamation in `go-sqlite3` | Public-domain dedication (SPDX `blessing`), recorded with the driver's MIT license |
+| musl 1.2.6 (Alpine package) | MIT; [`release/notices/musl-1.2.6-COPYRIGHT`](release/notices/musl-1.2.6-COPYRIGHT) is the `COPYRIGHT` file of `musl-1.2.6.tar.gz` (SHA-256 `d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a`), whose signature verifies with the musl release key `8364 8929 0BB6 B70F 99FF DA05 56BC DB59 3020 450F`. musl also supplies the `crt1.o`, `crti.o`, and `crtn.o` start files |
+| GCC support code (`libgcc`, `crtbegin.o`, `crtend.o`) | GPL-3.0-or-later WITH GCC-exception-3.1. The exception permits distributing the combined binary under other terms, because it was produced by an eligible compilation process; it requires no notice |
 
 The builder fails if its musl version differs from the version of the committed notice. glibc is not linked.

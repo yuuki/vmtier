@@ -49,10 +49,11 @@ require an explicitly configured disposable target.
 Distribute binaries only from the [release workflow](docs/releasing.md). It builds
 a tag twice in the pinned builder and requires identical checksums. It also
 qualifies the packaged binary, attaches licenses, notices, an SBOM, and signed
-provenance, and saves a draft release. When a change adds, removes, or relicenses
-a linked module, update `release/licenses.json` and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) in the same pull request; the CI
-`release-check` job fails otherwise. Local test success does not imply a published
+provenance, and saves a draft release. The CI `release-check` job fails when a
+change links a new module, drops one, or changes a module's license files, until
+`release/licenses.json` records the reviewed license and digest. Update
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) by hand in the same pull request;
+no check reads it. Local test success does not imply a published
 release or hosted CI run. Publication and deployment are separate maintainer actions.
 
 ## Documentation changes

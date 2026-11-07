@@ -8,8 +8,10 @@ release workflow saves a **draft**; publishing it is a separate maintainer actio
 [ADR 0004](adr/0004-release-artifacts.md) records why the pipeline is shaped
 this way.
 
-No release has been published yet. This page describes the tooling and the
-procedure. Each release's notes must state the support scope below.
+No release has been published, and the release workflow has not yet run on
+GitHub. This page describes the tooling and the procedure; reproducibility has
+so far been checked only locally, with a builder image equivalent to
+`release/Dockerfile`. Each release's notes must state the support scope below.
 
 ## Support scope
 
@@ -31,26 +33,34 @@ pre-releases (`v0.1.0-rc.1`) and do not describe them as production-supported.
 | Asset | Contents |
 | --- | --- |
 | `vmtier-VERSION-linux-amd64.tar.gz` | `vmtier`, `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `examples/serve-sakura.json`, `BUILD.json`, `sbom.cdx.json`, `go-version-m.txt`, and `licenses/` |
-| `vmtier-VERSION-linux-amd64.build.json` | Build record: commit, `SOURCE_DATE_EPOCH`, builder digest, Alpine package versions, Go environment, exact build command, binary SHA-256, and every linked module with its `go.sum` hash, SPDX license expression, and notice files |
-| `vmtier-VERSION-linux-amd64.cdx.json` | CycloneDX 1.6 SBOM of the binary: linked Go modules, the Go standard library, and musl |
+| `vmtier-VERSION-linux-amd64.build.json` | Build record: commit, `SOURCE_DATE_EPOCH`, builder digest, Alpine package versions, Go environment, exact build command, binary SHA-256, every linked module with its `go.sum` hash, SPDX license expression, notice files, and requirements, and the C libraries compiled into modules |
+| `vmtier-VERSION-linux-amd64.cdx.json` | CycloneDX 1.6 SBOM of the binary: linked Go modules with their requirement graph, SQLite and zstd (with CPEs), the Go standard library, musl, and libgcc |
 | `SHA256SUMS` | SHA-256 of the three files above |
 | Attestations | SLSA build provenance for every file in `SHA256SUMS` and an SBOM attestation for the archive, signed through Sigstore and stored by GitHub |
 
 `licenses/` contains each linked module's license, notice, and patent files,
 nested ones included (such as the BSD license of the zstd library in `gozstd`).
-It also has the Go distribution license and the musl `COPYRIGHT`.
+Notices that exist only in C source headers are reviewed into
+`release/notices/` and shipped next to the module's files; for example, the
+divsufsort and threading notices of the zstd code in `gozstd`. The archive also
+has the Go distribution `LICENSE` and `PATENTS`, the Inferno notice of
+`runtime/memmove_amd64.s`, and the musl `COPYRIGHT`.
+
 [`release/licenses.json`](../release/licenses.json) holds the reviewed SPDX
-expression for each linked module. The build fails if the linked module set
-differs from that record.
+expression and a digest of the license files of each linked module. The build
+fails when a module is linked or dropped, or when its license files change, for
+example on a version bump. It also fails when a C library or toolchain notice no
+longer matches the reviewed version. The record covers what the build can
+detect; header notices in a new C dependency still need manual review.
 
 ## Build inputs
 
 | Input | Pin |
 | --- | --- |
-| Source | `git archive` of the tagged commit, so uncommitted and untracked files cannot enter the build |
+| Source | `git archive` of the tagged commit; every exported file must match its committed blob, so local git attributes or filters cannot alter it, and the build refuses uncommitted tracked changes |
 | Builder | [`release/Dockerfile`](../release/Dockerfile): `golang:1.27.3-alpine3.24` pinned by digest, with `gcc` and `musl-dev` from Alpine |
 | Go | 1.27.3, `GOTOOLCHAIN=local`; [`release/build.sh`](../release/build.sh) fails unless it equals the `go` directive in `go.mod` |
-| Modules | `go.mod`/`go.sum`, fetched from the module proxy, checked against the checksum database, `go mod verify`, then vendored |
+| Modules | `go.mod`/`go.sum`, fetched from the module proxy, rejected unless they match the committed `go.sum` hashes, re-hashed by `go mod verify`, then vendored |
 | C toolchain | GCC, binutils, and musl versions are recorded in the build record; the builder refuses a musl version without a matching notice |
 | Flags | `CGO_ENABLED=1`, tags `netgo,osusergo,musl`, `-trimpath -buildvcs=false`, `-ldflags "-s -w -X main.version=… -X main.commit=… -linkmode=external -extldflags=-static"` |
 | Timestamps | `SOURCE_DATE_EPOCH` is the commit time; archive entries use it with fixed owners and modes, and gzip omits name and time |
@@ -65,20 +75,28 @@ Download all assets of one release into an empty directory, then:
 
 ```sh
 sha256sum --check SHA256SUMS
-gh attestation verify vmtier-VERSION-linux-amd64.tar.gz --repo yuuki/vmtier
 gh attestation verify vmtier-VERSION-linux-amd64.tar.gz --repo yuuki/vmtier \
+  --signer-workflow yuuki/vmtier/.github/workflows/release.yml \
+  --source-ref refs/tags/VERSION --deny-self-hosted-runners
+gh attestation verify vmtier-VERSION-linux-amd64.tar.gz --repo yuuki/vmtier \
+  --signer-workflow yuuki/vmtier/.github/workflows/release.yml \
+  --source-ref refs/tags/VERSION --deny-self-hosted-runners \
   --predicate-type https://cyclonedx.org/bom
 tar -xzf vmtier-VERSION-linux-amd64.tar.gz
 vmtier-VERSION-linux-amd64/vmtier version
 ```
 
-The provenance names the workflow file, tag, commit, and run that built the
-assets. To rebuild independently, check out the tag on Linux with Docker,
+Pin the signer workflow and tag: `--repo` alone accepts an attestation made by
+any workflow in the repository on any ref. A passing check shows that
+`release.yml` at that tag signed these bytes. It does not show that the tag was
+created under the repository's tag rules; that depends on the settings below.
+`python3 scripts/release.py verify DIR` checks the directory by hashes and
+requires exactly the four release files, without running anything from it. To rebuild independently, check out the tag on Linux with Docker,
 Python 3, and git, then compare against the downloaded directory:
 
 ```sh
 git checkout VERSION
-python3 scripts/release.py build --output /tmp/vmtier-rebuild
+python3 scripts/release.py build --version VERSION --output /tmp/vmtier-rebuild
 python3 scripts/release.py compare /path/to/downloaded /tmp/vmtier-rebuild
 ```
 
@@ -90,8 +108,8 @@ python3 scripts/release.py compare /path/to/downloaded /tmp/vmtier-rebuild
   before you treat a mismatch as a source difference.
 - Archive bytes also depend on the zlib that the packaging Python uses. If only
   the `.tar.gz` checksum differs, compare `binary.sha256` in the build records.
-- Builds need network access to the Go module proxy, the checksum database, and
-  Alpine mirrors. Modules are not mirrored by this project.
+- Builds need network access to the Go module proxy and Alpine mirrors. Modules
+  are not mirrored by this project.
 
 ## Maintainer procedure
 
@@ -116,10 +134,10 @@ python3 scripts/release.py compare /path/to/downloaded /tmp/vmtier-rebuild
 
    | Job | Gate |
    | --- | --- |
-   | `build (first)`, `build (second)` | Each requires the tagged commit to be on `main`, then separate runners build the archive in the pinned builder; the first also runs `go test` with release tags and static musl linking; both smoke-test the archive |
-   | `reproducibility` | `SHA256SUMS` of both builds must be identical |
+   | `build (first)`, `build (second)` | Check that the tagged commit is on `main`, then build the archive in the pinned builder on separate runners; the first also runs `go test` with release tags and static musl linking; both smoke-test the archive |
+   | `reproducibility` | Hashes both builds, requires identical `SHA256SUMS`, and outputs the SHA-256 of that list before any later job runs test dependencies or the binary |
    | `qualify` | Installs the packaged binary as `.bin/vmtier`, scans it with `govulncheck -mode=binary`, and runs the workload smoke, JSON v2, `serve`, and recovery suites against stock VM |
-   | `publish` | Runs in the `release` environment: re-verifies the assets, attests provenance and SBOM, and creates the draft release with generated notes |
+   | `publish` | Runs in the `release` environment: accepts only files whose `SHA256SUMS` has the recorded SHA-256, without executing them, then attests provenance and SBOM and creates the draft release with generated notes |
 
 6. Review the draft: notes and support scope, the four assets, the attestation
    links in the run summary, and the `release-e2e-evidence` artifact. Then
@@ -131,13 +149,17 @@ on any ref without attesting or creating a release.
 
 ### Repository settings
 
-These GitHub settings protect the procedure; the workflows do not configure them:
+These GitHub settings protect the procedure; the workflows do not configure them.
+A tag push runs `release.yml` from the tagged commit. So a person who can push a
+`v*` tag controls which workflow signs. The `main` ancestry check catches
+mistakes, not a hostile tag. The tag ruleset is the actual control:
 
-- Enable **immutable releases**, so published assets and their tags cannot change.
 - Add a tag ruleset that limits creating, updating, and deleting `v*` tags to
   maintainers, and require signed tags if maintainers sign.
 - Add required reviewers to the `release` environment, so the `publish` job,
-  the only job that can sign attestations or write releases, waits for approval.
+  the only job in `release.yml` that requests signing or release permissions,
+  waits for approval.
+- Enable **immutable releases**, so published assets and their tags cannot change.
 - Require the `test` and `security` checks on `main`.
 
 ## Changing release inputs
@@ -150,8 +172,12 @@ These GitHub settings protect the procedure; the workflows do not configure them
   `musl-X.Y.Z.tar.gz` and `.asc` from musl.libc.org, verify the signature,
   replace `release/notices/musl-*-COPYRIGHT` with the tarball's `COPYRIGHT`,
   and update `toolchain.musl` in `release/licenses.json`.
-- **Linked modules:** review the license files, then add, change, or remove the
-  module's entry in `release/licenses.json` in the same change.
+- **Linked modules:** when the build reports a new, dropped, or changed module,
+  read its license files, then update its expression and `notices_sha256` in
+  `release/licenses.json`; the error message prints the new digest. When a
+  module with an embedded-notice file changes version, such as `gozstd`,
+  re-read the C headers that its prebuilt objects come from and refresh
+  `release/notices/`.
 - **Platforms:** add another platform only with qualification evidence for it;
   the archive name, smoke checks, and support scope assume `linux/amd64`.
 
@@ -160,6 +186,7 @@ These GitHub settings protect the procedure; the workflows do not configure them
 `make release-snapshot` builds HEAD into `dist/` and smoke-tests it. It requires
 Docker and network access. Behind a proxy, `VMTIER_RELEASE_DOCKER_RUN_ARGS` adds
 arguments to `docker run`, such as `--network host -e HTTPS_PROXY`.
-`--builder-image` substitutes a prebuilt builder and is recorded as
-`builder.image_override` in the build record. Neither setting may change outputs;
-check with `scripts/release.py compare`.
+`--builder-image` substitutes a prebuilt builder; it prints a warning and is not
+recorded, because an equivalent image produces identical outputs and any package
+difference appears in `builder.packages`. Check either setting with
+`scripts/release.py compare` against a build without it.

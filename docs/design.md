@@ -430,8 +430,10 @@ success only for the retained small fixture. The [workload/memory](workload-vali
 and [catalog](catalog-capacity-validation.md) reports qualify a scoped local envelope for #11/#14. Remaining evidence includes
 real Sakura (#15), natural retention (#16), enforced ingress lateness (#17),
 and a hosted release run with published artifacts (#19). The
-[release tooling](releasing.md) builds reproducible static binaries with notices,
-an SBOM, and provenance, but no tag has run it yet. The scoped [offline recovery/cutover
+[release tooling](releasing.md) is implemented. Byte-identical builds have been
+observed only locally, with a builder image equivalent to `release/Dockerfile`.
+Hosted CI, attestation, and publication have not run; no result is recorded in
+the evidence index. The scoped [offline recovery/cutover
 suite](recovery-validation.md) exercises #18 against stock VM and local objects,
 including older-backup catch-up and process crashes. Its expired-source refusal
 fixture reconstructs absent history; it does not establish natural retention

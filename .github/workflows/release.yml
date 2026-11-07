@@ -4,6 +4,10 @@ name: release
 # attests provenance and the SBOM, and saves a draft release. Publishing the
 # draft is a separate maintainer action (docs/releasing.md). workflow_dispatch
 # runs the same gates without attesting or creating a release.
+#
+# The reproducibility job fixes the SHA-256 of SHA256SUMS before any job runs
+# test dependencies or the release binary; publish accepts only those bytes and
+# never executes anything from them.
 on:
   push:
     tags:
@@ -63,6 +67,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      sums: ${{ steps.compare.outputs.sums }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,10 +84,15 @@ jobs:
         with:
           name: dist-second
           path: second
-      - run: python scripts/release.py compare first second
+      - name: Compare both builds and record the reviewed checksum list
+        id: compare
+        run: |
+          python scripts/release.py compare first second
+          echo "sums=$(sha256sum first/SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
   qualify:
-    needs: build
+    # After reproducibility, so test dependencies cannot replace the artifact first.
+    needs: [build, reproducibility]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -148,12 +159,14 @@ jobs:
         with:
           name: dist-first
           path: dist
-      - name: Re-verify downloaded artifacts
+      - name: Accept only the compared and qualified bytes
         id: dist
         env:
           TAG: ${{ github.ref_name }}
+          SUMS: ${{ needs.reproducibility.outputs.sums }}
         run: |
-          python scripts/release.py smoke dist
+          # Hash checks only: this job can sign, so it never runs the release binary.
+          python scripts/release.py verify dist --sums-sha256 "$SUMS"
           base="vmtier-${TAG}-linux-amd64"
           test -f "dist/${base}.tar.gz"
           echo "base=${base}" >> "$GITHUB_OUTPUT"

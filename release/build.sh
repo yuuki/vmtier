@@ -13,8 +13,8 @@ if [ "$want" != "$have" ]; then
 	exit 1
 fi
 
-# Resolve only committed versions. Go checks downloads against go.sum and the
-# checksum database; verify re-hashes the cache before vendoring.
+# Resolve only committed versions. Go rejects any download whose hash differs
+# from go.sum; verify re-hashes the cache before vendoring.
 go mod download
 go mod verify
 go mod vendor
@@ -33,14 +33,22 @@ go build -mod=vendor -trimpath -buildvcs=false -tags "$tags" -ldflags "$ldflags"
 go version -m /out/vmtier >/out/go-version-m.txt
 go env -json GOVERSION GOOS GOARCH GOAMD64 CGO_ENABLED CC CGO_CFLAGS CGO_LDFLAGS \
 	GOFLAGS GOPROXY GOSUMDB GOTOOLCHAIN >/out/go-env.json
-cp "$(go env GOROOT)/LICENSE" /out/go-LICENSE
+go mod graph >/out/go-mod-graph.txt
+goroot=$(go env GOROOT)
+cp "$goroot/LICENSE" /out/go-LICENSE
+cp "$goroot/PATENTS" /out/go-PATENTS
+# runtime.memmove on amd64 derives from Inferno and carries its own MIT notice.
+awk '!/^\/\//{exit} {print}' "$goroot/src/runtime/memmove_amd64.s" >/out/go-memmove_amd64-NOTICE
+grep -q 'Permission is hereby granted' /out/go-memmove_amd64-NOTICE
 
 {
 	printf 'alpine_release=%s\n' "$(cat /etc/alpine-release)"
 	printf 'cc=%s\n' "$(gcc --version | head -n 1)"
 	printf 'ld=%s\n' "$(ld --version | head -n 1)"
 	for package in gcc libgcc musl musl-dev binutils; do
-		printf 'apk=%s\n' "$(apk info -e -v "$package")"
+		# An assignment propagates a failed lookup under set -e; printf arguments do not.
+		installed=$(apk info -e -v "$package")
+		printf 'apk=%s\n' "$installed"
 	done
 	printf 'tags=%s\n' "$tags"
 	printf 'ldflags=%s\n' "$ldflags"

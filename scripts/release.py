@@ -3,8 +3,9 @@
 
 `build` exports one commit with `git archive`, compiles it in the digest-pinned
 container from release/Dockerfile, and writes a deterministic archive, CycloneDX
-SBOM, build record, and SHA256SUMS. `compare` checks two independent builds and
-`smoke` checks a packaged archive. Only the standard library is required.
+SBOM, build record, and SHA256SUMS. `verify` checks a release directory without
+running anything from it, `compare` checks two independent builds, and `smoke`
+also exercises the packaged binary. Only the standard library is required.
 """
 import argparse
 import gzip
@@ -35,6 +36,9 @@ DEV_VERSION = re.compile(r'^v0\.0\.0-dev\.g[0-9a-f]{12}$')
 NOTICE_NAME = re.compile(r'^(licen[cs]e|copying|notice|patents)([.-][a-z0-9.-]*)?$', re.IGNORECASE)
 ROOT_LICENSE = re.compile(r'^(licen[cs]e|copying)([.-][a-z0-9.-]*)?$', re.IGNORECASE)
 TOP_LEVEL_FILES = ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'README.md')
+TOOLCHAIN_NOTICES = {'licenses/go/LICENSE': 'go-LICENSE', 'licenses/go/PATENTS': 'go-PATENTS',
+                     'licenses/go/runtime-memmove_amd64.s-NOTICE': 'go-memmove_amd64-NOTICE'}
+MUSL_NOTICE = 'licenses/musl/COPYRIGHT'
 EXAMPLE = 'examples/serve-sakura.json'
 REPRODUCIBILITY_SCOPE = (
     'Identical bytes require the same commit, release/Dockerfile base digest, the Alpine package '
@@ -76,11 +80,20 @@ def validate_version(version):
     return version
 
 
+def semver_key(version):
+    """Sort key implementing SemVer precedence for validated versions."""
+    match = SEMVER.match(validate_version(version))
+    core = tuple(int(match.group(i)) for i in (1, 2, 3))
+    if match.group(4) is None:
+        return core, (1,)
+    ids = tuple((0, int(i), '') if i.isdigit() else (1, 0, i) for i in match.group(4).split('.'))
+    return core, (0, ids)
+
+
 def default_version(commit, tags):
-    released = sorted(tag for tag in tags if SEMVER.match(tag))
-    if len(released) > 1:
-        raise ReleaseError(f'HEAD has several release tags {released}; pass --version')
-    return released[0] if released else f'v0.0.0-dev.g{commit[:12]}'
+    """The highest-precedence release tag on HEAD (a promoted candidate keeps its final tag)."""
+    released = [tag for tag in tags if SEMVER.match(tag)]
+    return max(released, key=semver_key) if released else f'v0.0.0-dev.g{commit[:12]}'
 
 
 def escape_module_path(path):
@@ -142,6 +155,101 @@ def package_version(packages, name):
     raise ReleaseError(f'builder package {name} was not recorded')
 
 
+# SPDX identifiers that release/licenses.json may use. Extend deliberately after review.
+SPDX_LICENSES = {'0BSD', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'GPL-2.0-only', 'GPL-3.0-or-later',
+                 'ISC', 'MIT', 'MPL-2.0', 'blessing'}
+SPDX_EXCEPTIONS = {'GCC-exception-3.1'}
+
+
+def validate_spdx(expression):
+    """Accept AND/OR/WITH expressions over SPDX_LICENSES, with balanced parentheses."""
+    tokens = re.findall(r'\(|\)|[^\s()]+', expression)
+    pos = 0
+
+    def peek():
+        return tokens[pos] if pos < len(tokens) else None
+
+    def term():
+        nonlocal pos
+        token = peek()
+        if token == '(':
+            pos += 1
+            expr()
+            if peek() != ')':
+                raise ReleaseError(f'unbalanced SPDX expression {expression!r}')
+            pos += 1
+        elif token in SPDX_LICENSES:
+            pos += 1
+            if peek() == 'WITH':
+                pos += 1
+                if peek() not in SPDX_EXCEPTIONS:
+                    raise ReleaseError(f'unknown SPDX exception in {expression!r}')
+                pos += 1
+        else:
+            raise ReleaseError(f'unknown or misplaced SPDX token {token!r} in {expression!r}')
+
+    def expr():
+        nonlocal pos
+        term()
+        while peek() in ('AND', 'OR'):
+            pos += 1
+            term()
+
+    expr()
+    if pos != len(tokens):
+        raise ReleaseError(f'trailing tokens in SPDX expression {expression!r}')
+    return expression
+
+
+def notices_digest(module_dir, files):
+    """Digest of a module's license files, so a version bump that relicenses is noticed."""
+    digest = hashlib.sha256()
+    for rel in sorted(files, key=lambda r: r.as_posix()):
+        digest.update(f'{rel.as_posix()}\0{sha256_file(Path(module_dir) / rel)}\n'.encode())
+    return digest.hexdigest()
+
+
+def direct_requirements(go_mod):
+    """Module paths required by go.mod without an // indirect comment."""
+    direct, block = set(), False
+    for line in go_mod.splitlines():
+        line = line.strip()
+        if line == 'require (':
+            block = True
+        elif block and line == ')':
+            block = False
+        elif (block or line.startswith('require ')) and '// indirect' not in line:
+            fields = line.removeprefix('require ').split()
+            if len(fields) >= 2:
+                direct.add(fields[0])
+    return direct
+
+
+def module_requirements(graph, deps):
+    """Requirement edges between linked modules at their selected versions, from `go mod graph`."""
+    selected = {d['path']: d['version'] for d in deps}
+    requires = {path: set() for path in selected}
+    for line in graph.splitlines():
+        fields = line.split()
+        if len(fields) != 2:
+            continue
+        source, target = (field.rpartition('@') if '@' in field else (field, '', '') for field in fields)
+        if source[0] in selected and source[2] == selected[source[0]] and target[0] in selected:
+            requires[source[0]].add(target[0])
+    return {path: sorted(targets) for path, targets in requires.items()}
+
+
+def embedded_versions(module_dir_of):
+    """Versions of C libraries compiled into linked Go modules."""
+    sqlite = (module_dir_of('github.com/mattn/go-sqlite3') / 'sqlite3-binding.h').read_text()
+    zstd = (module_dir_of('github.com/valyala/gozstd') / 'zstd' / 'lib' / 'zstd.h').read_text()
+    parts = [re.search(rf'#define ZSTD_VERSION_{name}\s+(\d+)', zstd) for name in ('MAJOR', 'MINOR', 'RELEASE')]
+    match = re.search(r'#define SQLITE_VERSION\s+"([0-9.]+)"', sqlite)
+    if not match or not all(parts):
+        raise ReleaseError('cannot determine embedded SQLite or zstd version')
+    return {'sqlite': match.group(1), 'zstd': '.'.join(p.group(1) for p in parts)}
+
+
 def check_license_record(deps, record):
     known = record['modules']
     linked = {dep['path'] for dep in deps}
@@ -187,20 +295,32 @@ def elf_linking(path):
 def cyclonedx(build, licenses):
     version = build['version']
     main_ref = f'pkg:golang/{MODULE}@{version}'
-    components = [{'type': 'library', 'bom-ref': f"pkg:golang/{m['path']}@{m['version']}", 'name': m['path'],
-                   'version': m['version'], 'purl': f"pkg:golang/{m['path']}@{m['version']}",
+    ref = {m['path']: f"pkg:golang/{m['path']}@{m['version']}" for m in build['modules']}
+    components = [{'type': 'library', 'bom-ref': ref[m['path']], 'name': m['path'],
+                   'version': m['version'], 'purl': ref[m['path']],
                    'licenses': [{'expression': m['license']}],
                    'properties': [{'name': 'vmtier:go.sum', 'value': m['sum']}]} for m in build['modules']]
+    edges = {ref[m['path']]: [ref[r] for r in m['requires']] for m in build['modules']}
+    roots = [ref[m['path']] for m in build['modules'] if m['direct']]
+    for name, c in sorted(build['embedded'].items()):
+        components.append({'type': 'library', 'bom-ref': c['purl'], 'name': name, 'version': c['version'],
+                           'purl': c['purl'], 'cpe': c['cpe'], 'licenses': [{'expression': c['license']}],
+                           'description': f"C library compiled into {c['module']}"})
+        edges[ref[c['module']]].append(c['purl'])
+        edges[c['purl']] = []
     go = build['go']['GOVERSION']
-    components.append({'type': 'library', 'bom-ref': f'pkg:golang/stdlib@{go.removeprefix("go")}', 'name': 'stdlib',
-                       'version': go, 'purl': f'pkg:golang/stdlib@{go.removeprefix("go")}',
-                       'licenses': [{'expression': licenses['toolchain']['go']['license']}]})
-    musl = package_version(build['builder']['packages'], 'musl')
     distro = f"alpine-{build['builder']['alpine_release']}"
-    components.append({'type': 'library', 'bom-ref': f'pkg:apk/alpine/musl@{musl}', 'name': 'musl', 'version': musl,
-                       'purl': f'pkg:apk/alpine/musl@{musl}?arch=x86_64&distro={distro}',
-                       'licenses': [{'expression': licenses['toolchain']['musl']['license']}],
-                       'description': 'C library statically linked into the binary'})
+    toolchain = [('stdlib', 'golang', f'pkg:golang/stdlib@{go.removeprefix("go")}', go, licenses['toolchain']['go'],
+                  'Go runtime and standard library')]
+    for name in ('musl', 'libgcc'):
+        apk = package_version(build['builder']['packages'], name)
+        toolchain.append((name, 'apk', f'pkg:apk/alpine/{name}@{apk}?arch=x86_64&distro={distro}', apk,
+                          licenses['toolchain'][name], 'statically linked by the release builder'))
+    for name, _, purl, component_version, record, description in toolchain:
+        components.append({'type': 'library', 'bom-ref': purl, 'name': name, 'version': component_version,
+                           'purl': purl, 'licenses': [{'expression': record['license']}], 'description': description})
+        edges[purl] = []
+        roots.append(purl)
     components.sort(key=lambda c: c['bom-ref'])
     serial = uuid.uuid5(uuid.NAMESPACE_URL, f"{REPOSITORY}/releases/{version}/{build['binary']['sha256']}")
     timestamp = datetime.fromtimestamp(build['source_date_epoch'], timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -220,7 +340,8 @@ def cyclonedx(build, licenses):
             },
         },
         'components': components,
-        'dependencies': [{'ref': main_ref, 'dependsOn': [c['bom-ref'] for c in components]}],
+        'dependencies': [{'ref': main_ref, 'dependsOn': sorted(roots)}] +
+                        [{'ref': r, 'dependsOn': sorted(edges[r])} for r in sorted(edges)],
     }
 
 
@@ -281,6 +402,35 @@ def docker_extra_args():
     return shlex.split(os.environ.get('VMTIER_RELEASE_DOCKER_RUN_ARGS', ''))
 
 
+def export_commit(commit, src):
+    """Extract `git archive` of commit and require every file to match its blob in the commit."""
+    # Local config or info/attributes can rewrite or drop exported files; detect that below.
+    cmd = ['git', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=tar', commit]
+    with subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE) as proc:
+        with tarfile.open(fileobj=proc.stdout, mode='r|') as tar:
+            tar.extractall(src, filter='data')
+    if proc.returncode != 0:
+        raise ReleaseError('git archive failed')
+    algorithm = git('rev-parse', '--show-object-format')
+    expected = {}
+    for entry in run(['git', 'ls-tree', '-r', '-z', commit], cwd=ROOT, capture=True).split('\0'):
+        if entry:
+            meta, _, path = entry.partition('\t')
+            mode, kind, obj = meta.split()
+            if kind != 'blob':
+                raise ReleaseError(f'unsupported tree entry {kind} {path}')
+            expected[path] = (mode, obj)
+    found = {p.relative_to(src).as_posix() for p in Path(src).rglob('*') if p.is_file() or p.is_symlink()}
+    if found != expected.keys():
+        raise ReleaseError(f'exported tree differs from {commit[:12]}: missing {sorted(expected.keys() - found)}, '
+                           f'extra {sorted(found - expected.keys())}')
+    for path, (mode, obj) in expected.items():
+        file = Path(src) / path
+        data = os.readlink(file).encode() if mode == '120000' else file.read_bytes()
+        if hashlib.new(algorithm, b'blob %d\0' % len(data) + data).hexdigest() != obj:
+            raise ReleaseError(f'exported {path} differs from the committed blob; check git attributes and filters')
+
+
 def build(args):
     commit = git('rev-parse', 'HEAD')
     tags = git('tag', '--points-at', 'HEAD').split()
@@ -290,8 +440,9 @@ def build(args):
             raise ReleaseError(f'{version} does not name HEAD {commit[:12]}')
     elif version not in tags:
         raise ReleaseError(f'{version} is not a tag on HEAD; tag the commit or omit --version for a dev build')
+    # The packager itself runs from the working tree, so it must match the commit too.
     if git('status', '--porcelain', '--untracked-files=no'):
-        print('warning: uncommitted changes are excluded; building HEAD only', file=sys.stderr)
+        raise ReleaseError('tracked files have uncommitted changes; commit or stash them first')
     source_date_epoch = int(git('log', '-1', '--format=%ct', 'HEAD'))
     dist = Path(args.output).resolve()
     if dist.exists() and any(dist.iterdir()):
@@ -303,17 +454,17 @@ def build(args):
         for d in (src, out, modcache):
             d.mkdir()
         # Only committed files reach the builder; untracked or modified files cannot leak in.
-        with subprocess.Popen(['git', 'archive', '--format=tar', commit], cwd=ROOT, stdout=subprocess.PIPE) as proc:
-            with tarfile.open(fileobj=proc.stdout, mode='r|') as tar:
-                tar.extractall(src, filter='data')
-        if proc.returncode != 0:
-            raise ReleaseError('git archive failed')
+        export_commit(commit, src)
         dockerfile = src / 'release' / 'Dockerfile'
         base_image = next(line.split()[1] for line in dockerfile.read_text().splitlines() if line.startswith('FROM '))
         if '@sha256:' not in base_image:
             raise ReleaseError('release/Dockerfile base image must be pinned by digest')
         image = args.builder_image
-        if image is None:
+        if image is not None:
+            # Not recorded: an equivalent image must produce identical outputs, and
+            # builder.packages, cc, and ld show any difference.
+            print(f'warning: using builder image {image} instead of release/Dockerfile', file=sys.stderr)
+        else:
             image = f'vmtier-release-builder:{sha256_file(dockerfile)[:16]}'
             run(['docker', 'build', '--pull', '-t', image, '-f', dockerfile, src / 'release'])
         env = {'HOME': '/tmp', 'GOCACHE': '/tmp/go-build', 'GOMODCACHE': '/gomodcache',
@@ -325,7 +476,7 @@ def build(args):
         for key, value in env.items():
             cmd += ['-e', f'{key}={value}']
         run([*cmd, image, 'sh', '/src/release/build.sh'])
-        package(args, version, commit, source_date_epoch, base_image, image, src, out, modcache, work, dist)
+        package(version, commit, source_date_epoch, base_image, src, out, modcache, work, dist)
     finally:
         if args.keep_work:
             print(f'kept work directory {work}', file=sys.stderr)
@@ -334,8 +485,10 @@ def build(args):
     print(dist)
 
 
-def package(args, version, commit, source_date_epoch, base_image, image, src, out, modcache, work, dist):
+def package(version, commit, source_date_epoch, base_image, src, out, modcache, work, dist):
     licenses = json.loads((src / 'release' / 'licenses.json').read_text())
+    for record in (*licenses['modules'].values(), *licenses['embedded'].values(), *licenses['toolchain'].values()):
+        validate_spdx(record['license'])
     go_version, main_module, deps, settings = parse_go_version_m((out / 'go-version-m.txt').read_text())
     toolchain = parse_toolchain((out / 'toolchain.txt').read_text())
     go_env = json.loads((out / 'go-env.json').read_text())
@@ -352,6 +505,25 @@ def package(args, version, commit, source_date_epoch, base_image, image, src, ou
         dep['sum'] = dep['sum'] or sums.get((dep['path'], dep['version']), '')
         if not dep['sum'].startswith('h1:'):
             raise ReleaseError(f"no go.sum module hash for {dep['path']} {dep['version']}")
+    selected = {dep['path']: dep['version'] for dep in deps}
+
+    def module_dir_of(path):
+        return modcache / f'{escape_module_path(path)}@{escape_module_path(selected[path])}'
+
+    versions = embedded_versions(module_dir_of)
+    if versions.keys() != licenses['embedded'].keys():
+        raise ReleaseError(f"embedded C libraries {sorted(versions)} differ from release/licenses.json")
+    embedded = {}
+    for name, record in licenses['embedded'].items():
+        if record['module'] not in selected:
+            raise ReleaseError(f"{name} is recorded in {record['module']}, which is not linked")
+        notice = record.get('notice')
+        if notice and selected[record['module']] != notice['module_version']:
+            raise ReleaseError(f"{notice['path']} was reviewed for {record['module']} {notice['module_version']}, "
+                               f"but {selected[record['module']]} is linked; refresh the notice after review")
+        v = versions[name]
+        embedded[name] = {'module': record['module'], 'version': v, 'license': record['license'],
+                          'purl': record['purl'].format(version=v), 'cpe': record['cpe'].format(version=v)}
     musl = package_version(toolchain['packages'], 'musl')
     if musl.split('-r')[0] != licenses['toolchain']['musl']['version']:
         raise ReleaseError(f"builder musl {musl} differs from the recorded notice "
@@ -366,20 +538,36 @@ def package(args, version, commit, source_date_epoch, base_image, image, src, ou
     (stage / 'examples').mkdir()
     shutil.copyfile(src / EXAMPLE, stage / EXAMPLE)
     shutil.copyfile(out / 'go-version-m.txt', stage / 'go-version-m.txt')
-    (stage / 'licenses' / 'go').mkdir(parents=True)
-    shutil.copyfile(out / 'go-LICENSE', stage / 'licenses' / 'go' / 'LICENSE')
-    (stage / 'licenses' / 'musl').mkdir()
-    shutil.copyfile(src / licenses['toolchain']['musl']['notice'], stage / 'licenses' / 'musl' / 'COPYRIGHT')
-    modules = []
+    for target, name in TOOLCHAIN_NOTICES.items():
+        (stage / target).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(out / name, stage / target)
+    (stage / MUSL_NOTICE).parent.mkdir(parents=True)
+    shutil.copyfile(src / licenses['toolchain']['musl']['notice'], stage / MUSL_NOTICE)
+    direct = direct_requirements((src / 'go.mod').read_text())
+    requires = module_requirements((out / 'go-mod-graph.txt').read_text(), deps)
+    modules, changed = [], {}
     for dep in deps:
-        module_dir = modcache / f"{escape_module_path(dep['path'])}@{escape_module_path(dep['version'])}"
+        module_dir = module_dir_of(dep['path'])
         files = notice_files(module_dir)
+        digest = notices_digest(module_dir, files)
+        reviewed = licenses['modules'][dep['path']]
+        if reviewed.get('notices_sha256') != digest:
+            changed[dep['path']] = {'license': reviewed['license'], 'notices_sha256': digest}
         for rel in files:
             target = stage / 'licenses' / dep['path'] / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(module_dir / rel, target)
-        modules.append({**dep, 'license': licenses['modules'][dep['path']],
-                        'notices': [f"licenses/{dep['path']}/{rel.as_posix()}" for rel in files]})
+        notices = [f"licenses/{dep['path']}/{rel.as_posix()}" for rel in files]
+        for record in licenses['embedded'].values():
+            if record['module'] == dep['path'] and record.get('notice'):
+                target = f"licenses/{dep['path']}/{Path(record['notice']['path']).name}"
+                shutil.copyfile(src / record['notice']['path'], stage / target)
+                notices.append(target)
+        modules.append({**dep, 'license': reviewed['license'], 'notices': notices, 'notices_sha256': digest,
+                        'direct': dep['path'] in direct, 'requires': requires[dep['path']]})
+    if changed:
+        raise ReleaseError('license files changed since review; read them, then update release/licenses.json: '
+                           + json.dumps(changed, indent=2, sort_keys=True))
 
     build_record = {
         'schema': BUILD_SCHEMA, 'version': version, 'commit': commit, 'source_date_epoch': source_date_epoch,
@@ -388,13 +576,15 @@ def package(args, version, commit, source_date_epoch, base_image, image, src, ou
                    'linking': linking},
         'builder': {'dockerfile': 'release/Dockerfile', 'dockerfile_sha256': sha256_file(src / 'release/Dockerfile'),
                     'script': 'release/build.sh', 'script_sha256': sha256_file(src / 'release/build.sh'),
-                    'base_image': base_image, 'image_override': args.builder_image,
+                    'base_image': base_image,
                     'alpine_release': toolchain['alpine_release'], 'packages': toolchain['packages'],
                     'cc': toolchain['cc'], 'ld': toolchain['ld']},
         'go': go_env,
         'build': {'command': toolchain['command'], 'tags': toolchain['tags'].split(','), 'ldflags': toolchain['ldflags'],
                   'settings': settings},
         'modules': modules,
+        'embedded': embedded,
+        'notices': sorted([*TOOLCHAIN_NOTICES, MUSL_NOTICE]),
         'reproducibility': REPRODUCIBILITY_SCOPE,
     }
     sbom = cyclonedx(build_record, licenses)
@@ -407,8 +597,37 @@ def package(args, version, commit, source_date_epoch, base_image, image, src, ou
     write_checksums(dist, [f'{base}.tar.gz', f'{base}.build.json', f'{base}.cdx.json'])
 
 
+def verify_dist(dist, sums_sha256=None):
+    """Check a release directory without executing anything from it; return its artifact base name."""
+    dist = Path(dist)
+    if sums_sha256 is not None and sha256_file(dist / 'SHA256SUMS') != sums_sha256:
+        raise ReleaseError(f'{dist}/SHA256SUMS is not the reviewed checksum list {sums_sha256}')
+    sums = read_checksums(dist)
+    archives = [name for name in sums if name.endswith('.tar.gz')]
+    if len(archives) != 1:
+        raise ReleaseError(f'expected one archive in SHA256SUMS, found {archives}')
+    base = archives[0].removesuffix('.tar.gz')
+    expected = {f'{base}.tar.gz', f'{base}.build.json', f'{base}.cdx.json'}
+    if sums.keys() != expected:
+        raise ReleaseError(f'SHA256SUMS lists {sorted(sums)}, want {sorted(expected)}')
+    present = {p.name for p in dist.iterdir()}
+    if present != expected | {'SHA256SUMS'}:
+        raise ReleaseError(f'{dist} contains {sorted(present)}, want exactly SHA256SUMS and {sorted(expected)}')
+    for name, digest in sums.items():
+        if sha256_file(dist / name) != digest:
+            raise ReleaseError(f'checksum mismatch for {name}')
+    return base
+
+
+def verify(args):
+    base = verify_dist(args.dist, args.sums_sha256)
+    print(f'verified: {base} ({sha256_file(Path(args.dist) / "SHA256SUMS")})')
+
+
 def compare(args):
     a, b = Path(args.first), Path(args.second)
+    verify_dist(a)
+    verify_dist(b)
     sums_a, sums_b = read_checksums(a), read_checksums(b)
     differences = [name for name in sorted(sums_a.keys() | sums_b.keys()) if sums_a.get(name) != sums_b.get(name)]
     for name in differences:
@@ -423,14 +642,8 @@ def compare(args):
 
 def smoke(args):
     dist = Path(args.dist)
-    sums = read_checksums(dist)
-    for name, digest in sums.items():
-        if sha256_file(dist / name) != digest:
-            raise ReleaseError(f'checksum mismatch for {name}')
-    archives = [name for name in sums if name.endswith('.tar.gz')]
-    if len(archives) != 1:
-        raise ReleaseError(f'expected one archive, found {archives}')
-    base = archives[0].removesuffix('.tar.gz')
+    base = verify_dist(dist)
+    archives = [f'{base}.tar.gz']
     published = json.loads((dist / f'{base}.build.json').read_text())
     with tempfile.TemporaryDirectory(prefix='vmtier-smoke-') as tmp:
         tmp = Path(tmp)
@@ -443,8 +656,8 @@ def smoke(args):
         build_record = json.loads((root / 'BUILD.json').read_text())
         if build_record != published:
             raise ReleaseError('packaged BUILD.json differs from the published build record')
-        required = [*TOP_LEVEL_FILES, EXAMPLE, 'sbom.cdx.json', 'go-version-m.txt', 'licenses/go/LICENSE',
-                    'licenses/musl/COPYRIGHT', *(n for m in build_record['modules'] for n in m['notices'])]
+        required = [*TOP_LEVEL_FILES, EXAMPLE, 'sbom.cdx.json', 'go-version-m.txt', *build_record['notices'],
+                    *(n for m in build_record['modules'] for n in m['notices'])]
         missing = [name for name in required if not (root / name).is_file()]
         if missing:
             raise ReleaseError(f'archive is missing {missing}')
@@ -479,8 +692,8 @@ def smoke(args):
 
 def notes(args):
     dist = Path(args.dist)
-    build_record = json.loads(next(dist.glob('*.build.json')).read_text())
-    base = artifact_base(build_record['version'])
+    base = verify_dist(dist)
+    build_record = json.loads((dist / f'{base}.build.json').read_text())
     sums = read_checksums(dist)
     checksum_lines = ''.join(f'{digest}  {name}\n' for name, digest in sorted(sums.items()))
     print(f"""## vmtier {build_record['version']}
@@ -494,13 +707,18 @@ before deploying: provider, retention, and ingress qualification are tracked sep
 
 ```sh
 sha256sum --check SHA256SUMS
-gh attestation verify {base}.tar.gz --repo yuuki/vmtier
-gh attestation verify {base}.tar.gz --repo yuuki/vmtier --predicate-type https://cyclonedx.org/bom
+gh attestation verify {base}.tar.gz --repo yuuki/vmtier \\
+  --signer-workflow yuuki/vmtier/.github/workflows/release.yml \\
+  --source-ref refs/tags/{build_record['version']} --deny-self-hosted-runners
+gh attestation verify {base}.tar.gz --repo yuuki/vmtier \\
+  --signer-workflow yuuki/vmtier/.github/workflows/release.yml \\
+  --source-ref refs/tags/{build_record['version']} --deny-self-hosted-runners \\
+  --predicate-type https://cyclonedx.org/bom
 ```
 
 Binary SHA-256: `{build_record['binary']['sha256']}`. The archive contains the
-licenses and notices for every linked module, the Go runtime, and musl; the
-build recipe is in `{base}.build.json`.
+license files of every linked Go module, recorded notices embedded in bundled C
+code, and the Go runtime and musl notices; the build recipe is in `{base}.build.json`.
 
 ```text
 {checksum_lines}```""")
@@ -517,7 +735,11 @@ def main(argv=None):
     p.add_argument('--unit-tests', action='store_true', help='also run go test in the builder with release tags')
     p.add_argument('--keep-work', action='store_true', help='keep the exported source and module cache')
     p.set_defaults(func=build)
-    p = sub.add_parser('compare', help='require two dist directories to have identical checksums')
+    p = sub.add_parser('verify', help='check a dist directory by hashes only, without running anything')
+    p.add_argument('dist')
+    p.add_argument('--sums-sha256', help='require SHA256SUMS itself to have this SHA-256')
+    p.set_defaults(func=verify)
+    p = sub.add_parser('compare', help='require two verified dist directories to have identical checksums')
     p.add_argument('first')
     p.add_argument('second')
     p.set_defaults(func=compare)
@@ -531,8 +753,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         args.func(args)
-    except ReleaseError as e:
-        print(f'release: {e}', file=sys.stderr)
+    except (ReleaseError, OSError, KeyError, json.JSONDecodeError) as e:
+        print(f'release: {type(e).__name__ if not isinstance(e, ReleaseError) else "error"}: {e}', file=sys.stderr)
         return 1
     return 0
 

@@ -56,7 +56,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.15.2'
-      - run: python scripts/release.py build --output .cache/release/first
+      - run: python scripts/release.py build --unit-tests --output .cache/release/first
       - run: python scripts/release.py build --output .cache/release/second
       - run: python scripts/release.py compare .cache/release/first .cache/release/second
       - run: python scripts/release.py smoke .cache/release/first
