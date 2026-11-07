@@ -8,6 +8,11 @@ GOLANGCI_LINT_VERSION ?= v2.15.0
 ACTIONLINT_VERSION ?= v1.7.12
 ZIZMOR_VERSION ?= 1.32.0
 FUZZTIME ?= 30s
+# TLA+ tools that model-check spec/ (a release, not the rolling nightly).
+TLA_VERSION ?= 1.7.4
+TLA_SHA256 ?= 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+TLA_JAR ?= $(CURDIR)/.cache/tla/tla2tools-$(TLA_VERSION).jar
+JAVA ?= java
 BENCHTIME ?= 1s
 BENCH_COUNT ?= 6
 # Build go-run tools with this module's toolchain (go.mod), not the one of the
@@ -18,7 +23,7 @@ GOLANGCI_LINT ?= GOTOOLCHAIN=$(GO_TOOLCHAIN) $(GO) run github.com/golangci/golan
 ZIZMOR ?= $(if $(shell command -v uvx 2>/dev/null),uvx zizmor@$(ZIZMOR_VERSION),pipx run zizmor==$(ZIZMOR_VERSION))
 export GOMAXPROCS GOCACHE
 .PHONY: bootstrap build test race vet stock e2e e2e-s3 vulncheck release-snapshot
-.PHONY: check lint fmt lint-actions test-race test-scripts test-fuzz test-integration bench vuln
+.PHONY: check lint fmt lint-actions test-race test-scripts test-fuzz test-integration test-tla bench vuln
 bootstrap:
 	GO_BIN="$(GO)" ./scripts/bootstrap.sh
 build:
@@ -68,6 +73,10 @@ test-fuzz:
 			$(GO) test -mod=vendor -run='^$$' -fuzz="^$$f\$$" -fuzztime=$(FUZZTIME) -parallel=$(GOMAXPROCS) $$pkg; \
 		done; \
 	done
+# TLC over the publication model in spec/: every configuration must end as its
+# first line expects. Needs Java 11 or later; downloads the pinned jar once.
+test-tla:
+	$(PYTHON) scripts/tlc.py --java $(JAVA) --jar $(TLA_JAR) --version $(TLA_VERSION) --sha256 $(TLA_SHA256) spec/VmtierPublication.tla
 # PostgreSQL repository and CLI tests, which skip without a database. They
 # create and drop their own schemas in a disposable database.
 test-integration:

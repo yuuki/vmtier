@@ -23,6 +23,8 @@ identity, and blob locator. It cannot be rebuilt from an object listing. SQLite
 uses a lifetime directory lock. PostgreSQL serializes publication with a catalog
 row lock and checks a DB-time lease and monotonically increasing fencing token.
 Both implement the same domain repository; object I/O stays outside transactions.
+[`spec/VmtierPublication.tla`](../spec/README.md) models the lease, upload and
+publication transaction in TLA+; `make test-tla` checks it with TLC.
 
 ## Query path
 
