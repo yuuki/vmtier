@@ -26,7 +26,7 @@ import (
 
 func runServeCommand(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	file := fs.String("config", "", "SQLite service configuration")
+	file := fs.String("config", "", "SQLite or PostgreSQL service configuration")
 	listen := fs.String("listen", "127.0.0.1:8489", "trusted vmselect RPC listener")
 	httpAddr := fs.String("http", "127.0.0.1:8490", "health and metrics listener")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -52,6 +52,38 @@ func openConfiguredSQLite(ctx context.Context, c *config.Config) (*catalog.SQLit
 	if err != nil {
 		return nil, err
 	}
+	if err = validateConfiguredRepository(ctx, c, db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func openConfiguredRepository(ctx context.Context, c *config.Config) (catalog.Repository, error) {
+	if c.Catalog.Type == "sqlite" {
+		return openConfiguredSQLite(ctx, c)
+	}
+	if c.Catalog.Type != "postgres" {
+		return nil, errors.New("serve requires catalog.type=sqlite or postgres and explicitly initialized state")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	dsn, err := c.PostgresDSN()
+	if err != nil {
+		return nil, err
+	}
+	db, err := catalog.OpenPostgres(ctx, dsn, c.Catalog.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err = validateConfiguredRepository(ctx, c, db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func validateConfiguredRepository(ctx context.Context, c *config.Config, db catalog.Repository) error {
 	status, err := db.Status(ctx)
 	if err == nil && !catalog.EqualContract(status.Contract, c.ArchiveContract()) {
 		err = errors.New("catalog contract differs from service configuration")
@@ -63,11 +95,7 @@ func openConfiguredSQLite(ctx context.Context, c *config.Config) (*catalog.SQLit
 			err = errors.New("catalog blob locator differs from service configuration")
 		}
 	}
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
+	return err
 }
 
 // The process owns one catalog and one BlobStore instance. Archive, queries, and
@@ -75,7 +103,7 @@ func openConfiguredSQLite(ctx context.Context, c *config.Config) (*catalog.SQLit
 func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	db, err := openConfiguredSQLite(ctx, c)
+	db, err := openConfiguredRepository(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -87,7 +115,7 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	if closer, ok := blobs.(interface{ Close() error }); ok {
 		defer closer.Close()
 	}
-	reader, err := c.SQLiteReader(blobs, db)
+	reader, err := c.RepositoryReader(blobs, db)
 	if err != nil {
 		return err
 	}
@@ -117,15 +145,24 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}()
 	webDone := make(chan error, 1)
 	go func() { webDone <- web.Serve(ln) }()
-	archiver := &archive.SQLiteArchiver{Store: blobs, Catalog: db, Config: c.Archive(0, 0), RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
-	archiver.Config.Memory = &stats.archiveMemory
+	newArchiver := func(repo catalog.Repository) archivePassRunner {
+		cfg := c.Archive(0, 0)
+		cfg.Memory = &stats.archiveMemory
+		return &archive.Archiver{Store: blobs, Catalog: repo, Config: cfg, RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
+	}
 	archiveDone := make(chan struct{})
 	go func() {
 		defer close(archiveDone)
-		runArchiveLoop(ctx, archiver, c.ArchiveInterval(), &stats)
+		if pg, ok := db.(*catalog.Postgres); ok {
+			runPostgresArchiveLoop(ctx, pg, newArchiver, c.ArchiveInterval(), c.ArchiveLeaseTTL(), &stats)
+		} else {
+			stats.leader.Store(true)
+			defer stats.leader.Store(false)
+			runArchiveLoop(ctx, newArchiver(db), c.ArchiveInterval(), &stats)
+		}
 	}()
 	defer func() { cancel(); <-archiveDone }()
-	slog.Info("SQLite service started", "catalog_id", c.Catalog.ID, "rpc", rpcAddr, "http", ln.Addr().String())
+	slog.Info("service started", "catalog_type", c.Catalog.Type, "catalog_id", c.Catalog.ID, "rpc", rpcAddr, "http", ln.Addr().String())
 	select {
 	case <-ctx.Done():
 		return nil
@@ -155,6 +192,7 @@ type serviceStats struct {
 	archiveMemory                             archive.MemoryStats
 	passes, failures, windows, samples, bytes atomic.Uint64
 	lastCommit                                atomic.Int64
+	leader                                    atomic.Bool
 }
 
 type archivePassRunner interface {
@@ -168,6 +206,9 @@ func runArchiveLoop(ctx context.Context, worker archivePassRunner, interval time
 		if err != nil && ctx.Err() == nil {
 			stats.failures.Add(1)
 			slog.Error("archive pass failed", "error", err)
+			if errors.Is(err, catalog.ErrLeaseLost) {
+				return
+			}
 		}
 		if result != nil && result.CommittedWindows > 0 {
 			stats.windows.Add(uint64(result.CommittedWindows))
@@ -202,6 +243,11 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		fmt.Fprintf(w, "vmtier_query_requests_total %d\nvmtier_query_errors_total %d\nvmtier_blocks_total %d\nvmtier_cache_hits_total %d\nvmtier_cache_misses_total %d\n", api.Requests.Load(), api.Errors.Load(), api.Blocks.Load(), reader.CacheHits.Load(), reader.CacheMisses.Load())
 		fmt.Fprintf(w, "vmtier_archive_passes_total %d\nvmtier_archive_failed_passes_total %d\nvmtier_archive_committed_windows_total %d\nvmtier_archive_samples_total %d\nvmtier_archive_bytes_total %d\nvmtier_archive_last_commit_timestamp_seconds %d\n", stats.passes.Load(), stats.failures.Load(), stats.windows.Load(), stats.samples.Load(), stats.bytes.Load(), stats.lastCommit.Load())
+		leader := 0
+		if stats.leader.Load() {
+			leader = 1
+		}
+		fmt.Fprintf(w, "vmtier_archive_leader %d\n", leader)
 		if ioStats, ok := blobs.(interface{ Stats() objectstore.Snapshot }); ok {
 			s := ioStats.Stats()
 			fmt.Fprintf(w, "vmtier_object_get_requests_total %d\nvmtier_object_range_requests_total %d\nvmtier_object_download_bytes_total %d\nvmtier_object_put_requests_total %d\n", s.Gets, s.RangeGets, s.DownloadedBytes, s.Puts)
@@ -215,7 +261,7 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 		writeCapacityMetrics(ctx, w, reader, api, stats)
-		state, err := reader.SQLiteStatus(ctx)
+		state, err := reader.CatalogStatus(ctx)
 		ready := 0
 		if err == nil {
 			ready = 1

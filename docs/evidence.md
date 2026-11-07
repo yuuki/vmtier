@@ -9,6 +9,7 @@ Raw artifacts remain under [`results/`](results/) at their existing paths.
 
 | Report | Scope |
 | --- | --- |
+| [postgres-ha-validation.md](postgres-ha-validation.md) | PostgreSQL leases/fencing, gateway failover, stopped SQLite migration, and local synchronous-database faults; current integration and retained earlier-pin stage evidence |
 | [serve-validation.md](serve-validation.md) | SQLite service and differential baseline |
 | [sqlite-catalog-validation.md](sqlite-catalog-validation.md) | SQLite repository and original offline commands |
 | [implementation-validation.md](implementation-validation.md) | Archive and reader implementation |
@@ -24,7 +25,7 @@ Raw artifacts remain under [`results/`](results/) at their existing paths.
 | [validation.md](validation.md) | Historical JSON v2 MVP baseline |
 
 The [all-S3 v1 reports](results/legacy-v1/README.md) belong to a superseded
-architecture and are excluded from current SQLite qualification.
+architecture and are excluded from qualification of either current service backend.
 
 Local Moto/proxy checks exercise selected API constraints; they do not certify
 real-provider authentication, quotas, durability, or performance. Reconstructing

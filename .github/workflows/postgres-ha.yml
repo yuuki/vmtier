@@ -1,0 +1,36 @@
+name: PostgreSQL fault qualification
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  synchronous-failover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.15.2'
+      - name: Install PostgreSQL 17 test binaries
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --location --retry 3 https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-17
+      - run: make bootstrap
+      - name: Exercise synchronous failover and transport faults
+        run: python scripts/postgres_ha.py --postgres-bin /usr/lib/postgresql/17/bin --race --workdir .cache/ci-postgres-faults
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: postgres-fault-evidence
+          path: |
+            .cache/ci-postgres-faults/results.json
+            .cache/ci-postgres-faults/*.log
+          include-hidden-files: true
+          if-no-files-found: warn

@@ -1,14 +1,16 @@
 # Archive capacity preflight
 
 Run `vmtier preflight` against representative busy windows **before initializing
-a SQLite catalog**. It uses the service's bounded native pack rotation and the
+a SQLite or PostgreSQL catalog**. It uses the service's bounded native pack rotation and the
 same independent raw/count verification. It reads only the selected Hot source:
 there are no object PUTs, catalog reads, catalog initialization, or publication.
 An existing catalog directory is neither opened nor modified.
 
 Prepare a candidate service configuration with the intended H/L/retention/window
-policy, source, tenant, and blob locator. The catalog path may be nonexistent and
-the blob backend need not be reachable; S3 credentials are not needed. As for
+policy, source, tenant, and blob locator. The SQLite catalog path may be
+nonexistent. PostgreSQL configurations must include their normal S3 budget and
+maximum-replica settings, but the DSN environment variable need not be set. No
+catalog or blob connection is opened and S3 credentials are not needed. As for
 archival, the selected interval must be old enough for H and still safely inside
 the declared Hot retention. Lateness enforcement remains an operator assertion.
 
@@ -26,7 +28,8 @@ endpoints are required. One invocation accepts exactly one logical window and on
 configured tenant/source. Tenant and source flags may be omitted when each has
 only one configured value. Repeat for other busy streams/windows, including
 replicated or unusually large native records. The existing JSON v2 writer remains
-a single-pack pipeline; this command explicitly sizes the SQLite service.
+a single-pack pipeline; this command sizes the shared SQLite/PostgreSQL service
+archive pipeline.
 
 The command uses `service.archive_timeout` as its complete attempt deadline
 (default two minutes). It does not offer larger pack or sample limits than the

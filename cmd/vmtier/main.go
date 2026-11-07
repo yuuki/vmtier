@@ -32,21 +32,23 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: vmtier serve|archive|preflight|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-backup|catalog-restore; version")
+		return errors.New("usage: vmtier serve|archive|preflight|gateway|inspect|verify -config FILE; catalog-init|catalog|catalog-inspect|catalog-import|catalog-import-postgres|catalog-backup|catalog-restore|catalog-upgrade; version")
 	}
 	switch args[0] {
 	case "preflight":
 		return runPreflightCommand(args)
 	case "serve":
 		return runServeCommand(args)
-	case "catalog-inspect", "catalog-import", "catalog-backup", "catalog-restore":
+	case "catalog-import-postgres":
+		return runPostgresImport(args)
+	case "catalog-inspect", "catalog-import", "catalog-backup", "catalog-restore", "catalog-upgrade":
 		return runCatalogMaintenance(args)
 	}
 	if args[0] == "catalog" || args[0] == "catalog-init" {
 		return runCatalog(args)
 	}
 	if args[0] == "version" {
-		fmt.Printf("vmtier; JSON catalog v%d; SQLite schema %d; VM %s %s\n", catalog.Version, catalog.SQLiteSchemaVersion, pack.VMVersion, pack.VMRevision)
+		fmt.Printf("vmtier; JSON catalog v%d; SQLite schema %d; PostgreSQL schema %d; VM %s %s\n", catalog.Version, catalog.SQLiteSchemaVersion, catalog.PostgreSQLSchemaVersion, pack.VMVersion, pack.VMRevision)
 		return nil
 	}
 	switch args[0] {
@@ -74,6 +76,9 @@ func run(args []string) error {
 	defer stop()
 	if c.Catalog.Type == "sqlite" {
 		return runSQLiteOffline(ctx, args[0], c)
+	}
+	if c.Catalog.Type == "postgres" {
+		return runPostgresMaintenance(ctx, args[0], c)
 	}
 	cs, e := c.OpenCatalog()
 	if e != nil {
@@ -235,11 +240,19 @@ func runCatalog(args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	path := fs.String("path", "", "persistent local catalog directory")
 	id := fs.String("id", "", "pinned catalog identity")
-	backend := fs.String("backend", "json", "catalog-init backend: json or sqlite")
-	configuration := fs.String("config", "", "validated policy/blob configuration for SQLite initialization")
+	backend := fs.String("backend", "json", "catalog-init backend: json, sqlite or postgres")
+	configuration := fs.String("config", "", "validated policy/blob configuration for catalog initialization")
 	addr := fs.String("http", "127.0.0.1:8491", "catalog API listener (trusted network)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
+	}
+	if *backend == "postgres" {
+		if args[0] != "catalog-init" || fs.NArg() != 0 || *configuration == "" || *id == "" || *path != "" {
+			return errors.New("PostgreSQL initialization requires catalog-init -backend postgres -config FILE -id ID, with no path")
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return initializePostgres(ctx, *configuration, *id)
 	}
 	if fs.NArg() != 0 || *path == "" || *id == "" {
 		return errors.New("catalog requires -path and -id, with no positional arguments")

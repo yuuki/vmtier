@@ -1,0 +1,511 @@
+package catalog
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"strings"
+
+	"github.com/lib/pq"
+	"github.com/yuuki/vmtier/internal/pack"
+	"github.com/yuuki/vmtier/internal/querylimit"
+)
+
+const PostgreSQLSchemaVersion = 2
+
+// Postgres stores catalog metadata in an explicitly initialized PostgreSQL
+// schema. It permits independent clients; publication is serialized by a row
+// lock, not by process-local ownership. Publications additionally require a
+// live database lease and fencing token; readers do not acquire ownership.
+type Postgres struct {
+	db     *sql.DB
+	id     string
+	schema string // quoted identifier, fixed when the repository is opened
+}
+
+var _ Repository = (*Postgres)(nil)
+
+const postgresSchema = `
+CREATE TABLE %[1]s.catalog_state (
+ singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+ schema_version INTEGER NOT NULL,
+ catalog_id TEXT NOT NULL,
+ vm_version TEXT NOT NULL,
+ generation BIGINT NOT NULL CHECK (generation >= 0),
+ contract_json TEXT NOT NULL CHECK (octet_length(contract_json) <= 1048576),
+ blob_json TEXT NOT NULL CHECK (octet_length(blob_json) <= 16384)
+);
+CREATE TABLE %[1]s.coverage (
+ tenant TEXT NOT NULL,
+ source_id TEXT NOT NULL,
+ end_ms BIGINT NOT NULL CHECK (end_ms >= 0),
+ PRIMARY KEY (tenant, source_id)
+);
+CREATE TABLE %[1]s.windows (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ tenant TEXT NOT NULL,
+ source_id TEXT NOT NULL,
+ start_ms BIGINT NOT NULL CHECK (start_ms >= 0),
+ end_ms BIGINT NOT NULL CHECK (end_ms > start_ms),
+ generation BIGINT NOT NULL UNIQUE CHECK (generation > 0),
+ pack_count INTEGER NOT NULL CHECK (pack_count >= 0 AND pack_count <= 1024),
+ digest TEXT NOT NULL CHECK (octet_length(digest) = 64),
+ UNIQUE (tenant, source_id, start_ms),
+ FOREIGN KEY (tenant, source_id) REFERENCES %[1]s.coverage (tenant, source_id)
+);
+CREATE TABLE %[1]s.object_keys (
+ object_key TEXT PRIMARY KEY CHECK (octet_length(object_key) BETWEEN 1 AND 1024),
+ window_id BIGINT NOT NULL REFERENCES %[1]s.windows(id),
+ UNIQUE (object_key, window_id)
+);
+CREATE TABLE %[1]s.packs (
+ window_id BIGINT NOT NULL REFERENCES %[1]s.windows(id),
+ ordinal INTEGER NOT NULL CHECK (ordinal >= 0 AND ordinal < 1024),
+ data_key TEXT NOT NULL UNIQUE,
+ index_key TEXT NOT NULL UNIQUE,
+ data_sha256 TEXT NOT NULL CHECK (octet_length(data_sha256) = 64),
+ index_sha256 TEXT NOT NULL CHECK (octet_length(index_sha256) = 64),
+ data_bytes BIGINT NOT NULL CHECK (data_bytes >= 0 AND data_bytes <= 67108864),
+ index_bytes BIGINT NOT NULL CHECK (index_bytes > 0 AND index_bytes <= 16777216),
+ PRIMARY KEY (window_id, ordinal),
+ CHECK (data_key <> index_key),
+ FOREIGN KEY (data_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id),
+ FOREIGN KEY (index_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id)
+);
+` + postgresLeaseSchema
+
+// CreatePostgres initializes new tables and binds the immutable archive
+// contract in one transaction. Provision a dedicated database or schema first;
+// the DSN's search_path selects the schema. Existing tables are never replaced.
+func CreatePostgres(ctx context.Context, dsn, id string, c Contract, blob BlobLocator) (_ *Postgres, err error) {
+	if err = validateContract(c); err != nil {
+		return nil, err
+	}
+	c = canonicalContract(c)
+	if blob, err = NormalizeBlobLocator(blob); err != nil {
+		return nil, err
+	}
+	p, err := connectPostgres(ctx, dsn, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			_ = p.Close()
+		}
+	}()
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	// Do not inherit an asynchronous-commit default for authoritative metadata.
+	// Configured synchronous standbys and their failover policy remain the
+	// deployment's responsibility.
+	if _, err = tx.ExecContext(ctx, `SET LOCAL synchronous_commit = on`); err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresSchema, p.schema)); err != nil {
+		return nil, fmt.Errorf("initialize PostgreSQL catalog (existing tables are not overwritten): %w", err)
+	}
+	cb, _ := json.Marshal(c)
+	bb, _ := json.Marshal(blob)
+	if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("catalog_state")+` VALUES(1,$1,$2,$3,0,$4,$5)`, PostgreSQLSchemaVersion, id, pack.VMVersion, string(cb), string(bb)); err != nil {
+		return nil, err
+	}
+	for _, tenant := range c.Tenants {
+		for _, source := range c.Sources {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+` VALUES($1,$2,$3)`, tenant, source.ID, c.CoverageStart); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		// A lost commit response is ambiguous. Do not drop tables or retry
+		// initialization automatically; open the pinned identity to reconcile.
+		return nil, err
+	}
+	return p, nil
+}
+
+// OpenPostgres opens initialized state without creating tables or changing its
+// identity. Each subsequent operation checks the pinned identity and schema.
+func OpenPostgres(ctx context.Context, dsn, id string) (_ *Postgres, err error) {
+	p, err := connectPostgres(ctx, dsn, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			_ = p.Close()
+		}
+	}()
+	if _, err = p.Status(ctx); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func connectPostgres(ctx context.Context, dsn, id string) (_ *Postgres, err error) {
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !validID(id) {
+		return nil, errors.New("invalid catalog ID")
+	}
+	if strings.TrimSpace(dsn) == "" {
+		return nil, errors.New("PostgreSQL catalog requires an explicit DSN")
+	}
+	connector, err := pq.NewConnector(dsn)
+	if err != nil {
+		// Driver parse errors may contain the supplied DSN or credential.
+		return nil, errors.New("cannot configure PostgreSQL catalog connection")
+	}
+	connector.Dialer(postgresDialer{timeout: PostgreSQLIdleTimeout})
+	db := sql.OpenDB(connector)
+	defer func() {
+		if err != nil {
+			_ = db.Close()
+		}
+	}()
+	// A bounded pool permits snapshot reads alongside the short publication
+	// transaction. Export and object I/O never occupy these connections.
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(4)
+	var schema sql.NullString
+	if err = db.QueryRowContext(ctx, `SELECT pg_catalog.current_schema()`).Scan(&schema); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("cannot connect to PostgreSQL catalog; verify connection settings and server availability")
+	}
+	if !schema.Valid || schema.String == "" {
+		return nil, errors.New("PostgreSQL catalog requires an existing schema in search_path")
+	}
+	return &Postgres{db: db, id: id, schema: pq.QuoteIdentifier(schema.String)}, nil
+}
+
+// table only accepts fixed names from this file; the schema is quoted once and
+// qualified explicitly so a missing relation cannot fall through search_path.
+func (p *Postgres) table(name string) string { return p.schema + "." + name }
+
+func (p *Postgres) Close() error { return p.db.Close() }
+
+func (p *Postgres) readStatus(ctx context.Context, tx *sql.Tx, lock bool) (Status, error) {
+	out, err := p.readStatusVersion(ctx, tx, lock, PostgreSQLSchemaVersion)
+	if err == nil {
+		_, _, err = p.readLease(ctx, tx)
+	}
+	return out, err
+}
+
+func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool, version int) (Status, error) {
+	var out Status
+	var standby bool
+	if err := tx.QueryRowContext(ctx, `SELECT pg_catalog.pg_is_in_recovery()`).Scan(&standby); err != nil {
+		return out, err
+	}
+	if standby {
+		return out, errors.New("PostgreSQL catalog requires the primary; standby reads are not supported")
+	}
+	var generation int64
+	var cb, bb []byte
+	query := `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json FROM ` + p.table("catalog_state") + ` WHERE singleton=1 AND octet_length(contract_json)<=1048576 AND octet_length(blob_json)<=16384`
+	if lock {
+		query += ` FOR UPDATE`
+	}
+	err := tx.QueryRowContext(ctx, query).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb)
+	if err != nil {
+		var pgErr *pq.Error
+		if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
+			return out, ErrNotInitialized
+		}
+		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
+	}
+	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
+		return out, errors.New("unsupported catalog schema or VM version; explicit migration required")
+	}
+	if out.ID != p.id || !validID(out.ID) || generation < 0 {
+		return out, errors.New("invalid catalog identity or generation")
+	}
+	out.Generation = uint64(generation)
+	if err = strictSQLiteJSON(cb, &out.Contract); err != nil {
+		return out, err
+	}
+	if err = validateContract(out.Contract); err != nil {
+		return out, err
+	}
+	if err = strictSQLiteJSON(bb, &out.Blob); err != nil {
+		return out, err
+	}
+	normalized, err := NormalizeBlobLocator(out.Blob)
+	if err != nil || normalized != out.Blob {
+		return out, errors.New("invalid stored blob locator")
+	}
+	expected := make(map[string]bool, len(out.Contract.Tenants)*len(out.Contract.Sources))
+	for _, tenant := range out.Contract.Tenants {
+		for _, source := range out.Contract.Sources {
+			expected[tenant+"\x00"+source.ID] = true
+		}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT tenant,source_id,end_ms FROM `+p.table("coverage")+` ORDER BY tenant,source_id LIMIT $1`, len(expected)+1)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c StreamCoverage
+		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End); err != nil {
+			return out, err
+		}
+		key := c.Tenant + "\x00" + c.SourceID
+		if !expected[key] || c.End < out.Contract.CoverageStart || (c.End-out.Contract.CoverageStart)%out.Contract.WindowMS != 0 {
+			return out, errors.New("invalid stream coverage")
+		}
+		delete(expected, key)
+		out.Coverage = append(out.Coverage, c)
+	}
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	if len(expected) != 0 {
+		return out, errors.New("missing configured stream coverage")
+	}
+	return out, nil
+}
+
+func (p *Postgres) Status(ctx context.Context) (Status, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return Status{}, err
+	}
+	defer tx.Rollback()
+	out, err := p.readStatus(ctx, tx, false)
+	if err != nil {
+		return out, err
+	}
+	return out, tx.Commit()
+}
+
+// PublishWindow refuses unfenced writes. Use Fenced with a live archiver lease;
+// keeping this method explicit prevents generic Repository callers from
+// accidentally bypassing ownership when given the raw PostgreSQL handle.
+func (p *Postgres) PublishWindow(ctx context.Context, expected uint64, publication Publication) (uint64, error) {
+	return 0, ErrLeaseRequired
+}
+
+// publishWindow holds the state row lock from ownership validation through
+// commit. All lease mutations take this lock first, so a successor cannot
+// acquire ownership while this transaction publishes.
+func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publication Publication, lease Lease) (uint64, error) {
+	if expected > math.MaxInt64 {
+		return 0, errors.New("expected generation exceeds PostgreSQL integer range")
+	}
+	publication.Packs = append([]PackRef{}, publication.Packs...)
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `SET LOCAL synchronous_commit = on`); err != nil {
+		return 0, err
+	}
+	state, err := p.readStatus(ctx, tx, true)
+	if err != nil {
+		return 0, err
+	}
+	if err = p.validateLease(ctx, tx, lease); err != nil {
+		return 0, err
+	}
+	digest, err := validatePublication(state.Contract, publication)
+	if err != nil {
+		return 0, err
+	}
+	var oldDigest string
+	err = tx.QueryRowContext(ctx, `SELECT digest FROM `+p.table("windows")+` WHERE tenant=$1 AND source_id=$2 AND start_ms=$3`, publication.Tenant, publication.SourceID, publication.Start).Scan(&oldDigest)
+	if err == nil {
+		if oldDigest != digest {
+			return 0, fmt.Errorf("%w: committed window differs", ErrInvalidPublication)
+		}
+		if err = p.validateLease(ctx, tx, lease); err != nil {
+			return 0, err
+		}
+		return state.Generation, tx.Commit()
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	if state.Generation != expected {
+		return 0, ErrConflict
+	}
+	if state.Generation == math.MaxInt64 {
+		return 0, errors.New("catalog generation exhausted")
+	}
+	var end int64
+	if err = tx.QueryRowContext(ctx, `SELECT end_ms FROM `+p.table("coverage")+` WHERE tenant=$1 AND source_id=$2`, publication.Tenant, publication.SourceID).Scan(&end); err != nil {
+		return 0, err
+	}
+	if end != publication.Start {
+		return 0, fmt.Errorf("%w: window must start at stream coverage end %d", ErrInvalidPublication, end)
+	}
+	next := state.Generation + 1
+	var windowID int64
+	if err = tx.QueryRowContext(ctx, `INSERT INTO `+p.table("windows")+`(tenant,source_id,start_ms,end_ms,generation,pack_count,digest) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, publication.Tenant, publication.SourceID, publication.Start, publication.End, next, len(publication.Packs), digest).Scan(&windowID); err != nil {
+		return 0, err
+	}
+	for ordinal, ref := range publication.Packs {
+		// One shared key namespace rejects reuse across data and index roles,
+		// including keys published by another client in an earlier window.
+		for _, key := range []string{ref.DataKey, ref.IndexKey} {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("object_keys")+`(object_key,window_id) VALUES($1,$2)`, key, windowID); err != nil {
+				var pgErr *pq.Error
+				if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+					return 0, fmt.Errorf("%w: published object key cannot be reused", ErrInvalidPublication)
+				}
+				return 0, err
+			}
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("packs")+` VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, windowID, ordinal, ref.DataKey, ref.IndexKey, ref.DataSHA256, ref.IndexSHA256, ref.DataBytes, ref.IndexBytes); err != nil {
+			return 0, err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET end_ms=$1 WHERE tenant=$2 AND source_id=$3`, publication.End, publication.Tenant, publication.SourceID); err != nil {
+		return 0, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET generation=$1 WHERE singleton=1`, next); err != nil {
+		return 0, err
+	}
+	// Even a transaction delayed by a database lock must still have a live
+	// lease at the final publication boundary. Use database wall time, not
+	// transaction_timestamp(), which is fixed when the transaction starts.
+	if err = p.validateLease(ctx, tx, lease); err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return next, nil
+}
+
+// Select returns a bounded plan from one snapshot. No transaction remains open
+// while the caller reads immutable objects; object deletion is not implemented.
+func (p *Postgres) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
+	var out QueryPlan
+	sel, err := normalizeSelection(sel)
+	if err != nil {
+		return out, err
+	}
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return out, err
+	}
+	defer tx.Rollback()
+	state, err := p.readStatus(ctx, tx, false)
+	if err != nil {
+		return out, err
+	}
+	out.ID, out.Generation = state.ID, state.Generation
+	out.CoverageEnd = math.MaxInt64
+	for _, c := range state.Coverage {
+		if c.Tenant == sel.Tenant && c.End < out.CoverageEnd {
+			out.CoverageEnd = c.End
+		}
+	}
+	if out.CoverageEnd == math.MaxInt64 {
+		return out, errors.New("tenant is not configured")
+	}
+	lower := max((sel.Start/state.Contract.WindowMS)*state.Contract.WindowMS, state.Contract.CoverageStart)
+	upper := ((sel.End - 1) / state.Contract.WindowMS) * state.Contract.WindowMS
+	type selectedWindow struct {
+		id     int64
+		count  int
+		digest string
+		window Window
+	}
+	var selected []selectedWindow
+	var planBytes int64 = 128
+	for _, source := range state.Contract.Sources {
+		rows, err := tx.QueryContext(ctx, `SELECT id,start_ms,end_ms,generation,pack_count,digest FROM `+p.table("windows")+` WHERE tenant=$1 AND source_id=$2 AND start_ms>=$3 AND start_ms<=$4 ORDER BY start_ms LIMIT $5`, sel.Tenant, source.ID, lower, upper, sel.MaxWindows-len(selected)+1)
+		if err != nil {
+			return out, err
+		}
+		for rows.Next() {
+			var v selectedWindow
+			var generation int64
+			v.window.Tenant, v.window.SourceID = sel.Tenant, source.ID
+			if err = rows.Scan(&v.id, &v.window.Start, &v.window.End, &generation, &v.count, &v.digest); err != nil {
+				rows.Close()
+				return out, err
+			}
+			if generation < 1 || generation > int64(state.Generation) || v.count < 0 || v.count > MaxPacksPerWindow || v.window.End-v.window.Start != state.Contract.WindowMS || !validHash(v.digest) {
+				rows.Close()
+				return out, errors.New("invalid stored window")
+			}
+			v.window.Generation = uint64(generation)
+			planBytes += 256 + int64(len(sel.Tenant)+len(source.ID))
+			if len(selected) >= sel.MaxWindows || planBytes > sel.MaxPlanBytes {
+				rows.Close()
+				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan limit exceeded")
+			}
+			selected = append(selected, v)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return out, err
+		}
+	}
+	packCount := 0
+	for _, v := range selected {
+		if v.count > sel.MaxPacks-packCount {
+			return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog pack limit exceeded")
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM `+p.table("packs")+` WHERE window_id=$1 ORDER BY ordinal LIMIT $2`, v.id, v.count+1)
+		if err != nil {
+			return out, err
+		}
+		v.window.Packs = []PackRef{}
+		for rows.Next() {
+			var ordinal int
+			var ref PackRef
+			if err = rows.Scan(&ordinal, &ref.DataKey, &ref.IndexKey, &ref.DataSHA256, &ref.IndexSHA256, &ref.DataBytes, &ref.IndexBytes); err != nil {
+				rows.Close()
+				return out, err
+			}
+			if ordinal != len(v.window.Packs) || ordinal >= v.count {
+				rows.Close()
+				return out, errors.New("invalid stored pack order/count")
+			}
+			planBytes += 256 + int64(len(ref.DataKey)+len(ref.IndexKey)+len(ref.DataSHA256)+len(ref.IndexSHA256))
+			if planBytes > sel.MaxPlanBytes {
+				rows.Close()
+				return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
+			}
+			v.window.Packs = append(v.window.Packs, ref)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return out, err
+		}
+		if len(v.window.Packs) != v.count {
+			return out, errors.New("stored window is missing pack references")
+		}
+		digest, err := validatePublication(state.Contract, v.window.Publication)
+		if err != nil {
+			return out, err
+		}
+		if digest != v.digest {
+			return out, errors.New("stored publication digest differs")
+		}
+		packCount += v.count
+		out.Windows = append(out.Windows, v.window)
+	}
+	if planBytes > sel.MaxPlanBytes {
+		return out, querylimit.Errorf(querylimit.CatalogPlan, "query catalog plan byte limit exceeded")
+	}
+	return out, tx.Commit()
+}

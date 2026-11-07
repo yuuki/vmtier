@@ -1,5 +1,9 @@
 # SQLite catalog, maintenance, and migration
 
+For a stopped SQLite-to-PostgreSQL cutover preserving existing S3 objects, follow
+the [PostgreSQL migration guide](postgres-migration.md). The source directory must
+remain offline during import and its old supervisor must stay disabled afterward.
+
 SQLite is the catalog backend for the single-owner [`serve` runtime](serve.md).
 The service owns the repository, archive scheduler, and read RPC gateway for its
 lifetime. Catalog initialization, import, backup, restore, inspection, and payload
@@ -12,9 +16,10 @@ remain part of the legacy JSON v2 deployment. The catalog HTTP service also rema
 a JSON v2 tool. SQLite has no public catalog HTTP API.
 
 The [stage 1 validation](sqlite-catalog-validation.md) records the original repository
-and offline-command checks. Current runtime evidence and unexecuted checks are in
-[service validation](serve-validation.md); remaining qualification and acceptance work is
-tracked in the [first-release design](design.md).
+and offline-command checks. The [evidence index](evidence.md) links subsequent
+implementation and recovery reports at their recorded revisions; older reports
+do not qualify a new VM dependency pin. Remaining qualification and acceptance
+work is tracked in the [first-release design](design.md).
 
 ## Repository behavior
 
@@ -199,7 +204,10 @@ are rejected; no schema upgrade exists yet.
 
 This is a single-host component requiring correct local filesystem locks and sync.
 A directory lock does not exclude another host or directory targeting the same
-bucket. HA, distributed fencing, online backups, and automatic restore are absent.
+bucket. This SQLite backend has no HA, distributed fencing, online backups, or
+automatic restore. Use the [PostgreSQL service](postgres-catalog.md) for renewable
+archiver ownership and multiple gateways, and the [stopped-writer importer](postgres-migration.md)
+to preserve existing metadata and objects when moving between backends.
 
 The repository and reader support multiple packs and independent streams. The
 SQLite archiver publishes independently per tenant/source/window, rotates bounded

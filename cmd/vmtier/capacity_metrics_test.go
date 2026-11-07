@@ -82,7 +82,7 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 	if closer, ok := store.(interface{ Close() error }); ok {
 		defer closer.Close()
 	}
-	reader, err := c.SQLiteReader(store, db)
+	reader, err := c.RepositoryReader(store, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +116,14 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 			t.Fatalf("missing %q in %s", want, output)
 		}
 	}
+	// A backend without local-file capacity still provides catalog status and
+	// query service; it must not emit invented SQLite file or object gauges.
+	reader.Repository = struct{ catalog.Repository }{db}
+	output = scrape()
+	if !strings.Contains(output, "vmtier_catalog_capacity_available 0\n") || strings.Contains(output, "vmtier_catalog_committed_object_bytes") || strings.Contains(output, "vmtier_catalog_file_bytes") || !strings.Contains(output, "vmtier_catalog_generation 0\n") {
+		t.Fatalf("unsupported capacity was not separated from catalog status: %s", output)
+	}
+	reader.Repository = db
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}

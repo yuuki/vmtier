@@ -1,0 +1,42 @@
+{
+  "store": {
+    "type": "s3",
+    "endpoint": "https://s3.tky01.sakurastorage.jp",
+    "region": "jp-east-1",
+    "bucket": "replace-with-your-bucket",
+    "prefix": "vmtier-serve",
+    "requests_per_second": 80,
+    "max_concurrent_requests": 8,
+    "max_queued_requests": 64
+  },
+  "tenants": [
+    "1:2",
+    "7:9"
+  ],
+  "sources": [
+    {
+      "id": "hot",
+      "url": "http://127.0.0.1:8481"
+    }
+  ],
+  "archive_age": "720h",
+  "hot_retention": "888h",
+  "lateness": "48h",
+  "safety_margin": "24h",
+  "window": "6h",
+  "lateness_enforced": false,
+  "coverage_start_ms": 0,
+  "cache_bytes": 33554432,
+  "max_query_bytes": 134217728,
+  "catalog": {
+    "type": "postgres",
+    "dsn_env": "VMTIER_POSTGRES_DSN",
+    "id": "sakura-postgres-001"
+  },
+  "service": {
+    "archive_interval": "30s",
+    "archive_timeout": "2m",
+    "archive_lease_ttl": "30s",
+    "max_replicas": 2
+  }
+}

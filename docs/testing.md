@@ -11,8 +11,8 @@ committed Go modules and regenerates vmtier's vendor tree independently of the
 stock VM vendor tree. Historical result files retain their original toolchains
 and VM revisions; they do not establish validation of an upgraded dependency set.
 The retained JSON v2 suite tests an independent persistent HTTP catalog authority and
-a blob store using ordinary PUT/GET/Range requests. The SQLite service has a separate
-harness described below. Evidence from the previous
+a blob store using ordinary PUT/GET/Range requests. SQLite and PostgreSQL service
+harnesses are described below. Evidence from the previous
 all-S3 catalog architecture is kept under [legacy-v1](results/legacy-v1/README.md)
 and is not included in current results.
 
@@ -59,6 +59,38 @@ deadline. After the reader changes, [measured JSON and SQLite runs](metadata-val
 passed with `--labels-api-duration 5s`, while still validating full payload blocks.
 See [service validation](serve-validation.md) for results, preserved failure evidence,
 provenance, and unexecuted checks. Loopback timings do not qualify provider performance.
+
+## PostgreSQL repository and HA suites
+
+Use a disposable PostgreSQL 17 database and set `VMTIER_TEST_POSTGRES_DSN` before
+`make test race`; integration tests otherwise skip explicitly. Tests isolate
+themselves in temporary schemas. See [PostgreSQL setup](postgres-catalog.md#build-and-integration-tests).
+
+With HAProxy, `psql`, Moto, and the pinned stock VM binaries installed:
+
+```sh
+export VMTIER_TEST_POSTGRES_DSN='postgres://vmtier:vmtier@127.0.0.1:5432/vmtier_test?sslmode=disable'
+make build test race vet stock
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir .cache/postgres-gateways-fresh
+python3 scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir .cache/postgres-migration-fresh
+python3 scripts/postgres_ha.py --postgres-bin /usr/lib/postgresql/17/bin \
+  --race --workdir .cache/postgres-faults-fresh
+```
+
+The gateway harness exercises two candidates, archiver takeover, gateway/proxy
+loss, static S3 budget allocation, and exact stock-VM comparisons. The commands
+above force multiple packs per nonempty window. Migration mode
+first archives into SQLite and verifies a stopped-writer metadata cutover without
+object PUTs. The database fault harness initializes its own primary and synchronous
+standby and exercises commit-response loss, stale writers, transport failures,
+and explicitly fenced promotion. It runs as an unprivileged user and needs no
+existing database server. All work directories must be fresh.
+
+The [HA report](postgres-ha-validation.md) separates retained v1.128.0-cluster stage
+evidence from v1.155.0-cluster integration runs. Reproduction commands use the
+current checkout and pin; preserve new reports separately from earlier artifacts. These local
+suites do not qualify production HA controllers, multi-AZ partitions, the outer
+L4 endpoint, or actual S3 providers.
 
 ## Legacy JSON v2 suite
 

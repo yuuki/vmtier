@@ -91,4 +91,20 @@ func TestPreflightCommandReadsOnlySourceAndNeverInitializesCatalog(t *testing.T)
 	if string(contents) != "preserve" || len(entries) != 1 || requests == 0 {
 		t.Fatalf("preflight mutated state or never read source: %q %+v %d", contents, entries, requests)
 	}
+
+	// PostgreSQL uses the same pack pipeline. An unset DSN must not matter:
+	// preflight reads only Hot, without creating a DB client or an S3 client.
+	cfg.Catalog = config.Catalog{Type: "postgres", ID: "candidate-pg", DSNEnv: "VMTIER_PREFLIGHT_TEST_DSN"}
+	cfg.Service.MaxReplicas = 2
+	cfg.Store.RequestsPerSecond, cfg.Store.MaxConcurrentRequests, cfg.Store.MaxQueuedRequests = 80, 8, 64
+	t.Setenv(cfg.Catalog.DSNEnv, "")
+	writeCLIConfig(t, file, cfg)
+	output.Reset()
+	before := requests
+	if err := preflightCommand(context.Background(), args, &output, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil || !result.Verified || result.NativeInputBytes != 16 || requests <= before {
+		t.Fatalf("PostgreSQL preflight failed to read source: %s %v", output.Bytes(), err)
+	}
 }

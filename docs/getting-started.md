@@ -1,7 +1,9 @@
 # Getting started
 
-Use the SQLite `serve` runtime for the current implementation. All commands below
-run from the repository root. For supported behavior and outstanding qualification,
+Choose SQLite for a single-owner local catalog or PostgreSQL for multiple
+gateways and fenced archiver failover. The walkthrough below uses SQLite; follow
+the [PostgreSQL setup](postgres-catalog.md) and [HA deployment](ha-deployment.md)
+for the external-catalog alternative. All commands run from the repository root. For supported behavior and outstanding qualification,
 read [limits](limits.md) and [compatibility](compatibility.md).
 
 ## Build from source
@@ -114,3 +116,7 @@ Compare Cold-only and boundary queries before changing any retention settings.
 
 Continue with [service scheduling and resource limits](serve.md),
 [operations and recovery](operations.md), and [offline catalog maintenance](sqlite-catalog.md).
+To move this deployment to PostgreSQL, use the [stopped-writer migration](postgres-migration.md);
+keep the same archive contract and S3 location, and present one redundant logical
+Cold endpoint to vmselect. Do not list complete gateway replicas as independent
+storage shards.

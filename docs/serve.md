@@ -1,5 +1,9 @@
 # Run the SQLite service
 
+For an external catalog with renewable archiver ownership, see the
+[PostgreSQL service guide](postgres-catalog.md). This guide remains specific to
+the SQLite single-owner deployment.
+
 `vmtier serve` runs the archiver, SQLite catalog, and Cold read gateway in one
 process. They share one blob-store client and its S3 request budget. The catalog
 is independent of S3: no conditional PUT, ETag CAS, or LIST-based discovery is used.
@@ -10,7 +14,8 @@ It remains under development: the [first-release design](design.md) tracks workl
 provider, retention, ingress, recovery, and release qualification. The
 [stage 2 validation](serve-validation.md) is historical evidence for its recorded
 revision; new implementation and focused tests do not replace that provenance.
-GC and HA remain outside the selected scope.
+GC remains unimplemented. This SQLite deployment has no automatic failover;
+[PostgreSQL HA](ha-deployment.md) is the separate multi-instance option.
 
 ## Configuration and startup
 
@@ -69,8 +74,8 @@ Label/series metadata uses the same validated block search as sample queries.
 repeated object I/O while retaining payload validation and actual sample-time
 filtering. The earlier uncached S3 fixture exceeded stock vmselect's default
 five-second labels API deadline. The [before/after measurements](metadata-validation.md)
-now pass that deadline on the retained JSON and SQLite fixtures after the reader
-changes. The service E2E harness retains its configurable 30-second default; no
+record passing that deadline on their JSON and SQLite fixtures after the reader
+changes; their recorded revision does not validate a later VM upgrade. The service E2E harness retains its configurable 30-second default; no
 30-second override was needed for these measured final runs.
 No metadata-specific index-only shortcut is implemented.
 
