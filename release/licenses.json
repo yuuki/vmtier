@@ -83,7 +83,7 @@
     },
     "github.com/lib/pq": {
       "license": "MIT",
-      "notices_sha256": "c572a3b1c3a3331832f04a173dd5dfb7bdafd60811c31b5a46bcb25501ff0e7b"
+      "notices_sha256": "7ecb8e44c6a58dee5824726e1e5497d41dcb062a82c795f4ec27b3806c3bba83"
     },
     "github.com/mattn/go-sqlite3": {
       "license": "MIT AND blessing",
