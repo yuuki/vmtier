@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/yuuki/vmtier/internal/catalog"
 	"github.com/yuuki/vmtier/internal/config"
@@ -21,8 +24,31 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 	}
 	defer db.Close()
 	if operation == "inspect" {
-		return printSQLiteStatus(ctx, db)
+		return printCatalogStatus(ctx, db)
 	}
+	return verifyRepository(ctx, c, db)
+}
+
+// PostgreSQL metadata inspection is online. A verification pass fixes its
+// coverage prefix at the initial snapshot; later publications are not included.
+func runPostgresMaintenance(ctx context.Context, operation string, c *config.Config) error {
+	if operation != "inspect" && operation != "verify" {
+		return errors.New("PostgreSQL archiving requires fenced ownership; use vmtier serve -config FILE")
+	}
+	db, err := openConfiguredRepository(ctx, c)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if operation == "inspect" {
+		readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return printCatalogStatus(readCtx, db)
+	}
+	return verifyRepository(ctx, c, db)
+}
+
+func verifyRepository(ctx context.Context, c *config.Config, db catalog.Repository) error {
 	blobs, err := c.OpenBlobs()
 	if err != nil {
 		return err
@@ -30,15 +56,17 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 	if closer, ok := blobs.(interface{ Close() error }); ok {
 		defer closer.Close()
 	}
-	state, err := db.Status(ctx)
+	readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	state, err := db.Status(readCtx)
+	cancel()
 	if err != nil {
 		return err
 	}
 	if state.Generation == 0 {
-		return errors.New("no committed SQLite windows to verify")
+		return errors.New("no committed catalog windows to verify")
 	}
 	// Include source windows ahead of the minimum tenant coverage. Each plan
-	// remains bounded to one logical time window during the offline scrub.
+	// remains bounded to one logical time window during the scrub.
 	ends := make(map[string]int64)
 	for _, stream := range state.Coverage {
 		if stream.End > ends[stream.Tenant] {
@@ -46,28 +74,34 @@ func runSQLiteOffline(ctx context.Context, operation string, c *config.Config) e
 		}
 	}
 	for _, tenant := range state.Contract.Tenants {
-		if err := verifySQLiteTenant(ctx, db, blobs, state.Contract, tenant, ends[tenant]); err != nil {
+		if err := verifyTenantWindows(ctx, db, blobs, state, tenant, ends[tenant]); err != nil {
 			return err
 		}
 	}
-	return printSQLiteStatus(ctx, db)
+	return json.NewEncoder(os.Stdout).Encode(state)
 }
 
-// verifySQLiteTenant verifies the packs of a tenant's windows from the coverage
-// start up to coverageEnd, selecting one window at a time.
-func verifySQLiteTenant(ctx context.Context, db *catalog.SQLite, blobs objectstore.BlobStore, contract catalog.Contract, tenant string, coverageEnd int64) error {
-	for start := contract.CoverageStart; start < coverageEnd; {
-		end := start + contract.WindowMS
+// verifyTenantWindows verifies the packs of a tenant's windows from the
+// coverage start up to coverageEnd, selecting one window at a time. Windows
+// published after the state snapshot are skipped.
+func verifyTenantWindows(ctx context.Context, db catalog.Repository, blobs objectstore.BlobStore, state catalog.Status, tenant string, coverageEnd int64) error {
+	for start := state.Contract.CoverageStart; start < coverageEnd; {
+		end := start + state.Contract.WindowMS
 		if end <= start {
 			return errors.New("verification interval overflows")
 		}
-		plan, err := db.Select(ctx, catalog.Selection{Tenant: tenant, Start: start, End: end})
+		readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		plan, err := db.Select(readCtx, catalog.Selection{Tenant: tenant, Start: start, End: end})
+		cancel()
 		if err != nil {
 			return err
 		}
 		for _, window := range plan.Windows {
+			if window.Generation > state.Generation {
+				continue
+			}
 			for _, ref := range window.Packs {
-				if err := verifySQLitePack(ctx, blobs, window, ref); err != nil {
+				if err := verifyCatalogPack(ctx, blobs, window, ref); err != nil {
 					return fmt.Errorf("verify tenant %s source %s window %d: %w", tenant, window.SourceID, start, err)
 				}
 			}
@@ -77,7 +111,7 @@ func verifySQLiteTenant(ctx context.Context, db *catalog.SQLite, blobs objectsto
 	return nil
 }
 
-func verifySQLitePack(ctx context.Context, blobs objectstore.BlobStore, window catalog.Window, ref catalog.PackRef) error {
+func verifyCatalogPack(ctx context.Context, blobs objectstore.BlobStore, window catalog.Window, ref catalog.PackRef) error {
 	b, err := blobs.Get(ctx, ref.IndexKey)
 	if err != nil {
 		return err
@@ -90,7 +124,7 @@ func verifySQLitePack(ctx context.Context, blobs objectstore.BlobStore, window c
 		return err
 	}
 	if idx.Tenant.String() != window.Tenant || idx.Start != window.Start || idx.End != window.End || idx.Size != ref.DataBytes || idx.SHA256 != ref.DataSHA256 {
-		return errors.New("index disagrees with SQLite descriptor")
+		return errors.New("index disagrees with catalog descriptor")
 	}
 	data, err := blobs.Get(ctx, ref.DataKey)
 	if err != nil {

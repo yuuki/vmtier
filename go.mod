@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.8
 	github.com/aws/smithy-go v1.28.8
 	github.com/klauspost/compress v1.20.3
+	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.53
 	golang.org/x/sys v0.49.0
 )

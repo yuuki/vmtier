@@ -1,17 +1,23 @@
 # Operations and recovery
 
-This runbook covers the current single-owner SQLite `serve` runtime. Start with
-[getting started](getting-started.md) and the [service guide](serve.md).
+This runbook covers shared service behavior and the backend-specific maintenance
+boundaries. Start with [getting started](getting-started.md), the
+[SQLite service](serve.md), or the [PostgreSQL service](postgres-catalog.md).
+For multiple gateways, database failover, and archiver fencing, follow
+[HA deployment](ha-deployment.md).
 Separate catalog/archiver/gateway commands and manual JSON state recovery belong
 to the [legacy JSON v2 guide](legacy-json-v2.md).
 
 ## Deployment requirements
 
-Use persistent local storage for catalog state and one owner for the bucket.
-The state-directory lock only excludes owners using that directory on the same
-host; it does not fence other hosts or directories. Keep RPC and HTTP listeners
-on a trusted network with access controls and TLS termination as appropriate.
-SQLite has no catalog HTTP listener or online management API.
+For SQLite, use persistent local catalog storage and one owner for the bucket.
+Its directory lock only excludes owners using that directory on the same host.
+For PostgreSQL, use a stable writable-primary endpoint, shared S3, and one logical
+redundant Cold RPC endpoint. The database lease fences archiver publication; the
+operator must separately enforce database-primary fencing and the maximum number
+of S3 clients sharing the configured budget. Keep RPC and HTTP listeners on a
+trusted network with access controls and TLS termination as appropriate. Neither
+service backend exposes a catalog HTTP mutation API.
 
 Archive sources must be Hot-only stock vmselect endpoints covering all Hot shards.
 Keep tenant IDs, source IDs/URLs, and shard topology stable. Enforce the lateness
@@ -21,7 +27,8 @@ and run [preflight](preflight.md) before initializing a catalog.
 
 ## Maintenance and backup
 
-Stop `serve` before inspection, payload verification, import, backup, or restore.
+For SQLite, stop `serve` before inspection, payload verification, import, backup,
+or restore.
 Use the [offline catalog commands](sqlite-catalog.md); they acquire the same lock
 and refuse a live owner. Allow enough Hot retention headroom for downtime and
 catch-up. Copy complete backups to another failure domain. Do not copy only the
@@ -34,6 +41,14 @@ cannot recover missing object bytes or expired source data. Compare Cold-only
 and Hot/Cold boundary queries before cutover; see [recovery evidence](recovery-validation.md)
 for the tested scenarios and their limits.
 
+PostgreSQL `inspect` and `verify` can run online. Reserve an S3 budget share for
+verification; it checks the initially observed coverage while archiving can
+continue. Use PostgreSQL native backups and WAL/PITR, test restoration, and fence
+the old authority before promoting or switching databases. Database replication
+is not a backup, and a metadata restore cannot restore missing payloads. For
+SQLite-to-PostgreSQL cutover, use the [stopped-writer migration](postgres-migration.md);
+a stale SQLite catalog cannot resume after PostgreSQL publication advances.
+
 ## Sakura Object Storage
 
 The deployment requirement assumes conditional PUT is unavailable on Sakura Object Storage; this is not a claim that the public API documentation specifies every conditional-header behavior. vmtier sends no conditional PUT and does not use ETags for correctness.
@@ -41,6 +56,12 @@ The deployment requirement assumes conditional PUT is unavailable on Sakura Obje
 The adapter sends Content-MD5 in line with the checksum scope in the [official API documentation](https://manual.sakura.ad.jp/cloud/objectstorage/api.html). It independently verifies stored content with read-back GET and SHA-256. The [April 9, 2026 announcement](https://cloud.sakura.ad.jp/news/2026/04/09/objectstorage-checksum/) reports removal of earlier SDK checksum compatibility restrictions; an older AWS SDK is not a deployment requirement.
 
 The documented bucket limits are 100 requests/second and 100 concurrent requests for the [standard plan](https://manual.sakura.ad.jp/cloud/objectstorage/about.html), and 10 requests/second with one concurrent request for the [archive plan](https://manual.sakura.ad.jp/cloud/objectstorage/archiveplan.html). The legacy separate-process MVP cannot share a bucket request budget across gateways and archivers. The SQLite `serve` runtime now shares one paced budget across archival, reads, metadata, verification, and every SDK retry attempt, defaulting to 80 requests/second, eight in flight, and 64 queued requests. An archive-plan candidate is eight requests/second, one in flight, and 64 queued; it remains unqualified on the actual provider. All clients using the bucket must fit the aggregate provider limits; a dedicated prefix alone does not isolate them.
+
+For PostgreSQL, the configured S3 totals are aggregate budgets divided by
+`service.max_replicas`. Include rolling replacements and online verification in
+that maximum; static allocation does not discover or exclude extra clients. See
+[budget allocation](ha-deployment.md#static-s3-budget-allocation) for rounding, pacing,
+and failure behavior.
 
 No actual Sakura bucket or credentials have been used to validate connectivity, SigV4, visibility after PUT, Range GET, quotas, recovery, or performance. The local Moto backend and proxy that rejects conditional requests and removes ETags approximate these API constraints; they are not service certification. See the [SQLite service example](../examples/serve-sakura.json), [service budget metrics](serve.md), and [legacy JSON v2 example](../examples/sakura.json).
 
@@ -60,14 +81,21 @@ The gateway exposes `/health`, `/ready`, and `/metrics`. `/ready` returns HTTP 5
 | `vmtier_object_get_requests_total`, `vmtier_object_range_requests_total`, `vmtier_object_download_bytes_total`, `vmtier_object_put_requests_total` | Per-process object-store I/O. |
 | `vmtier_cache_hits_total`, `vmtier_cache_misses_total` | Immutable index and block cache activity. |
 
-For the legacy one-shot archiver, an external scheduler collects structured JSON logs, exit code, and standard output. The SQLite service exposes archive metrics directly. Metrics also consult the catalog. Monitor catalog health, persistent-disk capacity and I/O errors, and backup status separately.
+For the legacy one-shot archiver, an external scheduler collects structured JSON
+logs, exit code, and standard output. Both service backends expose archive metrics
+directly; PostgreSQL also exposes `vmtier_archive_leader` for local lease ownership.
+Metrics also consult the catalog. Monitor catalog health, persistent-disk capacity
+and I/O errors, and backup status separately.
 
 Retention headroom is the finite time until the oldest unarchived sample can no longer be queried or exported. An alert does not extend it. VM can exclude samples through its retention filter even while their physical parts remain on disk, so physical file existence is not extra recovery time.
 
 ### Service capacity and failure accounting
 
-The SQLite service additionally exposes these capacity signals without listing
-the blob backend:
+Both service backends expose cache, query admission, and failed-window signals.
+Catalog size/count/committed-byte observations below are implemented for SQLite
+only; PostgreSQL reports `vmtier_catalog_capacity_available=0` and omits those
+unavailable catalog gauges. Use PostgreSQL monitoring for its storage usage.
+These observations do not list the blob backend:
 
 | Metric | Accounting |
 | --- | --- |
@@ -90,16 +118,18 @@ Each capacity scrape aggregates the complete `packs` and `windows` tables on
 the catalog's single SQLite connection. The shared five-second scrape context
 bounds the observation time, not the number of rows scanned. Large catalogs or
 frequent scrapes can therefore contend with publication and query selection;
-include scrape load in the catalog-capacity qualification tracked by
-[#14](https://github.com/yuuki/vmtier/issues/14).
+include scrape load when sizing the deployment. The
+[catalog-capacity report](catalog-capacity-validation.md) records scan and
+selection contention for its 87,600-window fixture at the reported revision.
 Compare rising failed-window/refusal rates with declining retention headroom
 before increasing workloads or resource limits. These signals do not extend the
 time available to recover an unarchived suffix.
 
 Cache and query-admission/refusal metrics are also available in the retained
-JSON v2 gateway. Catalog capacity and failed-window metrics describe the SQLite
-service only. The SQL capacity totals use a constant-memory scan of committed
-descriptors under the scrape timeout; they do not add an in-memory catalog mirror.
+JSON v2 gateway. Catalog capacity totals describe SQLite only; failed-window
+metrics also describe the active PostgreSQL archiver. The SQL capacity totals use
+a constant-memory scan of committed descriptors under the scrape timeout; they
+do not add an in-memory catalog mirror.
 
 ## Failure and restart behavior
 
@@ -108,7 +138,9 @@ descriptors under the scrape timeout; they do not add an in-memory catalog mirro
 | Export timeout, missing source, or interrupted native stream | Do not advance the catalog. Restore the source and retry while Hot can still export the data. |
 | Native export truncated at a record boundary, or a missing conflicting-timestamp block | EOF and counts alone do not establish completeness. The independent raw JSON matrix comparison checks every series, timestamp, and value and rejects mismatches. |
 | Upload or read-back verification failure | Uncommitted objects are invisible to queries. Retry the archive. |
-| Catalog generation conflict | Stop the duplicate writer, inspect identity, generation, and coverage, then retry. Do not replace CAS with an unconditional catalog overwrite. |
+| Catalog generation conflict | Reload identity, generation, and coverage and reconcile the attempted window. Investigate unintended writers if conflicts persist. Do not replace CAS with an unconditional catalog overwrite. |
+| PostgreSQL archiver lease expires or renewal fails | Cancel that owner's archive attempt; committed reads remain available. A successor must acquire a new fencing token before publication. |
+| PostgreSQL primary unavailable or endpoint points to a standby | Fail authoritative reads and writes. Restore routing to an eligible writable primary using the deployment's fencing and promotion procedure. |
 | Process stops just after commit | Reload the authoritative catalog. Do not infer coverage from the presence or absence of a success log. |
 | Missing or corrupt object, or GET failure | Fail the query. Restore the original bytes, verify them, and retest; do not replace the failure with an empty result. |
 | Hot retention deadline exceeded | Do not commit an empty window as success. Missing data needs another complete recovery copy. |

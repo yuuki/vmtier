@@ -25,7 +25,7 @@ type Reader struct {
 	// allocation policy; a fresh nonce namespaces each archive attempt.
 	Store              objectstore.BlobStore
 	CatalogStore       catalog.Store
-	SQLiteCatalog      *catalog.SQLite
+	Repository         catalog.Repository
 	BlobLocator        catalog.BlobLocator
 	Tenants            map[string]bool
 	Sources            []string
@@ -50,7 +50,7 @@ func (r *Reader) RequiredEnd(now time.Time) int64 {
 	return (now.Add(-r.Age).UnixMilli() / w) * w
 }
 func (r *Reader) expectedContract() (catalog.Contract, error) {
-	if r.Store == nil || (r.CatalogStore == nil) == (r.SQLiteCatalog == nil) || r.Window.Milliseconds() <= 0 || r.Window%time.Millisecond != 0 || r.Age <= 0 || r.Age%time.Millisecond != 0 || r.LatenessMS < 0 || r.Age.Milliseconds() <= r.LatenessMS || len(r.Sources) == 0 || len(r.Tenants) == 0 || len(r.SourceFingerprints) != len(r.Sources) || r.CoverageStart < 0 || r.DedupMS <= 0 || r.MaxQueryBytes < 0 || r.CacheBytes < 0 {
+	if r.Store == nil || (r.CatalogStore == nil) == (r.Repository == nil) || r.Window.Milliseconds() <= 0 || r.Window%time.Millisecond != 0 || r.Age <= 0 || r.Age%time.Millisecond != 0 || r.LatenessMS < 0 || r.Age.Milliseconds() <= r.LatenessMS || len(r.Sources) == 0 || len(r.Tenants) == 0 || len(r.SourceFingerprints) != len(r.Sources) || r.CoverageStart < 0 || r.DedupMS <= 0 || r.MaxQueryBytes < 0 || r.CacheBytes < 0 {
 		return catalog.Contract{}, errors.New("invalid Cold reader configuration")
 	}
 	want := catalog.Contract{CoverageStart: r.CoverageStart, WindowMS: r.Window.Milliseconds(), DedupMS: r.DedupMS, AgeMS: r.Age.Milliseconds(), LatenessMS: r.LatenessMS}
@@ -76,8 +76,8 @@ func (r *Reader) Catalog(ctx context.Context) (*catalog.Manifest, error) {
 	if e != nil {
 		return nil, e
 	}
-	if r.SQLiteCatalog != nil {
-		return nil, errors.New("SQLite readers use bounded selection, not a full manifest")
+	if r.Repository != nil {
+		return nil, errors.New("repository readers use bounded selection, not a full manifest")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -97,18 +97,18 @@ func (r *Reader) Catalog(ctx context.Context) (*catalog.Manifest, error) {
 	return m, nil
 }
 
-// SQLiteStatus validates the fixed authority and blob location. Contract and
+// CatalogStatus validates the fixed authority and blob location. Contract and
 // locator cannot change during this catalog's lifetime, so a subsequent Select
 // can safely take a newer publication snapshot without reinterpreting its keys.
-func (r *Reader) SQLiteStatus(ctx context.Context) (catalog.SQLiteStatus, error) {
+func (r *Reader) CatalogStatus(ctx context.Context) (catalog.Status, error) {
 	want, err := r.expectedContract()
 	if err != nil {
-		return catalog.SQLiteStatus{}, err
+		return catalog.Status{}, err
 	}
-	if r.SQLiteCatalog == nil {
-		return catalog.SQLiteStatus{}, errors.New("SQLite catalog is not configured")
+	if r.Repository == nil {
+		return catalog.Status{}, errors.New("catalog repository is not configured")
 	}
-	state, err := r.SQLiteCatalog.Status(ctx)
+	state, err := r.Repository.Status(ctx)
 	if err != nil {
 		return state, err
 	}
@@ -125,7 +125,7 @@ func (r *Reader) SQLiteStatus(ctx context.Context) (catalog.SQLiteStatus, error)
 	return state, nil
 }
 
-func sqliteCoverage(state catalog.SQLiteStatus) map[string]int64 {
+func repositoryCoverage(state catalog.Status) map[string]int64 {
 	out := make(map[string]int64, len(state.Contract.Tenants))
 	for _, stream := range state.Coverage {
 		previous, ok := out[stream.Tenant]
@@ -137,12 +137,12 @@ func sqliteCoverage(state catalog.SQLiteStatus) map[string]int64 {
 }
 
 func (r *Reader) Ready(ctx context.Context) (map[string]int64, error) {
-	if r.SQLiteCatalog != nil {
-		state, err := r.SQLiteStatus(ctx)
+	if r.Repository != nil {
+		state, err := r.CatalogStatus(ctx)
 		if err != nil {
 			return nil, err
 		}
-		out := sqliteCoverage(state)
+		out := repositoryCoverage(state)
 		need := r.RequiredEnd(time.Now())
 		for tenant, end := range out {
 			if end < need {
@@ -496,7 +496,7 @@ type selectedPack struct {
 
 func (r *Reader) selectPacks(ctx context.Context, tenant string, sq *storage.SearchQuery, limit int64) ([]selectedPack, int64, error) {
 	var out []selectedPack
-	if r.SQLiteCatalog == nil {
+	if r.Repository == nil {
 		m, err := r.Catalog(ctx)
 		if err != nil {
 			return nil, 0, err
@@ -510,7 +510,7 @@ func (r *Reader) selectPacks(ctx context.Context, tenant string, sq *storage.Sea
 		}
 		return out, catalog.Coverage(m, tenant, r.Sources, r.CoverageStart), nil
 	}
-	state, err := r.SQLiteStatus(ctx)
+	state, err := r.CatalogStatus(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -522,9 +522,9 @@ func (r *Reader) selectPacks(ctx context.Context, tenant string, sq *storage.Sea
 	// A committed half-open window can never contain MaxInt64 itself. Metadata
 	// requests commonly use that inclusive upper bound; avoid overflowing it.
 	if start >= end {
-		return nil, sqliteCoverage(state)[tenant], nil
+		return nil, repositoryCoverage(state)[tenant], nil
 	}
-	plan, err := r.SQLiteCatalog.Select(ctx, catalog.Selection{
+	plan, err := r.Repository.Select(ctx, catalog.Selection{
 		Tenant: tenant, Start: start, End: end, MaxPlanBytes: min(limit, 16<<20),
 	})
 	if err != nil {

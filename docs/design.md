@@ -1,4 +1,19 @@
-# First-release design
+# First-release design and roadmap
+
+For the architecture that exists today, read the [architecture and source map](architecture.md).
+For deployment, use the [SQLite service guide](serve.md) or
+[PostgreSQL HA guide](ha-deployment.md). This document records the target design
+and delivery plan, including requirements that are not yet implemented.
+The status table and delivery stages below distinguish current behavior from that
+target; proposed capacity fixtures are not support claims.
+
+The [PostgreSQL catalog and service](postgres-catalog.md) and
+[ADR 0004](adr/0004-postgresql-catalog.md) extend the original single-host design
+with multiple read gateways, fenced archiver ownership, and stopped SQLite
+migration. The SQLite deployment described below remains available. The
+[HA deployment guide](ha-deployment.md) defines the external database, endpoint,
+and budget requirements; [HA evidence](postgres-ha-validation.md) retains its
+recorded revision and qualification boundaries.
 
 This is the implementation design for the first supported vmtier release. The
 [SQLite catalog](sqlite-catalog.md) and [`serve` runtime](serve.md) provide
@@ -12,10 +27,10 @@ measurement and release-qualification work. See
 
 | Area | Current implementation |
 | --- | --- |
-| Catalog | SQLite schema 1, bounded indexed selection, independent stream coverage, offline v2 import and backup/restore |
-| Service | Lifetime state lock, age-based scheduler, read RPC, capacity/failure metrics, shared S3 attempt budget |
-| Archive | SQLite pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
-| Reader | SQLite selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |
+| Catalog | SQLite schema 1 or PostgreSQL schema 2; shared repository operations, bounded indexed selection, independent stream coverage; backend-specific migration/maintenance |
+| Service | SQLite directory ownership or PostgreSQL fenced archiver lease; age-based scheduler, read RPC, failure metrics, per-process admission; PostgreSQL static aggregate S3 allocation |
+| Archive | Shared service pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
+| Reader | Repository selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |
 | Remaining work | Broader workload and provider, retention, ingress, and release qualification; see the scoped reports below |
 
 The legacy [JSON v2 MVP architecture](mvp-design.md) and its
@@ -56,7 +71,7 @@ The small Moto fixture showed expensive uncached reads and effective warm cachin
 It does not establish a need for postings lists, a new index format, compaction,
 or a different storage format. Those changes need a measured workload first.
 
-## Deployment and ownership
+## SQLite deployment and ownership
 
 ```mermaid
 flowchart LR
@@ -81,18 +96,20 @@ The implemented `serve` command owns scheduling, catalog access, the read RPC li
 and health/metrics endpoints. It uses one state directory on persistent local disk
 and one process lock for that directory. A second process using that directory
 fails at startup. This prevents accidental local double starts; it is not
-leader election. There is no active/active deployment or automatic failover.
+leader election. This SQLite deployment has no automatic failover; PostgreSQL
+provides the separately documented multi-instance option.
 
 Initialization is explicit, after capacity preflight. `serve` only opens an
 initialized catalog and rejects missing, corrupt, or wrong-ID state. Disable
 SQLite's implicit create-on-open on this path so a missing volume or path typo
 cannot silently create an empty authority.
 
-The existing Go package boundaries remain. `internal/catalog` exposes an in-process
-transactional repository, without a public network API in the selected deployment.
-The HTTP catalog and JSON local adapters remain legacy MVP and migration tools.
-Do not maintain two production architectures or add a generic database framework.
-Separate hosts or catalog services require a later demonstrated need.
+The existing Go package boundaries remain. `internal/catalog` exposes domain
+repository operations used by both SQLite and PostgreSQL implementations.
+PostgreSQL clients connect directly to the database; no new catalog HTTP service
+is introduced. The HTTP catalog and JSON local adapters remain legacy MVP and
+migration tools. [ADR 0004](adr/0004-postgresql-catalog.md) records the concrete
+multi-host availability requirement that extends this original single-host scope.
 
 All S3 traffic for the bucket, including verification and maintenance, must pass
 through this instance during service operation. Maintenance currently runs with
@@ -154,6 +171,11 @@ guarantee. A required Cold coverage gap returns an error, even if some of that
 interval may still happen to exist in Hot.
 
 ## Catalog and publication
+
+The details below describe SQLite persistence. PostgreSQL preserves the same
+publication and selection contracts using row locking, repeatable-read snapshots,
+shared object-key uniqueness, and fenced archiver ownership; see
+[repository behavior](postgres-catalog.md#repository-behavior).
 
 Use SQLite on a local filesystem, with foreign keys, WAL mode, and
 `synchronous=FULL`. The implemented repository uses one connection for short
@@ -218,7 +240,7 @@ window. Scheduling resumes from persisted coverage, without a separate durable j
 queue; retry cooldowns are process-local. An internal one-pass operation supports
 tests, while the standalone `archive` CLI remains a JSON v2 tool.
 
-The SQLite writer implements the following bounded pipeline. See
+The shared service writer implements the following bounded pipeline. See
 [archive packing](archive-packs.md), [incremental oracle allocation evidence](raw-oracle-validation.md),
 and [capacity preflight](preflight.md) for implementation details, reproduction,
 and measured limits. Stock-VM integration evidence must identify the tested
@@ -270,7 +292,7 @@ the window has been bound; preflight performs neither initialization nor migrati
 
 ## Query planning and resource limits
 
-Indexed SQLite selection, multiple-pack reads, LRU eviction, concurrent-miss
+Indexed repository selection, multiple-pack reads, LRU eviction, concurrent-miss
 coalescing, adjacent-range reads, and logical query work admission are implemented.
 [Reader validation](reader-validation.md) records focused GET-count and cache
 accounting measurements. [Metadata measurements](metadata-validation.md) cover the
@@ -479,7 +501,10 @@ recent-only Hot reconstruction. These checks remain unexecuted today.
 
 ## Explicitly deferred
 
-- Distributed HA, leader election, multiple catalog backends, and multi-region replication.
+- Multi-region writes and concurrent per-stream archivers. PostgreSQL backend,
+  archiver lease/fencing, gateway examples, migration, and local failure tests are
+  implemented under [ADR 0004](adr/0004-postgresql-catalog.md); production database
+  election controllers and endpoint redundancy remain deployment responsibilities.
 - Disk-backed sample verification, arbitrary high cardinality, and unbounded queries.
 - New postings/binary indexes, compaction, downsampling, and another storage format.
 - Automatic backfill, deletion/tombstones, Cold TTL, and orphan garbage collection.

@@ -1,0 +1,7 @@
+[WARNING]  (10494) : Server gateways/node0 is DOWN, reason: Layer4 connection problem, info: "Connection refused", check duration: 0ms. 1 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+[WARNING]  (10494) : Server gateways/node0 is UP, reason: Layer7 check passed, code: 200, check duration: 2ms. 2 active and 0 backup servers online. 0 sessions requeued, 0 total in queue.
+[WARNING]  (10494) : Server gateways/node0 is DOWN, reason: Layer7 timeout, check duration: 105ms. 1 active and 0 backup servers left. 1 sessions active, 0 requeued, 0 remaining in queue.
+[WARNING]  (10494) : Server gateways/node1 is DOWN, reason: Layer7 timeout, check duration: 105ms. 0 active and 0 backup servers left. 1 sessions active, 0 requeued, 0 remaining in queue.
+[ALERT]    (10494) : backend 'gateways' has no server available!
+[WARNING]  (10494) : Server gateways/node1 is UP, reason: Layer7 check passed, code: 200, check duration: 32ms. 1 active and 0 backup servers online. 0 sessions requeued, 0 total in queue.
+[WARNING]  (10494) : Server gateways/node0 is UP, reason: Layer7 check passed, code: 200, check duration: 34ms. 2 active and 0 backup servers online. 0 sessions requeued, 0 total in queue.

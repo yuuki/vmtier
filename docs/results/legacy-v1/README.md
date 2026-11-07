@@ -8,8 +8,8 @@ authority or ordinary-PUT blob store.
 The original JSON results are preserved byte-for-byte. The accompanying validation
 and testing documents have been translated into English and their relative links
 have been repaired; they are not byte-for-byte copies of the original prose.
-The current checkout runs the v2 implementation, so commands in the historical
-testing document do not reproduce v1 with current sources.
+The current checkout provides SQLite/PostgreSQL `serve` and the retained JSON v2 commands;
+commands in the historical testing document do not reproduce v1 with current sources.
 
-Current architecture evidence is in the parent results directory and
-[current validation](../../validation.md).
+See the [validation index](../../evidence.md) for current and historical service
+evidence, and the [current architecture](../../architecture.md) for implemented behavior.

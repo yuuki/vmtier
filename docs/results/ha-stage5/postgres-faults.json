@@ -1,0 +1,72 @@
+{
+  "acknowledged_catalog_preserved_after_primary_stop": true,
+  "acknowledged_initial_publication": true,
+  "ambiguous_commit_recovered_by_status_and_replay": true,
+  "catalog_id_preserved": "ha-fault-catalog",
+  "expired_archiver_rejected_after_token_takeover": true,
+  "fencing_token_monotonic_across_promotion": true,
+  "fencing_tokens": [
+    2,
+    3
+  ],
+  "generation_after_promotion": 3,
+  "limitations": [
+    "No automatic election controller or provider failure is exercised.",
+    "Measurements are local observations, not an availability or recovery-time SLO.",
+    "Lease deadlines use database time; cross-host clock skew is not injected."
+  ],
+  "partition_error_ms": 0.375,
+  "partition_failed_closed": true,
+  "passed": true,
+  "postgres_version": "PostgreSQL 17.11 (Debian 17.11-0+deb13u1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+  "pre_promotion_archiver_rejected_after_recovery": true,
+  "promotion": "explicit pg_ctl promotion after confirmed old-primary process stop",
+  "publication_after_replacement_sync_standby": true,
+  "recovered_fencing_token": 4,
+  "same_client_read_recovery_ms": 214.906,
+  "scope": "disposable PostgreSQL catalog fault qualification",
+  "silent_blackhole_error_ms": 5001.231,
+  "silent_blackhole_failed_closed": true,
+  "synchronous_write_recovery_ms": 961.713,
+  "unpromoted_standby_rejected": true,
+  "started_at_utc": "2026-11-06T16:08:38.420+00:00",
+  "finished_at_utc": "2026-11-06T16:08:50.135+00:00",
+  "elapsed_seconds": 11.714492,
+  "provenance": {
+    "race": true,
+    "git_revision": "80f3387cdce78fe95ebadcfb530860bfe40951cd",
+    "git_dirty": true,
+    "go_version": "go version go1.27.3 linux/amd64",
+    "postgres_binary_version": "postgres (PostgreSQL) 17.11 (Debian 17.11-0+deb13u1)",
+    "reproduce_command": "python3 scripts/postgres_ha.py --postgres-bin /workspace/tools/postgres17/root/usr/lib/postgresql/17/bin --go /workspace/tools/go/bin/go --race --workdir '<new-empty-workdir>'",
+    "reproduce_workdir": "Replace <new-empty-workdir> with an absent or empty directory.",
+    "test_binary_sha256": "d651afefee52010c741c5a50d6f1479fba95fca12cca090bf1d2725aaa02af59",
+    "git_revision_end": "80f3387cdce78fe95ebadcfb530860bfe40951cd",
+    "git_dirty_end": true
+  },
+  "cleanup": [
+    {
+      "node": "primary",
+      "status": "already_stopped_or_not_started"
+    },
+    {
+      "node": "standby",
+      "status": "stopped",
+      "exit_code": 0
+    },
+    {
+      "node": "replacement",
+      "status": "stopped",
+      "exit_code": 0
+    }
+  ],
+  "diagnostic_files": [
+    "build.log",
+    "cleanup.log",
+    "primary.log",
+    "replacement.log",
+    "setup.log",
+    "standby.log",
+    "test.log"
+  ]
+}

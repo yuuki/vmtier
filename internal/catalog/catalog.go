@@ -1,5 +1,6 @@
 // Package catalog owns publication authority independently from the blob store.
-// The authority is single-host, durable and append-only; it is not distributed HA.
+// Repositories preserve append-only publication metadata. Runtime ownership and
+// distributed failover require coordination beyond the repository transactions.
 package catalog
 
 import (

@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +16,8 @@ import (
 const (
 	SQLiteSchemaVersion     = 1
 	SQLiteFile              = "catalog.db"
-	SQLiteMaxPacksPerWindow = 1024
+	MaxPacksPerWindow       = 1024
+	SQLiteMaxPacksPerWindow = MaxPacksPerWindow
 )
 
 // BlobLocator pins the location of relative object keys without storing secrets.
@@ -106,7 +108,21 @@ type StreamCoverage struct {
 	End      int64  `json:"end_ms"`
 }
 
-type SQLiteStatus struct {
+// Repository owns initialized publication metadata independently of blob storage.
+// Implementations pin catalog identity and return consistent, bounded selections.
+// Publication callers must verify source completeness and uploaded objects first.
+// Close belongs to the runtime owner, not individual readers or archive passes.
+type Repository interface {
+	Status(context.Context) (Status, error)
+	PublishWindow(context.Context, uint64, Publication) (uint64, error)
+	Select(context.Context, Selection) (QueryPlan, error)
+	Close() error
+}
+
+var _ Repository = (*SQLite)(nil)
+
+// Status describes one consistent snapshot of an initialized catalog.
+type Status struct {
 	SchemaVersion int              `json:"schema_version"`
 	VMVersion     string           `json:"vm_version"`
 	ID            string           `json:"id"`
@@ -115,6 +131,9 @@ type SQLiteStatus struct {
 	Blob          BlobLocator      `json:"blob"`
 	Coverage      []StreamCoverage `json:"coverage"`
 }
+
+// SQLiteStatus is retained for SQLite maintenance and backup compatibility.
+type SQLiteStatus = Status
 
 type PackRef struct {
 	DataKey     string `json:"data_key"`
@@ -173,7 +192,7 @@ func validatePublication(c Contract, p Publication) (string, error) {
 	if p.Start < c.CoverageStart || p.Start < 0 || p.End <= p.Start || p.End-p.Start != c.WindowMS || (p.Start-c.CoverageStart)%c.WindowMS != 0 {
 		return "", fmt.Errorf("%w: expected one aligned contract window", ErrInvalidPublication)
 	}
-	if len(p.Packs) > SQLiteMaxPacksPerWindow {
+	if len(p.Packs) > MaxPacksPerWindow {
 		return "", fmt.Errorf("%w: window has too many packs", ErrInvalidPublication)
 	}
 	keys := make(map[string]bool, len(p.Packs)*2)

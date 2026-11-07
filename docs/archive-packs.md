@@ -1,6 +1,7 @@
 # Bounded multi-pack archive windows
 
-The SQLite service rotates packs within a fixed logical tenant/source/window.
+Both SQLite and PostgreSQL service backends use the same pack-rotation pipeline
+within a fixed logical tenant/source/window.
 Every emitted pack retains the same start/end and tenant in its version-1 index;
 rotation does not subdivide coverage or change the native payload format. The
 retained JSON v2 writer still produces one pack per window because its catalog
@@ -35,7 +36,7 @@ scratch, HTTP buffers, and allocator overhead also consume memory. These bounds
 are not a process RSS guarantee.
 
 Packs can be uploaded and read back before native EOF or oracle completion. They
-remain invisible: only the final SQLite transaction publishes all references and
+remain invisible: only the final catalog transaction publishes all references and
 advances coverage. Cross-pack duplicate timestamps, conflicting values, and stale
 markers are deduplicated together with the pinned VM implementation. The complete
 raw matrix and independent count/stale queries must agree before publication.

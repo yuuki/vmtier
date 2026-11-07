@@ -15,12 +15,12 @@ import (
 	"github.com/yuuki/vmtier/internal/pack"
 )
 
-// SQLiteArchiver advances each configured stream independently. The owner calls
+// Archiver advances each configured stream independently. The owner calls
 // RunPass serially and supplies the same blob store used by the read gateway.
 // Retry deadlines are disposable; persistent coverage is the restart checkpoint.
-type SQLiteArchiver struct {
+type Archiver struct {
 	Store         objectstore.BlobStore
-	Catalog       *catalog.SQLite
+	Catalog       catalog.Repository
 	Config        Config
 	RetryInterval time.Duration
 	WindowTimeout time.Duration
@@ -34,13 +34,13 @@ type SQLiteArchiver struct {
 // stream receives a retry delay while healthy streams can continue. StartMS and
 // EndMS in Config are ignored: coverage and the current archive-age boundary own
 // scheduling. A successful empty window is published without payload objects.
-func (a *SQLiteArchiver) RunPass(ctx context.Context, now time.Time) (*Result, error) {
+func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) {
 	out := &Result{}
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
 	if a.Store == nil || a.Catalog == nil || a.RetryInterval < 0 || a.WindowTimeout < 0 {
-		return out, errors.New("SQLite archiver requires a catalog, blob store, and nonnegative retry/timeout durations")
+		return out, errors.New("archiver requires a catalog, blob store, and nonnegative retry/timeout durations")
 	}
 	cfg := a.Config
 	w := cfg.Window.Milliseconds()
@@ -65,7 +65,7 @@ func (a *SQLiteArchiver) RunPass(ctx context.Context, now time.Time) (*Result, e
 		return out, err
 	}
 	if !catalog.EqualContract(state.Contract, archiveContract(cfg)) {
-		return out, errors.New("catalog contract differs from SQLite archive configuration")
+		return out, errors.New("catalog contract differs from archive configuration")
 	}
 	eligibleEnd := (now.Add(-cfg.Age).UnixMilli() / w) * w
 	if eligibleEnd <= cfg.CoverageStart {
@@ -137,12 +137,15 @@ func (a *SQLiteArchiver) RunPass(ctx context.Context, now time.Time) (*Result, e
 		}
 		if err != nil {
 			fail(err)
+			if errors.Is(err, catalog.ErrLeaseLost) {
+				return out, errors.Join(failures...)
+			}
 		}
 	}
 	return out, errors.Join(failures...)
 }
 
-func (a *SQLiteArchiver) publishStream(ctx context.Context, cfg Config, source Source, stream catalog.StreamCoverage, generation uint64, clock func() time.Time) (uint64, *Result, error) {
+func (a *Archiver) publishStream(ctx context.Context, cfg Config, source Source, stream catalog.StreamCoverage, generation uint64, clock func() time.Time) (uint64, *Result, error) {
 	out := &Result{}
 	start, end := stream.End, stream.End+cfg.Window.Milliseconds()
 	if err := cfg.validateTime(start, end, clock()); err != nil {
