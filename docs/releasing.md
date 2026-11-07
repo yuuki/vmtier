@@ -102,7 +102,9 @@ python3 scripts/release.py compare /path/to/downloaded /tmp/vmtier-rebuild
    `release/licenses.json` and `THIRD_PARTY_NOTICES.md`, and run
    `make release-snapshot` locally.
 3. Choose a SemVer tag. Tags with a hyphen (`v0.1.0-rc.1`) become GitHub
-   pre-releases. Never move or reuse a tag that was published.
+   pre-releases. To promote a candidate, tag the same commit with the final
+   version; the workflow builds the pushed tag. Never move or reuse a tag that
+   was published.
 4. Tag the commit on `main` and push the tag:
 
    ```sh

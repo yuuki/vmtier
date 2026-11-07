@@ -39,8 +39,12 @@ jobs:
       - name: Build release archive in the pinned builder
         env:
           ATTEMPT: ${{ matrix.attempt }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           args=()
+          # A commit can carry both an -rc tag and the final tag; name the pushed one.
+          if [[ "$REF_TYPE" == tag ]]; then args+=(--version "$REF_NAME"); fi
           # Unit tests use the release libc and linker mode; they do not change outputs.
           if [[ "$ATTEMPT" == first ]]; then args+=(--unit-tests); fi
           python scripts/release.py build --output dist "${args[@]}"
