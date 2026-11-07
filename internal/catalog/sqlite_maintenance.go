@@ -217,6 +217,19 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 		return err
 	}
 	defer tx.Rollback()
+	if err := checkRestoredForeignKeys(ctx, tx); err != nil {
+		return err
+	}
+	if err := checkRestoredCoverage(ctx, tx, status); err != nil {
+		return err
+	}
+	if err := checkRestoredWindows(ctx, tx, status); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func checkRestoredForeignKeys(ctx context.Context, tx *sql.Tx) error {
 	rows, err := tx.QueryContext(ctx, "PRAGMA foreign_key_check")
 	if err != nil {
 		return err
@@ -230,6 +243,12 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 	if bad {
 		return errors.New("backup contains invalid foreign-key references")
 	}
+	return nil
+}
+
+// checkRestoredCoverage requires each stream's windows to form exactly the
+// contiguous prefix of the coverage it records.
+func checkRestoredCoverage(ctx context.Context, tx *sql.Tx, status SQLiteStatus) error {
 	for _, stream := range status.Coverage {
 		var count int64
 		var first, last sql.NullInt64
@@ -242,55 +261,21 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 			return errors.New("backup coverage is not a contiguous prefix of its windows")
 		}
 	}
-	rows, err = tx.QueryContext(ctx, "SELECT id, tenant, source_id, start_ms, end_ms, generation, pack_count, digest FROM windows ORDER BY id")
+	return nil
+}
+
+// checkRestoredWindows validates every stored window and its packs, and
+// requires one window per published generation.
+func checkRestoredWindows(ctx context.Context, tx *sql.Tx, status SQLiteStatus) error {
+	rows, err := tx.QueryContext(ctx, "SELECT id, tenant, source_id, start_ms, end_ms, generation, pack_count, digest FROM windows ORDER BY id")
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	var count uint64
 	for rows.Next() {
-		var id int64
-		var generation uint64
-		var packCount int
-		var digest string
-		var pub Publication
-		if err := rows.Scan(&id, &pub.Tenant, &pub.SourceID, &pub.Start, &pub.End, &generation, &packCount, &digest); err != nil {
+		if err := checkRestoredWindow(ctx, tx, rows, status); err != nil {
 			return err
-		}
-		if generation == 0 || generation > status.Generation || packCount < 0 || packCount > SQLiteMaxPacksPerWindow {
-			return errors.New("backup contains invalid window metadata")
-		}
-		packs, err := tx.QueryContext(ctx, "SELECT ordinal, data_key, index_key, data_sha256, index_sha256, data_bytes, index_bytes FROM packs WHERE window_id=? ORDER BY ordinal LIMIT ?", id, SQLiteMaxPacksPerWindow+1)
-		if err != nil {
-			return err
-		}
-		for packs.Next() {
-			var ordinal int
-			var p PackRef
-			if err := packs.Scan(&ordinal, &p.DataKey, &p.IndexKey, &p.DataSHA256, &p.IndexSHA256, &p.DataBytes, &p.IndexBytes); err != nil {
-				packs.Close()
-				return err
-			}
-			if ordinal != len(pub.Packs) {
-				packs.Close()
-				return errors.New("backup contains invalid pack ordinals")
-			}
-			pub.Packs = append(pub.Packs, p)
-		}
-		err = packs.Err()
-		packs.Close()
-		if err != nil {
-			return err
-		}
-		if len(pub.Packs) != packCount {
-			return errors.New("backup pack count disagrees with window")
-		}
-		actual, err := validatePublication(status.Contract, pub)
-		if err != nil {
-			return fmt.Errorf("invalid backup publication: %w", err)
-		}
-		if actual != digest {
-			return errors.New("backup publication digest mismatch")
 		}
 		count++
 	}
@@ -300,7 +285,64 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 	if count != status.Generation {
 		return errors.New("backup generation disagrees with published window count")
 	}
-	return tx.Commit()
+	return nil
+}
+
+// checkRestoredWindow validates the current window row and recomputes the
+// digest of its publication.
+func checkRestoredWindow(ctx context.Context, tx *sql.Tx, rows *sql.Rows, status SQLiteStatus) error {
+	var id int64
+	var generation uint64
+	var packCount int
+	var digest string
+	var pub Publication
+	if err := rows.Scan(&id, &pub.Tenant, &pub.SourceID, &pub.Start, &pub.End, &generation, &packCount, &digest); err != nil {
+		return err
+	}
+	if generation == 0 || generation > status.Generation || packCount < 0 || packCount > SQLiteMaxPacksPerWindow {
+		return errors.New("backup contains invalid window metadata")
+	}
+	packs, err := readRestoredPacks(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	pub.Packs = packs
+	if len(pub.Packs) != packCount {
+		return errors.New("backup pack count disagrees with window")
+	}
+	actual, err := validatePublication(status.Contract, pub)
+	if err != nil {
+		return fmt.Errorf("invalid backup publication: %w", err)
+	}
+	if actual != digest {
+		return errors.New("backup publication digest mismatch")
+	}
+	return nil
+}
+
+// readRestoredPacks returns the pack references of a window in ordinal order.
+func readRestoredPacks(ctx context.Context, tx *sql.Tx, windowID int64) ([]PackRef, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT ordinal, data_key, index_key, data_sha256, index_sha256, data_bytes, index_bytes FROM packs WHERE window_id=? ORDER BY ordinal LIMIT ?", windowID, SQLiteMaxPacksPerWindow+1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var packs []PackRef
+	for rows.Next() {
+		var ordinal int
+		var p PackRef
+		if err := rows.Scan(&ordinal, &p.DataKey, &p.IndexKey, &p.DataSHA256, &p.IndexSHA256, &p.DataBytes, &p.IndexBytes); err != nil {
+			return nil, err
+		}
+		if ordinal != len(packs) {
+			return nil, errors.New("backup contains invalid pack ordinals")
+		}
+		packs = append(packs, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return packs, nil
 }
 
 func stageMaintenanceDirectory(dest string) (string, string, error) {

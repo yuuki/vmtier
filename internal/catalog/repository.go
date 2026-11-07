@@ -31,49 +31,73 @@ type BlobLocator struct {
 // NormalizeBlobLocator applies the same S3 defaults and key rules as BlobStore.
 // Local paths are absolute so changing the working directory cannot retarget keys.
 func NormalizeBlobLocator(b BlobLocator) (BlobLocator, error) {
+	var err error
 	switch b.Type {
 	case "local":
-		if b.Path == "" || b.Endpoint != "" || b.Region != "" || b.Bucket != "" || b.Prefix != "" {
-			return b, errors.New("local blob locator requires only a path")
-		}
-		p, err := filepath.Abs(b.Path)
-		if err != nil {
-			return b, err
-		}
-		b.Path = filepath.Clean(p)
+		b, err = normalizeLocalLocator(b)
 	case "s3":
-		if b.Path != "" || b.Bucket == "" || strings.ContainsAny(b.Bucket, "/\\\r\n\x00") {
-			return b, errors.New("invalid S3 blob locator")
-		}
-		if b.Region == "" {
-			b.Region = "us-east-1"
-		}
-		if b.Prefix != "" {
-			b.Prefix = strings.TrimSuffix(b.Prefix, "/")
-			if b.Prefix == "" || len(b.Prefix) > 1024 || strings.HasPrefix(b.Prefix, "/") || path.Clean(b.Prefix) != b.Prefix || strings.ContainsAny(b.Prefix, "\\\x00\r\n") {
-				return b, errors.New("invalid S3 prefix")
-			}
-			for _, part := range strings.Split(b.Prefix, "/") {
-				if strings.HasPrefix(part, ".") {
-					return b, errors.New("invalid S3 prefix component")
-				}
-			}
-		}
-		if b.Endpoint != "" {
-			u, err := url.Parse(b.Endpoint)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-				return b, errors.New("invalid S3 endpoint")
-			}
-			b.Endpoint = strings.TrimSuffix(b.Endpoint, "/")
-		}
+		b, err = normalizeS3Locator(b)
 	default:
 		return b, errors.New("blob locator type must be local or s3")
+	}
+	if err != nil {
+		return b, err
 	}
 	encoded, _ := json.Marshal(b)
 	if len(encoded) > 16<<10 {
 		return b, errors.New("blob locator is too large")
 	}
 	return b, nil
+}
+
+func normalizeLocalLocator(b BlobLocator) (BlobLocator, error) {
+	if b.Path == "" || b.Endpoint != "" || b.Region != "" || b.Bucket != "" || b.Prefix != "" {
+		return b, errors.New("local blob locator requires only a path")
+	}
+	p, err := filepath.Abs(b.Path)
+	if err != nil {
+		return b, err
+	}
+	b.Path = filepath.Clean(p)
+	return b, nil
+}
+
+// normalizeS3Locator applies the default region and trims the trailing
+// slashes of the prefix and endpoint.
+func normalizeS3Locator(b BlobLocator) (BlobLocator, error) {
+	if b.Path != "" || b.Bucket == "" || strings.ContainsAny(b.Bucket, "/\\\r\n\x00") {
+		return b, errors.New("invalid S3 blob locator")
+	}
+	if b.Region == "" {
+		b.Region = "us-east-1"
+	}
+	if b.Prefix != "" {
+		b.Prefix = strings.TrimSuffix(b.Prefix, "/")
+		if err := validateS3Prefix(b.Prefix); err != nil {
+			return b, err
+		}
+	}
+	if b.Endpoint != "" {
+		u, err := url.Parse(b.Endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return b, errors.New("invalid S3 endpoint")
+		}
+		b.Endpoint = strings.TrimSuffix(b.Endpoint, "/")
+	}
+	return b, nil
+}
+
+// validateS3Prefix requires a clean relative key prefix without hidden components.
+func validateS3Prefix(prefix string) error {
+	if prefix == "" || len(prefix) > 1024 || strings.HasPrefix(prefix, "/") || path.Clean(prefix) != prefix || strings.ContainsAny(prefix, "\\\x00\r\n") {
+		return errors.New("invalid S3 prefix")
+	}
+	for _, part := range strings.Split(prefix, "/") {
+		if strings.HasPrefix(part, ".") {
+			return errors.New("invalid S3 prefix component")
+		}
+	}
+	return nil
 }
 
 type StreamCoverage struct {

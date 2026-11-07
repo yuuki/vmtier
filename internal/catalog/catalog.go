@@ -135,26 +135,25 @@ func Validate(m *Manifest) error {
 	if e := validateContract(m.Contract); e != nil {
 		return e
 	}
+	return validateEntries(m.Contract, m.Entries)
+}
+
+// validateEntries requires each window to hold one entry per configured
+// tenant/source stream, and each stream's windows not to overlap.
+func validateEntries(c Contract, entries []Entry) error {
 	tenants := map[string]bool{}
-	for _, t := range m.Contract.Tenants {
+	for _, t := range c.Tenants {
 		tenants[t] = true
 	}
 	sources := map[string]string{}
-	for _, s := range m.Contract.Sources {
+	for _, s := range c.Sources {
 		sources[s.ID] = s.Fingerprint
 	}
 	bySource := map[string][]Entry{}
 	windows := map[int64]map[string]bool{}
-	for _, e := range m.Entries {
-		if !tenants[e.Tenant] || sources[e.SourceID] != e.SourceFingerprint || !validHash(e.IndexSHA256) {
-			return errors.New("entry violates tenant/source/checksum contract")
-		}
-		if e.Start < m.Contract.CoverageStart || e.Start < 0 || e.End <= e.Start || e.End-e.Start != m.Contract.WindowMS || (e.Start-m.Contract.CoverageStart)%m.Contract.WindowMS != 0 {
-			return errors.New("entry must cover one full aligned contract window")
-		}
-		prefix := "tenants/" + e.Tenant + "/"
-		if !validObjectKey(e.IndexKey, prefix) || !validObjectKey(e.DataKey, prefix) || e.IndexKey == e.DataKey {
-			return errors.New("object escapes tenant namespace")
+	for _, e := range entries {
+		if err := validateEntry(c, tenants, sources, e); err != nil {
+			return err
 		}
 		key := e.Tenant + "\x00" + e.SourceID
 		bySource[key] = append(bySource[key], e)
@@ -181,6 +180,23 @@ func Validate(m *Manifest) error {
 	}
 	return nil
 }
+
+// validateEntry requires an entry of a configured stream to cover one full
+// aligned window with objects inside its tenant namespace.
+func validateEntry(c Contract, tenants map[string]bool, sources map[string]string, e Entry) error {
+	if !tenants[e.Tenant] || sources[e.SourceID] != e.SourceFingerprint || !validHash(e.IndexSHA256) {
+		return errors.New("entry violates tenant/source/checksum contract")
+	}
+	if e.Start < c.CoverageStart || e.Start < 0 || e.End <= e.Start || e.End-e.Start != c.WindowMS || (e.Start-c.CoverageStart)%c.WindowMS != 0 {
+		return errors.New("entry must cover one full aligned contract window")
+	}
+	prefix := "tenants/" + e.Tenant + "/"
+	if !validObjectKey(e.IndexKey, prefix) || !validObjectKey(e.DataKey, prefix) || e.IndexKey == e.DataKey {
+		return errors.New("object escapes tenant namespace")
+	}
+	return nil
+}
+
 func validHash(s string) bool {
 	if len(s) != 64 || strings.ToLower(s) != s {
 		return false
