@@ -7,7 +7,7 @@ read [limits](limits.md) and [compatibility](compatibility.md).
 ## Build from source
 
 Use Linux amd64, Go 1.27.3 and Python 3.15.2 (the pinned toolchains),
-a C compiler with CGO enabled, make, curl, tar, and sha256sum. Allow enough disk space for Go module/build caches and disposable test data. Docker is not required.
+a C compiler with CGO enabled, make, curl, tar, and sha256sum. Allow enough disk space for Go module/build caches and disposable test data. Docker is required only to build [release archives](releasing.md).
 
 ```sh
 ./scripts/bootstrap.sh

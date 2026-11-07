@@ -326,3 +326,17 @@ CI runs. Historical local result files remain unchanged.
 
 See the [workflow](../.github/workflows/ci.yml) for the current suite matrix and
 [evidence index](evidence.md) for recorded results.
+
+## Release and supply-chain checks
+
+The `test` workflow's `release-check` job builds two release snapshots of the
+pushed commit in the pinned builder. It requires identical `SHA256SUMS` and runs
+the archive smoke test. The smoke test checks the license record, static linking,
+the license files, `vmtier version`, and SQLite catalog initialization in the
+static binary. The job uploads the snapshot as `release-snapshot`. The `security`
+workflow runs `make vulncheck` (govulncheck) on every push and weekly. It also
+checks workflow syntax with actionlint and workflow security with zizmor.
+`python3 -m unittest discover -s scripts -p 'test_*.py'` covers the packaging
+logic without Docker. A tag runs the full [release gates](releasing.md#maintainer-procedure).
+This includes the suites above against the packaged binary; their evidence is
+uploaded as `release-e2e-evidence`.
