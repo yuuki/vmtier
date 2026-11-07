@@ -39,27 +39,11 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
-	if a.Store == nil || a.Catalog == nil || a.RetryInterval < 0 || a.WindowTimeout < 0 {
-		return out, errors.New("archiver requires a catalog, blob store, and nonnegative retry/timeout durations")
-	}
-	cfg := a.Config
-	w := cfg.Window.Milliseconds()
-	if w <= 0 || cfg.CoverageStart > math.MaxInt64-w {
-		return out, errors.New("invalid archive coverage origin/window")
-	}
-	cfg.StartMS, cfg.EndMS = cfg.CoverageStart, cfg.CoverageStart+w
-	if err := cfg.validateConfig(); err != nil {
+	cfg, err := a.passConfig()
+	if err != nil {
 		return out, err
 	}
-	if cfg.Retention-cfg.Age-cfg.SafetyMargin <= cfg.Window {
-		return out, errors.New("require R-H > safety+window")
-	}
-	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: 2 * time.Minute}
-	}
-	if cfg.MaxSamples == 0 {
-		cfg.MaxSamples = 5000000
-	}
+	w := cfg.Window.Milliseconds()
 	state, err := a.Catalog.Status(ctx)
 	if err != nil {
 		return out, err
@@ -86,16 +70,7 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 	for _, source := range cfg.Sources {
 		sources[source.ID] = source
 	}
-	streams := append([]catalog.StreamCoverage(nil), state.Coverage...)
-	sort.Slice(streams, func(i, j int) bool {
-		if streams[i].End != streams[j].End {
-			return streams[i].End < streams[j].End
-		}
-		if streams[i].Tenant != streams[j].Tenant {
-			return streams[i].Tenant < streams[j].Tenant
-		}
-		return streams[i].SourceID < streams[j].SourceID
-	})
+	streams := oldestStreamsFirst(state.Coverage)
 	runStart := time.Now()
 	clock := func() time.Time { return now.Add(time.Since(runStart)) }
 	generation := state.Generation
@@ -143,6 +118,50 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 		}
 	}
 	return out, errors.Join(failures...)
+}
+
+// passConfig validates the archiver and its configuration for one pass and
+// applies the configuration defaults. StartMS and EndMS select the first
+// window only so that the configuration can be validated.
+func (a *Archiver) passConfig() (Config, error) {
+	if a.Store == nil || a.Catalog == nil || a.RetryInterval < 0 || a.WindowTimeout < 0 {
+		return Config{}, errors.New("archiver requires a catalog, blob store, and nonnegative retry/timeout durations")
+	}
+	cfg := a.Config
+	w := cfg.Window.Milliseconds()
+	if w <= 0 || cfg.CoverageStart > math.MaxInt64-w {
+		return cfg, errors.New("invalid archive coverage origin/window")
+	}
+	cfg.StartMS, cfg.EndMS = cfg.CoverageStart, cfg.CoverageStart+w
+	if err := cfg.validateConfig(); err != nil {
+		return cfg, err
+	}
+	if cfg.Retention-cfg.Age-cfg.SafetyMargin <= cfg.Window {
+		return cfg, errors.New("require R-H > safety+window")
+	}
+	if cfg.HTTPClient == nil {
+		cfg.HTTPClient = &http.Client{Timeout: 2 * time.Minute}
+	}
+	if cfg.MaxSamples == 0 {
+		cfg.MaxSamples = 5000000
+	}
+	return cfg, nil
+}
+
+// oldestStreamsFirst orders a copy of the stream coverage by coverage end,
+// then by tenant and source.
+func oldestStreamsFirst(coverage []catalog.StreamCoverage) []catalog.StreamCoverage {
+	streams := append([]catalog.StreamCoverage(nil), coverage...)
+	sort.Slice(streams, func(i, j int) bool {
+		if streams[i].End != streams[j].End {
+			return streams[i].End < streams[j].End
+		}
+		if streams[i].Tenant != streams[j].Tenant {
+			return streams[i].Tenant < streams[j].Tenant
+		}
+		return streams[i].SourceID < streams[j].SourceID
+	})
+	return streams
 }
 
 func (a *Archiver) publishStream(ctx context.Context, cfg Config, source Source, stream catalog.StreamCoverage, generation uint64, clock func() time.Time) (uint64, *Result, error) {
