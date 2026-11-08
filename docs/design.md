@@ -148,6 +148,10 @@ again before publication. Scheduling delay, archive duration, retries, outage,
 and recovery must fit remaining headroom. Configuration alone does not prove
 that a deployment meets this constraint. VM retention remains independent of
 vmtier; vmtier neither deletes Hot data nor changes Hot retention.
+[`spec/lean/VmtierTiming.lean`](../spec/README.md#the-timing-contract-in-lean)
+proves that these checks leave every window archivable for `R - H - s - w`
+milliseconds, that a published window is complete, and that a query the
+gateway accepts misses no accepted sample.
 
 Freeze coverage start, `H`, `L`, `w`, dedup interval, tenants, sources, VM codec
 identity, and the blob locator in the catalog contract. The blob locator includes
