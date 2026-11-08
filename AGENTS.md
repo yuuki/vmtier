@@ -23,7 +23,7 @@
 - `make bootstrap` (once per checkout or `go.mod` change), `make check`; also catalog, PostgreSQL or migration → `make test-integration`.
 - Archive contents, publication, query results, RPC or S3 → `make build stock`, then the stock-VM differential, recovery or migration suites (`scripts/e2e*.py`).
 - Decoders, key handling or matchers → `make test-fuzz`; commands, defaults or metrics → `docs/`, `examples/`, the smoke test in `scripts/release.py`.
-- Leases, the upload or the publication transaction → update `spec/VmtierPublication.tla` and `make test-tla` (Java 11+).
+- Leases, the upload or the publication transaction → update `spec/VmtierPublication.tla` and `make test-tla` (Java 11+); the timing contract (`validateTime`, `RequiredEnd`, the gateway's coverage check) → `spec/lean` and `make test-lean`.
 - Release tooling or new linked modules → `make test-scripts`, the CI `release-check` job, `release/licenses.json`, `THIRD_PARTY_NOTICES.md`.
 
 ## Git conventions

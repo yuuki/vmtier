@@ -1,0 +1,5 @@
+name = "vmtier_spec"
+defaultTargets = ["VmtierTiming"]
+
+[[lean_lib]]
+name = "VmtierTiming"

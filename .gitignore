@@ -11,3 +11,5 @@ __pycache__/
 .venv*/
 dist/
 bench.txt
+# make test-lean
+.lake/

@@ -81,6 +81,31 @@ Two consequences for the design:
 - Liveness. Faults are unbounded within their budgets, so progress is not
   checked.
 
+## The timing contract in Lean
+
+[`lean/VmtierTiming.lean`](lean/VmtierTiming.lean) proves, for every
+integer input, the arithmetic of the timing contract in
+[docs/design.md](../docs/design.md#data-and-time-contract). It models
+`cold.Reader.RequiredEnd` (Go's truncating `/` is `Int.tdiv`),
+`archive.Config.validateTime` and the coverage check of `cold.Reader.Search`.
+
+| Theorem | Meaning |
+|---|---|
+| `requiredEnd_gt` | The required end trails `now - H` by less than one window, whatever the sign. |
+| `requiredEnd_le` | Once `now ≥ H`, the gateway never requires a window `validateTime` would refuse as too young. |
+| `timeValid_iff`, `archivable_interval_nonempty` | A window can be archived exactly while `start + w + H ≤ now < start + R - s`, an interval of `R - H - s - w > 0` milliseconds. |
+| `export_complete` | With `validateTime` checked at the export's start and before publication, every sample ingress accepts for the window was accepted before the export, and Hot retained it throughout: the window is complete. |
+| `query_complete` | A query the gateway accepts misses no accepted sample: each lies below the coverage end (Cold) or is younger than `R` (Hot). |
+
+An `example` shows that `query_complete` needs `R > H + s + w`: with
+`R = H + w`, the gateway accepts a query that Hot can no longer answer.
+
+The proofs assume what the code cannot check: Hot retains samples younger
+than `R`, ingress enforces `L`, export and oracle verification return what
+Hot holds, and the catalog has one complete window per index, which the TLA+
+model checks. `make test-lean` builds them with the toolchain that
+`lean/lean-toolchain` pins (elan on `PATH` installs it); CI runs it.
+
 ## Running
 
 ```sh

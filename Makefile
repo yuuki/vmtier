@@ -23,7 +23,7 @@ GOLANGCI_LINT ?= GOTOOLCHAIN=$(GO_TOOLCHAIN) $(GO) run github.com/golangci/golan
 ZIZMOR ?= $(if $(shell command -v uvx 2>/dev/null),uvx zizmor@$(ZIZMOR_VERSION),pipx run zizmor==$(ZIZMOR_VERSION))
 export GOMAXPROCS GOCACHE
 .PHONY: bootstrap build test race vet stock e2e e2e-s3 vulncheck release-snapshot
-.PHONY: check lint fmt lint-actions test-race test-scripts test-fuzz test-integration test-tla bench vuln
+.PHONY: check lint fmt lint-actions test-race test-scripts test-fuzz test-integration test-tla test-lean bench vuln
 bootstrap:
 	GO_BIN="$(GO)" ./scripts/bootstrap.sh
 build:
@@ -77,6 +77,10 @@ test-fuzz:
 # first line expects. Needs Java 11 or later; downloads the pinned jar once.
 test-tla:
 	$(PYTHON) scripts/tlc.py --java $(JAVA) --jar $(TLA_JAR) --version $(TLA_VERSION) --sha256 $(TLA_SHA256) spec/VmtierPublication.tla
+# Lean proofs of the timing contract in spec/lean. Needs elan on PATH, which
+# installs the toolchain that spec/lean/lean-toolchain pins.
+test-lean:
+	cd spec/lean && lake build
 # PostgreSQL repository and CLI tests, which skip without a database. They
 # create and drop their own schemas in a disposable database.
 test-integration:
