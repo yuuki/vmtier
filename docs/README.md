@@ -28,6 +28,7 @@ tests; older VM revisions do not qualify the current dependency set.
 | Data flow and code ownership | [Architecture and source map](architecture.md) |
 | Supported commands and backends | [Command reference](commands.md) |
 | VM codecs, RPCs, and upgrades | [Compatibility](compatibility.md) |
+| Historical VM compatibility, release dates, and measured boundaries | [Version compatibility](vm-version-investigation.md) |
 | Archive format and bounds | [Archive packing](archive-packs.md) |
 | Work budgets, memory lifetimes, and metrics | [Memory accounting](query-memory.md) |
 | Build checks, differential suites, and CI artifacts | [Testing](testing.md) |

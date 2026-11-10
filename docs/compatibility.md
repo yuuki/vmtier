@@ -2,6 +2,10 @@
 
 The SQLite and [PostgreSQL](postgres-catalog.md) `serve` backends and legacy JSON v2 MVP target **VictoriaMetrics OSS v1.155.0-cluster**, commit **`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`**. A different release is not supported merely because some of its wire or native data happens to decode. vmtier is not an official VictoriaMetrics product. The [first-release design](design.md) distinguishes implemented stages from remaining work.
 
+The [historical-version investigation](vm-version-investigation.md) records
+experimental RPC, native-format and semantic boundaries without extending this
+supported-version contract.
+
 ## Pinned primary sources
 
 | Concern | Symbols and source |

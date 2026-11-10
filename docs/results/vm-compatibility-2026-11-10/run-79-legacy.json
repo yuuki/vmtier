@@ -1,0 +1,322 @@
+{
+  "architecture": "v2: independent persistent catalog authority; ordinary PUT/GET/Range blobs",
+  "backend": "local",
+  "candidate_binary_versions": {
+    "vminsert": "vminsert-20220714-171302-tags-v1.79.0-cluster-0-ga87f143e9",
+    "vmselect": "vmselect-20220714-171308-tags-v1.79.0-cluster-0-ga87f143e9",
+    "vmstorage": "vmstorage-20220714-171312-tags-v1.79.0-cluster-0-ga87f143e9"
+  },
+  "catalog_authority": {
+    "id": "vmtier-e2e-authority",
+    "s3_conditional_writes": false,
+    "s3_etag_required": false,
+    "type": "independent-http-service"
+  },
+  "checks": [
+    "reference and pre-archive Hot both contain identical old data",
+    "unenforced late-write contract rejected",
+    "unreachable export source rejected before coverage commit",
+    "SIGKILL during native stream leaves no committed coverage; fresh archive resumes"
+  ],
+  "collision_fixture": false,
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "compatibility_driver_sha256": "0ee8af231390331a46f5ebb65cd157ccb194f854b7c7d543cfae9b6a88d6b658",
+  "dedup_interval": "1ms",
+  "environment": {
+    "go": "go version go1.27.3 linux/amd64",
+    "linux_kernel": "6.18.57",
+    "logical_cpus_available": 5,
+    "machine": "x86_64",
+    "measurement_scope": "single managed development container, loopback; no real Sakura/AWS/MinIO service",
+    "memory_total_gib": 17.58584976196289,
+    "moto": null,
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "python": "3.12.14"
+  },
+  "failure": "Command failed [PosixPath('/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmtier'), 'archive', '-config', PosixPath('/workspace/scratch/vm-compat/run-79-legacy/config.json'), '-start', '1794297600000', '-end', '1794308400000']: {\"time\":\"2026-11-10T14:59:34.761359188Z\",\"level\":\"INFO\",\"msg\":\"archive window selected\",\"start_ms\":1794297600000,\"end_ms\":1794301200000,\"sources\":1,\"tenants\":2}\n{\"time\":\"2026-11-10T14:59:34.764698715Z\",\"level\":\"ERROR\",\"msg\":\"vmtier failed\",\"error\":\"export tenant 1:2 source hot: portable block: invalid portable row count\"}\n",
+  "fixture": {
+    "archive_age_ms": 12571350,
+    "boundary_ms": 1794308400000,
+    "created_at_ms": 1794322771350,
+    "end_ms": 1794315600000,
+    "finished_at_ms": 1794322775264,
+    "input_samples": 17654,
+    "labels": "fixed 2 instances, 2 zones; churn old/new",
+    "next_eligible_at_ms": 1794324571350,
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate and conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1794297600000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "window_ms": 3600000
+  },
+  "omitted_legacy_flags": [
+    "-globalReplicationFactor=1",
+    "-inmemoryDataFlushInterval=1s",
+    "-search.skipSlowReplicas=false"
+  ],
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "c40349298b2828494d8c9bcd1b7eb79f79c2113af52f79b4ecba588707311b7f",
+      "vmselect": "b074d176c01ec3dfaf776501b33926cd9595978229c9002f20aab8ae248cc2a6",
+      "vmstorage": "63fe472cee1736fd3c393eac8f35e3227eabea2aa7cffbbd63cd1e4eeb01424a",
+      "vmtier": "29de384815e35ac17fe970422e6c139c249cb5fe35a0ac50c84d2d97f8e6226e"
+    },
+    "executor_hostname": "4668700a1a9a",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "1cc93398be214efb681e4e88758e4994edf199b7f6cea0f7cf2e6e502c450b3d",
+    "harness_sha256": {
+      "e2e.py": "02115b51a2ef491b91fd4bfd2d93cf86674c4770a5b46f5183e79fe55bc7ec00",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    }
+  },
+  "query_timings_ms": {},
+  "recorded_at_utc": "2026-11-10T14:59:35.264010+00:00",
+  "replicas": 1,
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmtier",
+          "catalog-init",
+          "-path",
+          "/workspace/scratch/vm-compat/run-79-legacy/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-init"
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/workspace/scratch/vm-compat/run-79-legacy/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority",
+          "-http",
+          "127.0.0.1:60679"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "catalog-service",
+        "pid": 6511
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:46159",
+          "-vminsertAddr=127.0.0.1:46103",
+          "-vmselectAddr=127.0.0.1:43153",
+          "-storageDataPath=/workspace/scratch/vm-compat/run-79-legacy/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 6539
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:34679",
+          "-storageNode=127.0.0.1:46103",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 6570
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:43337",
+          "-storageNode=127.0.0.1:43153",
+          "-replicationFactor=1",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/scratch/vm-compat/run-79-legacy/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 6598
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:49803",
+          "-vminsertAddr=127.0.0.1:57117",
+          "-vmselectAddr=127.0.0.1:38293",
+          "-storageDataPath=/workspace/scratch/vm-compat/run-79-legacy/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 6626
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:60701",
+          "-storageNode=127.0.0.1:57117",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 6655
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:48855",
+          "-storageNode=127.0.0.1:38293",
+          "-replicationFactor=1",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/scratch/vm-compat/run-79-legacy/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 6686
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/scratch/vm-compat/run-79-legacy/invalid.json",
+          "-start",
+          "1794297600000",
+          "-end",
+          "1794308400000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "invalid-lateness"
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/scratch/vm-compat/run-79-legacy/missing-source.json",
+          "-start",
+          "1794297600000",
+          "-end",
+          "1794308400000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "missing-source"
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/scratch/vm-compat/run-79-legacy/config.json",
+          "-start",
+          "1794297600000",
+          "-end",
+          "1794308400000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": -9,
+        "kind": "managed",
+        "name": "archive-interrupted",
+        "pid": 6788
+      },
+      {
+        "command": [
+          "/workspace/scratch/vm-compat/run-79-legacy/harness-root/.bin/vmtier",
+          "archive",
+          "-config",
+          "/workspace/scratch/vm-compat/run-79-legacy/config.json",
+          "-start",
+          "1794297600000",
+          "-end",
+          "1794308400000"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "archive"
+      }
+    ],
+    "selected_GOMAXPROCS": "2",
+    "selection": "argument"
+  },
+  "scope": "Experimental compatibility evidence; does not extend the supported version contract.",
+  "started_at_utc": "2026-11-10T14:59:31.253362+00:00",
+  "status": "failed",
+  "tiered_vm_labels_api_max_duration": "5s",
+  "vm_result_cache": "disabled",
+  "vmtier_codec_pin": "v1.155.0-cluster/cab3d5fbeeedd5d0374c1dabde93939af4c2499c",
+  "vmtier_git_commit": "b0cb82e12f7456369b0fd33aab186a007fba8ec4"
+}
