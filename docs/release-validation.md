@@ -94,6 +94,27 @@ the packaged binary:
 The S3 suites use a local Moto server behind a compatibility proxy; they are not
 a provider qualification. The artifact is retained until 2027-02-05.
 
+## Tag `v0.1.0-rc.1`
+
+The maintainer pushed `v0.1.0-rc.1` on merge commit
+[`966c94e`](https://github.com/yuuki/vmtier/commit/966c94e963e6e9d50c669bd3d7f3ffcf4cfb6f45),
+whose `test`, `security`, `PostgreSQL fault qualification`, and
+`Code Complexity` runs had passed. The tag is unsigned.
+
+| Run | Jobs |
+| --- | --- |
+| [42983424801](https://github.com/yuuki/vmtier/actions/runs/42983424801) (2026-11-11 07:58 UTC) | `build (first)`, `build (second)` (main ancestry check, build, smoke), `reproducibility`: success; `qualify`: failure; `publish`: skipped |
+
+The smoke test reported binary SHA-256
+`d23638aaf034e79bbca686a955b552b546e503060239730f391b90c2a00e7248`.
+`qualify` then stopped at `govulncheck -mode=binary`, before any stock-VM suite:
+[GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859), an HTTP/1 server crash
+due to a `MaxBytesReader` header race in `net/http`, found in Go 1.27.3 and fixed
+in 1.27.4, with 149 reachable symbols. The advisory appeared after the
+dry run above. `publish` did not run, so nothing was attested and no draft or
+release exists. The candidate is not released; the next one, `v0.1.0-rc.2`,
+is built with Go 1.27.4.
+
 ## Archive contents
 
 The archive has 142 entries. Beside the binary, the top-level `LICENSE`,
