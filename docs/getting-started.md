@@ -8,7 +8,7 @@ read [limits](limits.md) and [compatibility](compatibility.md).
 
 ## Build from source
 
-Use Linux amd64, Go 1.27.3 and Python 3.15.2 (the pinned toolchains),
+Use Linux amd64, Go 1.27.4 and Python 3.15.2 (the pinned toolchains),
 a C compiler with CGO enabled, make, curl, tar, and sha256sum. Allow enough disk
 space for Go module/build caches and disposable test data. Bootstrap needs network
 access to GitHub source archives and the Go module proxy; S3 test setup also needs

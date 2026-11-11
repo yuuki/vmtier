@@ -61,8 +61,8 @@ detect; header notices in a new C dependency still need manual review.
 | Input | Pin |
 | --- | --- |
 | Source | `git archive` of the tagged commit; every exported file must match its committed blob, so local git attributes or filters cannot alter it, and the build refuses uncommitted tracked changes |
-| Builder | [`release/Dockerfile`](../release/Dockerfile): `golang:1.27.3-alpine3.24` pinned by digest, with `gcc` and `musl-dev` from Alpine |
-| Go | 1.27.3, `GOTOOLCHAIN=local`; [`release/build.sh`](../release/build.sh) fails unless it equals the `go` directive in `go.mod` |
+| Builder | [`release/Dockerfile`](../release/Dockerfile): `golang:1.27.4-alpine3.24` pinned by digest, with `gcc` and `musl-dev` from Alpine |
+| Go | 1.27.4, `GOTOOLCHAIN=local`; [`release/build.sh`](../release/build.sh) fails unless it equals the `go` directive in `go.mod` |
 | Modules | `go.mod`/`go.sum`, fetched from the module proxy, rejected unless they match the committed `go.sum` hashes, re-hashed by `go mod verify`, then vendored |
 | C toolchain | GCC, binutils, and musl versions are recorded in the build record; the builder refuses a musl version without a matching notice |
 | Flags | `CGO_ENABLED=1`, tags `netgo,osusergo,musl`, `-trimpath -buildvcs=false`, `-ldflags "-s -w -X main.version=… -X main.commit=… -linkmode=external -extldflags=-static"` |
@@ -157,10 +157,13 @@ on any ref without attesting or creating a release.
 
 ### First release
 
-`v0.1.0-rc.1` is the first tag. Until #15, #16, and #17 close with recorded
-evidence, use only tags with a hyphen: the workflow then creates a GitHub
-pre-release, and its notes say that it is not production-supported. The
-remaining steps:
+`v0.1.0-rc.1` was the first tag. Its run stopped at `qualify` because
+govulncheck reported GO-2026-6859 in the Go 1.27.3 standard library, so nothing
+was signed or released ([release validation](release-validation.md#tag-v010-rc1)).
+The next candidate is `v0.1.0-rc.2`, built with Go 1.27.4; do not reuse the
+`rc.1` name. Until #15, #16, and #17 close with recorded evidence, use only
+tags with a hyphen: the workflow then creates a GitHub pre-release, and its
+notes say that it is not production-supported. The remaining steps:
 
 1. Apply the [repository settings](#repository-settings) below; the tag push
    is the first run that can sign or create a release.
