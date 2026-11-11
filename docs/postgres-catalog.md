@@ -103,7 +103,7 @@ means a prolonged synchronous-replication wait can return an error to the caller
 
 Bootstrap downloads the committed Go module versions, verifies their checksums,
 and regenerates the vendor tree with `go mod vendor`. The PostgreSQL driver is
-`github.com/lib/pq v1.10.9`; dependencies are not updated during bootstrap. See [third-party notices](../THIRD_PARTY_NOTICES.md).
+`github.com/lib/pq v1.12.3`; dependencies are not updated during bootstrap. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 Use a **disposable test database** with permission to create/drop test schemas.
 The integration suite creates isolated schemas and removes them on completion.
