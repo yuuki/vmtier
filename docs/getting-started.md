@@ -34,14 +34,14 @@ A release archive holds a static `linux/amd64` binary that needs no Go, C
 compiler, or shared libraries. Download every asset of one release into an empty
 directory, [verify them](releasing.md#verify-a-release-archive), and read that
 release's [support scope](releasing.md#support-scope); a pre-release such as
-`v0.1.0-rc.1` is not production-supported. Stock VictoriaMetrics, S3, and the
+`v0.1.0-rc.2` is not production-supported. Stock VictoriaMetrics, S3, and the
 query frontend come from your existing deployment.
 
 As root, install the binary, a service user, the configuration templates, and
 the [example systemd unit](../examples/systemd/vmtier.service) from the archive:
 
 ```sh
-VERSION=v0.1.0-rc.1
+VERSION=v0.1.0-rc.2
 tar -xzf vmtier-$VERSION-linux-amd64.tar.gz
 cd vmtier-$VERSION-linux-amd64
 install -m 0755 vmtier /usr/local/bin/vmtier
