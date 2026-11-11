@@ -7,14 +7,14 @@ The repository's existing Apache-2.0 `LICENSE` is preserved. vmtier is an indepe
 | Module | Pinned version | License / notice source |
 | --- | --- | --- |
 | `github.com/VictoriaMetrics/VictoriaMetrics` | `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c` | [Apache-2.0 LICENSE](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/LICENSE), including Copyright 2019-2026 VictoriaMetrics, Inc. No root NOTICE file was present in the inspected archive. |
-| `github.com/aws/aws-sdk-go-v2` | `v1.47.7` | Generated `vendor/github.com/aws/aws-sdk-go-v2/LICENSE.txt` and `NOTICE.txt`, Apache-2.0; `internal/sync/singleflight/LICENSE`, BSD-3-Clause. |
-| `github.com/aws/aws-sdk-go-v2/credentials` | `v1.20.15` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
-| `github.com/aws/aws-sdk-go-v2/service/s3` | `v1.114.8` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
-| `github.com/aws/smithy-go` | `v1.28.8` | Generated `vendor/github.com/aws/smithy-go/LICENSE` and `NOTICE`, Apache-2.0; nested Go-derived `LICENSE` files, BSD-3-Clause. |
-| `github.com/klauspost/compress` | `v1.20.3` | Generated `vendor/github.com/klauspost/compress/LICENSE`, BSD-style three-clause terms; copyright notices include The Go Authors and Klaus Post. Subdirectories may contain additional licenses/notices, which are retained. |
-| `github.com/lib/pq` | `v1.10.9` | Generated `vendor/github.com/lib/pq/LICENSE.md`, MIT, Copyright (c) 2011-2013, 'pq' Contributors; Portions Copyright (C) 2011 Blake Mizerany. |
+| `github.com/aws/aws-sdk-go-v2` | `v1.48.0` | Generated `vendor/github.com/aws/aws-sdk-go-v2/LICENSE.txt` and `NOTICE.txt`, Apache-2.0; `internal/sync/singleflight/LICENSE`, BSD-3-Clause. |
+| `github.com/aws/aws-sdk-go-v2/credentials` | `v1.21.0` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
+| `github.com/aws/aws-sdk-go-v2/service/s3` | `v1.114.10` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
+| `github.com/aws/smithy-go` | `v1.28.9` | Generated `vendor/github.com/aws/smithy-go/LICENSE` and `NOTICE`, Apache-2.0; nested Go-derived `LICENSE` files, BSD-3-Clause. |
+| `github.com/klauspost/compress` | `v1.20.4` | Generated `vendor/github.com/klauspost/compress/LICENSE`, BSD-style three-clause terms; copyright notices include The Go Authors and Klaus Post. Subdirectories may contain additional licenses/notices, which are retained. |
+| `github.com/lib/pq` | `v1.12.3` | Generated `vendor/github.com/lib/pq/LICENSE`, MIT, Copyright (c) 2011-2013, 'pq' Contributors; Portions Copyright (c) 2011 Blake Mizerany. |
 | `github.com/mattn/go-sqlite3` | `v1.14.53` | Generated `vendor/github.com/mattn/go-sqlite3/LICENSE`, MIT, Copyright (c) 2014 Yasuhiro Matsumoto. The bundled SQLite 3.54.1 amalgamation retains its upstream copyright-disclaimer/blessing notices in `sqlite3-binding.c` and related headers; see [SQLite's copyright statement](https://www.sqlite.org/copyright.html). |
-| `golang.org/x/sys` | `v0.49.0` | Generated `vendor/golang.org/x/sys/LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors. |
+| `golang.org/x/sys` | `v0.50.0` | Generated `vendor/golang.org/x/sys/LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors. |
 | Go runtime / standard library | See build toolchain version | Go distribution `LICENSE`, BSD-style three-clause terms, Copyright 2009 The Go Authors, and `PATENTS`; `runtime/memmove_amd64.s` also carries an MIT notice (see below). |
 
 ## Reproducible source acquisition
@@ -45,8 +45,8 @@ separately installed SQLite service or shared library in the default build.
 The PostgreSQL driver pin is also recorded in `go.sum`:
 
 ```text
-github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
-github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+github.com/lib/pq v1.12.3 h1:tTWxr2YLKwIvK90ZXEw8GP7UFHtcbTtty8zsI+YjrfQ=
+github.com/lib/pq v1.12.3/go.mod h1:/p+8NSbOcwzAEI7wiMXFlgydTwcgTr3OSKMsD2BitpA=
 ```
 
 Go module verification and vendoring retain the PostgreSQL driver source used by
