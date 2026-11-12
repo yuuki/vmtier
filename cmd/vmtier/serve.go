@@ -145,10 +145,9 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}()
 	webDone := make(chan error, 1)
 	go func() { webDone <- web.Serve(ln) }()
-	newArchiver := func(repo catalog.Repository) archivePassRunner {
-		cfg := c.Archive(0, 0)
-		cfg.Memory = &stats.archiveMemory
-		return &archive.Archiver{Store: blobs, Catalog: repo, Config: cfg, RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
+	newArchiver, err := archiveWorkers(c, blobs, &stats)
+	if err != nil {
+		return err
 	}
 	archiveDone := make(chan struct{})
 	go func() {
@@ -174,6 +173,28 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}
 }
 
+// archiveWorkers returns the constructor of the archive worker that one
+// repository view runs: the archiver, followed by garbage collection when it
+// is enabled. PostgreSQL builds a worker for each lease acquisition.
+func archiveWorkers(c *config.Config, blobs objectstore.BlobStore, stats *serviceStats) (func(catalog.Repository) archivePassRunner, error) {
+	gcInterval, gcMinAge := c.OrphanGC()
+	deleter, canDelete := blobs.(objectstore.Deleter)
+	if gcInterval > 0 && !canDelete {
+		return nil, errors.New("service.orphan_gc_interval requires a blob store that can delete objects")
+	}
+	stats.orphanGC.enabled.Store(gcInterval > 0)
+	return func(repo catalog.Repository) archivePassRunner {
+		cfg := c.Archive(0, 0)
+		cfg.Memory = &stats.archiveMemory
+		worker := &archive.Archiver{Store: blobs, Catalog: repo, Config: cfg, RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
+		if gcInterval == 0 {
+			return worker
+		}
+		collector := &archive.Collector{Store: deleter, Catalog: repo, MinAge: gcMinAge}
+		return &collectingWorker{archiver: worker, collector: collector, interval: gcInterval, stats: &stats.orphanGC}
+	}, nil
+}
+
 type serviceBackend struct {
 	ctx    context.Context
 	reader *cold.Reader
@@ -190,6 +211,7 @@ func (b serviceBackend) Search(ctx context.Context, q *storage.SearchQuery) ([]s
 type serviceStats struct {
 	windowFailures                            windowFailureMetrics
 	archiveMemory                             archive.MemoryStats
+	orphanGC                                  orphanGCStats
 	passes, failures, windows, samples, bytes atomic.Uint64
 	lastCommit                                atomic.Int64
 	leader                                    atomic.Bool
@@ -250,7 +272,7 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 		fmt.Fprintf(w, "vmtier_archive_leader %d\n", leader)
 		if ioStats, ok := blobs.(interface{ Stats() objectstore.Snapshot }); ok {
 			s := ioStats.Stats()
-			fmt.Fprintf(w, "vmtier_object_get_requests_total %d\nvmtier_object_range_requests_total %d\nvmtier_object_download_bytes_total %d\nvmtier_object_put_requests_total %d\n", s.Gets, s.RangeGets, s.DownloadedBytes, s.Puts)
+			fmt.Fprintf(w, "vmtier_object_get_requests_total %d\nvmtier_object_range_requests_total %d\nvmtier_object_download_bytes_total %d\nvmtier_object_put_requests_total %d\nvmtier_object_delete_requests_total %d\n", s.Gets, s.RangeGets, s.DownloadedBytes, s.Puts, s.Deletes)
 		}
 		if budget, ok := blobs.(interface {
 			BudgetStats() objectstore.BudgetSnapshot

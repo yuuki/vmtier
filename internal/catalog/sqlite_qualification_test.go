@@ -120,8 +120,11 @@ func TestSQLiteCatalogCapacityQualification(t *testing.T) {
 	publicationStart := time.Now()
 	for h := 0; h < hours; h++ {
 		for tenant := range c.Tenants {
+			next := publication(tenant, h)
+			// Recording happens before the uploads, outside the measured transaction.
+			recordPublication(t, s, next)
 			before := time.Now()
-			generation, err := s.PublishWindow(ctx, uint64(h*tenants+tenant), publication(tenant, h))
+			generation, err := s.PublishWindow(ctx, uint64(h*tenants+tenant), next)
 			publicationMS = append(publicationMS, elapsedMS(before))
 			if err != nil || generation != uint64(h*tenants+tenant+1) {
 				t.Fatalf("publication at hour=%d tenant=%d generation=%d: %v", h, tenant, generation, err)

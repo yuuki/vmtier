@@ -42,6 +42,9 @@ type Service struct {
 	ArchiveInterval string `json:"archive_interval,omitempty"`
 	ArchiveTimeout  string `json:"archive_timeout,omitempty"`
 	ArchiveLeaseTTL string `json:"archive_lease_ttl,omitempty"`
+	// OrphanGCInterval enables garbage collection of failed attempts' objects.
+	OrphanGCInterval string `json:"orphan_gc_interval,omitempty"`
+	OrphanGCMinAge   string `json:"orphan_gc_min_age,omitempty"`
 }
 
 // Catalog selects an authoritative control plane, independent of blob storage.
@@ -77,6 +80,7 @@ type Config struct {
 	age, retention, lateness, safety, window time.Duration
 	archiveInterval                          time.Duration
 	archiveLeaseTTL                          time.Duration
+	orphanGCInterval, orphanGCMinAge         time.Duration
 }
 
 func Read(path string) (*Config, error) {
@@ -229,6 +233,42 @@ func (c *Config) validateService() error {
 	}
 	if c.archiveInterval, ok = serviceDuration(c.Service.ArchiveInterval, 30*time.Second, 10*time.Millisecond); !ok {
 		return errors.New("service.archive_interval must be whole milliseconds between 10ms and 24h")
+	}
+	return c.validateOrphanGC()
+}
+
+// DefaultOrphanGCMinAge is the default age at which garbage collection may
+// claim the objects of an attempt that has not published.
+const DefaultOrphanGCMinAge = 24 * time.Hour
+
+// validateOrphanGC parses the optional garbage collection settings. Only the
+// service backends have the object ledger that garbage collection needs. The
+// minimum age keeps collection from discarding attempts that may still run.
+func (c *Config) validateOrphanGC() error {
+	c.orphanGCInterval, c.orphanGCMinAge = 0, 0
+	if c.Service.OrphanGCInterval == "" {
+		if c.Service.OrphanGCMinAge != "" {
+			return errors.New("service.orphan_gc_min_age requires service.orphan_gc_interval")
+		}
+		return nil
+	}
+	if c.Catalog.Type != "sqlite" && c.Catalog.Type != "postgres" {
+		return errors.New("service.orphan_gc_interval requires a SQLite or PostgreSQL catalog")
+	}
+	var ok bool
+	if c.orphanGCInterval, ok = serviceDuration(c.Service.OrphanGCInterval, 0, 10*time.Millisecond); !ok {
+		return errors.New("service.orphan_gc_interval must be whole milliseconds between 10ms and 24h")
+	}
+	c.orphanGCMinAge = DefaultOrphanGCMinAge
+	if c.Service.OrphanGCMinAge != "" {
+		d, err := time.ParseDuration(c.Service.OrphanGCMinAge)
+		if err != nil || d%time.Millisecond != 0 || d > 30*24*time.Hour {
+			return errors.New("service.orphan_gc_min_age must be whole milliseconds up to 720h")
+		}
+		c.orphanGCMinAge = d
+	}
+	if c.orphanGCMinAge < c.archiveTimeout {
+		return errors.New("service.orphan_gc_min_age must be at least service.archive_timeout")
 	}
 	return nil
 }
@@ -411,6 +451,12 @@ func (c *Config) ArchiveInterval() time.Duration { return c.archiveInterval }
 func (c *Config) ArchiveTimeout() time.Duration { return c.archiveTimeout }
 
 func (c *Config) ArchiveLeaseTTL() time.Duration { return c.archiveLeaseTTL }
+
+// OrphanGC returns the garbage collection interval, zero when disabled, and
+// the age at which an unpublished object may be claimed.
+func (c *Config) OrphanGC() (interval, minAge time.Duration) {
+	return c.orphanGCInterval, c.orphanGCMinAge
+}
 
 // PostgresDSN resolves credentials at use time; connection strings are never
 // stored in the JSON configuration or included in configuration errors.

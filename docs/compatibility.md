@@ -97,7 +97,7 @@ and archive into a separate state directory and object prefix. Verify the comple
 required coverage and compare queries before switching readers. If the source no
 longer contains that history, retain the old deployment to serve its old archives;
 do not switch it to this build or discard its objects. The JSON-to-SQLite import,
-SQLite-to-PostgreSQL import, and PostgreSQL schema upgrade commands do not translate VM codec pins. A PostgreSQL schema-1-to-2
+SQLite-to-PostgreSQL import, and schema upgrade commands do not translate VM codec pins. A SQLite or PostgreSQL schema
 upgrade applies only to a catalog already compatible with the running binary;
 it cannot make a v1.128.0 archive readable by this v1.155.0 build.
 
@@ -119,13 +119,15 @@ compare queries during an upgrade.
 | PUT | Ordinary PutObject with Content-MD5; never reuse a published key. |
 | Reads | GetObject and single-range GET with correct lengths/Content-Range; verify content with SHA-256. |
 | Conditional PUT / ETag | Not required, requested, sent, or used for checksums/CAS. |
-| LIST / multipart / DELETE | Not used in the normal path. Object discovery and GC are not provided. |
+| DELETE | Ordinary DeleteObject, only by opt-in [garbage collection](serve.md#garbage-collection) and only for keys the catalog recorded before upload and then claimed; a missing object counts as deleted. |
+| LIST / multipart | Not used. Object discovery is not provided; garbage collection never lists the bucket. |
 | Commit / CAS | SQLite or PostgreSQL transaction per tenant/source/window in `serve`; PostgreSQL also checks archiver fencing. Legacy JSON v2 uses generation CAS in its HTTP service or local adapter. |
 | Catalog identity | Stable ID, fixed contract, append-only complete windows. Both service backends pin the blob locator. SQLite locks its state directory; PostgreSQL uses DB-time archiver leases. |
 | S3 request budget | A process shares admission across archive/query traffic and retries. SQLite assumes a sole client; PostgreSQL divides explicit aggregate limits by the operator-enforced maximum client count. |
 | Old S3 catalog | No automatic compatibility or migration; initialize the independent authority explicitly. |
 
-The service supports SQLite schema 1 or PostgreSQL schema 2; the retained JSON
+The service supports SQLite schema 2 or PostgreSQL schema 3, upgraded explicitly
+from earlier schemas with `catalog-upgrade`; the retained JSON
 catalog format is v2. All use pack/native format v1 with the pinned VM identity.
 Offline v2 import checks referenced indexes and copies metadata without rewriting
 objects; see [SQLite maintenance](sqlite-catalog.md). The

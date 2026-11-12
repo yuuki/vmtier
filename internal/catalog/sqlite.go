@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/yuuki/vmtier/internal/pack"
@@ -29,6 +30,8 @@ type SQLite struct {
 	lockFile *os.File
 	close    sync.Once
 	closeErr error
+	// now is the clock of the object ledger; tests may replace it.
+	now func() time.Time
 }
 
 const sqliteSchema = `
@@ -70,6 +73,16 @@ CREATE TABLE packs (
  index_bytes INTEGER NOT NULL CHECK (index_bytes > 0 AND index_bytes <= 16777216),
  PRIMARY KEY (window_id, ordinal)
 ) WITHOUT ROWID;
+` + sqlitePendingSchema
+
+// sqlitePendingSchema is the object ledger added by schema 2.
+const sqlitePendingSchema = `
+CREATE TABLE pending_objects (
+ object_key TEXT PRIMARY KEY CHECK (length(object_key) BETWEEN 1 AND 1024),
+ created_ms INTEGER NOT NULL CHECK (created_ms >= 0),
+ state TEXT NOT NULL CHECK (state IN ('pending', 'deleting'))
+) WITHOUT ROWID;
+CREATE INDEX pending_objects_age ON pending_objects (state, created_ms);
 `
 
 // CreateSQLite explicitly binds a new catalog contract. Existing state is never
@@ -164,6 +177,27 @@ func CreateSQLite(ctx context.Context, dir, id string, c Contract, blob BlobLoca
 // OpenSQLite opens an existing, explicitly initialized authority. The database
 // connection uses mode=rw, never SQLite's implicit create-on-open behavior.
 func OpenSQLite(ctx context.Context, dir, id string) (_ *SQLite, err error) {
+	s, err := openSQLiteFile(ctx, dir, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			_ = s.Close()
+		}
+	}()
+	if _, err = s.Status(ctx); err != nil {
+		return nil, err
+	}
+	if err = s.quickCheck(ctx); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// openSQLiteFile locks and connects to an existing catalog file without
+// reading its state, which may still have an older schema.
+func openSQLiteFile(ctx context.Context, dir, id string) (_ *SQLite, err error) {
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -188,25 +222,22 @@ func OpenSQLite(ctx context.Context, dir, id string) (_ *SQLite, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err != nil {
-			_ = s.Close()
-		}
-	}()
 	if err = s.connect(ctx); err != nil {
+		_ = s.Close()
 		return nil, err
-	}
-	if _, err = s.Status(ctx); err != nil {
-		return nil, err
-	}
-	var check string
-	if err = s.db.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&check); err != nil {
-		return nil, err
-	}
-	if check != "ok" {
-		return nil, errors.New("SQLite catalog integrity check failed")
 	}
 	return s, nil
+}
+
+func (s *SQLite) quickCheck(ctx context.Context) error {
+	var check string
+	if err := s.db.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&check); err != nil {
+		return err
+	}
+	if check != "ok" {
+		return errors.New("SQLite catalog integrity check failed")
+	}
+	return nil
 }
 
 func lockSQLite(dir, id string) (*SQLite, error) {
@@ -218,7 +249,7 @@ func lockSQLite(dir, id string) (*SQLite, error) {
 		_ = f.Close()
 		return nil, fmt.Errorf("catalog state directory is already in use: %w", err)
 	}
-	return &SQLite{dir: dir, id: id, lockFile: f}, nil
+	return &SQLite{dir: dir, id: id, lockFile: f, now: time.Now}, nil
 }
 
 func (s *SQLite) connect(ctx context.Context) error {
@@ -279,6 +310,11 @@ func strictSQLiteJSON(b []byte, target any) error {
 }
 
 func readSQLiteStatus(ctx context.Context, q sqliteQueryer, expectedID string) (SQLiteStatus, error) {
+	return readSQLiteStatusVersion(ctx, q, expectedID, SQLiteSchemaVersion)
+}
+
+// readSQLiteStatusVersion reads the catalog state of an exact schema version.
+func readSQLiteStatusVersion(ctx context.Context, q sqliteQueryer, expectedID string, version int) (SQLiteStatus, error) {
 	var out SQLiteStatus
 	var generation int64
 	var cb, bb []byte
@@ -286,8 +322,8 @@ func readSQLiteStatus(ctx context.Context, q sqliteQueryer, expectedID string) (
 	if err != nil {
 		return out, fmt.Errorf("read initialized SQLite catalog: %w", err)
 	}
-	if out.SchemaVersion != SQLiteSchemaVersion || out.VMVersion != pack.VMVersion {
-		return out, errors.New("unsupported catalog schema or VM version; explicit offline migration required")
+	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
+		return out, fmt.Errorf("unsupported catalog schema %d or VM version %s; explicit offline catalog-upgrade or migration required", out.SchemaVersion, out.VMVersion)
 	}
 	if out.ID != expectedID || !validID(out.ID) || generation < 0 {
 		return out, errors.New("invalid catalog identity or generation")
@@ -353,7 +389,15 @@ func (s *SQLite) Status(ctx context.Context) (SQLiteStatus, error) {
 
 // PublishWindow commits a complete stream window. No object-store operation is
 // performed here; callers must finish source and upload verification first.
+// Every referenced key must have been recorded with RecordPendingObjects and
+// not claimed by garbage collection; publication consumes those records.
 func (s *SQLite) PublishWindow(ctx context.Context, expected uint64, p Publication) (uint64, error) {
+	return s.publish(ctx, expected, p, true)
+}
+
+// publish commits a window. Imports of objects that existing catalogs already
+// reference do not consume pending records.
+func (s *SQLite) publish(ctx context.Context, expected uint64, p Publication, consumePending bool) (uint64, error) {
 	if expected > math.MaxInt64 {
 		return 0, errors.New("expected generation exceeds SQLite integer range")
 	}
@@ -403,6 +447,18 @@ func (s *SQLite) PublishWindow(ctx context.Context, expected uint64, p Publicati
 			}
 			if used {
 				return 0, fmt.Errorf("%w: published object key cannot be reused", ErrInvalidPublication)
+			}
+			if !consumePending {
+				continue
+			}
+			result, err := tx.ExecContext(ctx, `DELETE FROM pending_objects WHERE object_key=? AND state=?`, key, pendingState)
+			if err != nil {
+				return 0, err
+			}
+			if n, err := result.RowsAffected(); err != nil {
+				return 0, err
+			} else if n != 1 {
+				return 0, fmt.Errorf("%w: %w", ErrInvalidPublication, ErrUnrecordedObject)
 			}
 		}
 	}

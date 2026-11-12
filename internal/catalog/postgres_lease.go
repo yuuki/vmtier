@@ -197,10 +197,11 @@ func (p *fencedPostgres) PublishWindow(ctx context.Context, expected uint64, pub
 
 func (p *fencedPostgres) Close() error { return nil }
 
-// UpgradePostgres explicitly upgrades schema 1 to schema 2. Stop legacy writers
-// first. The state lock waits for an in-flight publication, then atomically adds
-// ownership metadata and changes the version so legacy writers reject new work.
-// Repeating a completed upgrade verifies the current state without changing it.
+// UpgradePostgres explicitly upgrades schema 1 or 2 to schema 3. Stop legacy
+// writers first. The state lock waits for an in-flight publication, then
+// atomically adds ownership metadata (schema 2) and the object ledger (schema
+// 3) and changes the version so legacy writers reject new work. Repeating a
+// completed upgrade verifies the current state without changing it.
 func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	p, err := connectPostgres(ctx, dsn, id)
 	if err != nil {
@@ -225,16 +226,24 @@ func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 		}
 		return tx.Commit()
 	}
-	if version != 1 {
+	if version != 1 && version != 2 {
 		return errors.New("unsupported PostgreSQL catalog upgrade source schema")
 	}
-	if _, err = p.readStatusVersion(ctx, tx, false, 1); err != nil {
+	if _, err = p.readStatusVersion(ctx, tx, false, version); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresLeaseSchema, p.schema)); err != nil {
+	if version == 1 {
+		if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresLeaseSchema, p.schema)); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresPendingSchema, p.schema)); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET schema_version=$1 WHERE singleton=1`, PostgreSQLSchemaVersion); err != nil {
+		return err
+	}
+	if _, err = p.readStatus(ctx, tx, false); err != nil {
 		return err
 	}
 	return tx.Commit()

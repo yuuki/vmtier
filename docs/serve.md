@@ -14,7 +14,8 @@ It remains under development: the [first-release design](design.md) tracks workl
 provider, retention, ingress, recovery, and release qualification. The
 [stage 2 validation](serve-validation.md) is historical evidence for its recorded
 revision; new implementation and focused tests do not replace that provenance.
-GC remains unimplemented. This SQLite deployment has no automatic failover;
+Garbage collection of failed attempts' objects is [opt-in](#garbage-collection);
+Cold retention and compaction remain unimplemented. This SQLite deployment has no automatic failover;
 [PostgreSQL HA](ha-deployment.md) is the separate multi-instance option.
 
 ## Configuration and startup
@@ -98,6 +99,7 @@ settings in its [configuration guide](postgres-catalog.md#configuration-and-life
 | `query_memory_bytes` | Shared query work reservations; omitted or zero uses 256 MiB. Must cover one effective `max_query_bytes` reservation, at most 8 GiB. See [query work admission](#query-work-admission). |
 | `max_pack_blocks` | Optional per-pack block limit, 1–100,000; omitted or zero uses 100,000. Changes packing, not window capacity or the immutable contract. See [archive packing](archive-packs.md). |
 | `service.archive_interval`, `service.archive_timeout` | Default `30s` and `2m`; each accepts 10 ms through 24 hours. See [scheduling](#scheduling-and-publication). |
+| `service.orphan_gc_interval`, `service.orphan_gc_min_age` | Garbage collection of failed attempts' objects; omitted interval disables it. The interval accepts 10 ms through 24 hours; the minimum age defaults to `24h`, accepts up to `720h`, and must be at least `archive_timeout`. See [garbage collection](#garbage-collection). |
 | `store.requests_per_second`, `store.max_concurrent_requests`, `store.max_queued_requests` | Shared S3 limits; see [shared S3 budget](#shared-s3-budget). |
 
 Initialization pins the coverage start, window, archive age, lateness, tenant set,
@@ -156,7 +158,30 @@ tenant/source/window. An empty verified window publishes zero pack references.
 Nonempty windows rotate into bounded packs between complete native records, while
 retaining one logical window. See [archive packing](archive-packs.md) for limits,
 cross-pack verification, and the `max_pack_blocks` setting. Restart resumes from
-committed coverage; uploaded but uncommitted objects can remain as orphans.
+committed coverage; uploaded but uncommitted objects remain as orphans until
+[garbage collection](#garbage-collection) deletes them.
+
+## Garbage collection
+
+Before each pack upload, the archiver records the pack's two object keys as
+pending in the catalog's object ledger. Publication consumes those records in the
+same transaction that makes the window visible. Keys of an attempt that failed,
+timed out, or was interrupted stay pending. With `service.orphan_gc_interval` set,
+the service claims pending keys older than `service.orphan_gc_min_age` in one
+catalog transaction, deletes their objects with ordinary `DeleteObject` requests,
+and then removes the records. A pass runs between archive passes, at most once per
+interval, and handles at most 4,096 keys; the next pass continues.
+
+A claimed key can never be published: the publication and the claim are ordered
+by the catalog, so an attempt whose keys were claimed fails and retries with fresh
+keys. Safety therefore depends on neither clocks nor object listings. The minimum
+age only keeps garbage collection from discarding attempts that are still running.
+Only keys this catalog recorded are deleted: published objects, objects of another
+catalog sharing the bucket (for example the catalog kept for rollback after a
+restore), and orphans created before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1)
+are never touched. Deletion needs `DeleteObject` permission on the prefix and
+counts against the shared S3 budget. See
+[ADR 0006](adr/0006-orphan-garbage-collection.md) for the design.
 
 The time contract is unchanged: `H > L >= 0` and
 `R > H + safety_margin + window`. H, L, window, coverage start, tenants, sources,
@@ -266,6 +291,11 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_s3_rejected_requests_total`, `vmtier_s3_canceled_requests_total` | Queue refusals and canceled waits |
 | `vmtier_s3_in_flight_requests`, `vmtier_s3_queued_requests` | Current budget occupancy |
 | `vmtier_build_info{version,commit,go_version,vm_version}` | Constant 1; identifies the running build, as `vmtier version` does |
+| `vmtier_orphan_gc_enabled` | 1 when `service.orphan_gc_interval` is set |
+| `vmtier_orphan_gc_passes_total`, `vmtier_orphan_gc_failed_passes_total` | Garbage collection passes of this process and passes that ended with an error |
+| `vmtier_orphan_gc_claimed_objects_total`, `vmtier_orphan_gc_deleted_objects_total` | Keys claimed (including retried claims) and objects deleted |
+| `vmtier_orphan_gc_last_success_timestamp_seconds` | Last pass without an error; zero before one |
+| `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts) and `deleting` (claimed, deletion unfinished); omitted when the catalog cannot be read |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
 RPC endpoints on a trusted network with suitable access controls/TLS termination.

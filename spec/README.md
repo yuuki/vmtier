@@ -14,7 +14,9 @@ interleaving of two archivers over a few windows while:
 - a database reply is lost, so an archiver does not know whether its
   transaction committed, and may replay the same publication;
 - an upload stores wrong bytes, and any attempt can be abandoned, leaving an
-  orphan object.
+  orphan object;
+- garbage collection claims, deletes and forgets the recorded key of an
+  unpublished attempt at any time, racing every archiver step.
 
 ## What corresponds to what
 
@@ -24,7 +26,9 @@ interleaving of two archivers over a few windows while:
 | `mode` (`follower`, `leader`, `draining`), `StepDown` | `runPostgresArchiveLoop`, `runArchiveLeadership` in [`cmd/vmtier/postgres_service.go`](../cmd/vmtier/postgres_service.go) |
 | `LoadStatus`, `StartAttempt`, stale `localGen`/`localCov` | `RunPass`, `publishStream` in [`internal/archive/sqlite.go`](../internal/archive/sqlite.go) |
 | `Put`, `VerifyUpload`, fresh keys | `uploadPack` in [`internal/archive/pipeline.go`](../internal/archive/pipeline.go) |
-| `Publish` | `publishWindow`, `writePublication`, `reserveObjectKey` in [`internal/catalog/postgres.go`](../internal/catalog/postgres.go) |
+| `ledger`, the recording in `StartAttempt` | `RecordPendingObjects` in [`internal/catalog/postgres_pending.go`](../internal/catalog/postgres_pending.go), called by `uploadPack` before its PUT |
+| `Publish` | `publishWindow`, `consumePending`, `writePublication`, `reserveObjectKey` in [`internal/catalog/postgres.go`](../internal/catalog/postgres.go) |
+| `Claim`, `DeleteClaimed` | `ClaimUnpublishedObjects`, `ForgetDeletedObjects` in [`internal/catalog/postgres_pending.go`](../internal/catalog/postgres_pending.go); `Collector.RunPass` in [`internal/archive/gc.go`](../internal/archive/gc.go) |
 | `LeaseValid` | `validateLease`, with `clock_timestamp()` as `dbNow` |
 
 A window is a pair `<<stream, index>>` and its verified content is the same
@@ -39,7 +43,8 @@ their keys are. Each window has one pack.
 |---|---|
 | `CoverageContiguous` | Coverage of each stream is contiguous and backed by exactly one window per index. A failed attempt never advances it. |
 | `GenerationCounts` | One catalog generation per publication. |
-| `ReferencedObjectsVerified` | Every key in the catalog names an object holding exactly the verified window. Orphans are allowed. |
+| `ReferencedObjectsVerified` | Every key in the catalog names an object holding exactly the verified window. Orphans are allowed; garbage collection never deletes a referenced object. |
+| `PublishedKeysUnrecorded` | A published key has no ledger record, so garbage collection can never claim it. |
 | `MonotoneFencing` | No publication commits after one made with a newer fencing token. |
 | `TokensUnique` | A fencing token is handed to one owner only. |
 | `WindowsAppendOnly` | Published windows are never removed or changed. |
@@ -53,11 +58,13 @@ the model does not pass vacuously.
 
 | Configuration | Expected | What it shows |
 |---|---|---|
-| `VmtierPublication.cfg` | pass | The protocol as implemented, two streams of one window. |
+| `VmtierPublication.cfg` | pass | The protocol as implemented, two streams of one window. Attempts record their keys and publication consumes them; garbage collection is off. |
 | `VmtierPublication_TwoWindows.cfg` | pass | The same with one stream of two windows. |
+| `VmtierPublication_Collect.cfg` | pass | The protocol with garbage collection claiming and deleting at any time, within smaller attempt and lost-reply bounds. |
+| `VmtierPublication_NoPendingCheck.cfg` | `ReferencedObjectsVerified` violated | Without the pending check in `publishWindow`, a key that garbage collection claimed is published and its object deleted. |
 | `VmtierPublication_NoFencingCatalog.cfg` | pass | Without the lease check in `publishWindow`, the catalog still stays consistent. |
 | `VmtierPublication_NoFencing.cfg` | `MonotoneFencing` violated | Without the lease check, a stale holder publishes after its successor. |
-| `VmtierPublication_ReusedKeys.cfg` | `ReferencedObjectsVerified` violated | Keys derived from the window: a retry overwrites a published object. |
+| `VmtierPublication_ReusedKeys.cfg` | `ReferencedObjectsVerified` violated | Keys derived from the window, without the ledger (whose refusal to record a published key would also stop this): a retry overwrites a published object. |
 | `VmtierPublication_NoReadBack.cfg` | `ReferencedObjectsVerified` violated | Without the read-back comparison, a wrong upload is published. |
 
 Two consequences for the design:
@@ -68,7 +75,10 @@ Two consequences for the design:
   adds exclusivity: one archiver at a time, and no publication by a holder
   whose successor already published.
 - Safety does not depend on clocks. The database clock decides only when a
-  lease expires, that is, liveness.
+  lease expires, that is, liveness. The same holds for garbage collection: the
+  minimum age of a claimed key is not modeled, and a claim may race any step of
+  an attempt; the pending check in the publication transaction keeps a claimed
+  key out of the catalog.
 
 ## Not modeled
 
@@ -76,8 +86,9 @@ Two consequences for the design:
   are outside the model, which treats the database as one serializable node.
 - Several packs per window, empty windows and the SQLite backend, whose
   directory lock gives one owner without a lease.
-- Readers. Objects are never deleted (no GC), so the invariants on the
-  catalog and objects imply that every plan a reader selects stays readable.
+- Readers. Garbage collection never deletes a published object, so the
+  invariants on the catalog and objects imply that every plan a reader selects
+  stays readable.
 - Liveness. Faults are unbounded within their budgets, so progress is not
   checked.
 

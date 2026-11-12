@@ -171,6 +171,9 @@ type basicS3 struct {
 	conditional atomic.Int32
 	badMD5      atomic.Int32
 	putFailures atomic.Int32
+	// deleteMissingNotFound answers NoSuchKey to a deletion of a missing key,
+	// as some providers do; S3 itself answers 204.
+	deleteMissingNotFound bool
 }
 
 func xmlError(w http.ResponseWriter, status int, code string) {
@@ -243,6 +246,16 @@ func (s *basicS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprint(len(b)))
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(b)
+	case http.MethodDelete:
+		s.mu.Lock()
+		_, ok := s.objects[r.URL.Path]
+		delete(s.objects, r.URL.Path)
+		s.mu.Unlock()
+		if !ok && s.deleteMissingNotFound {
+			xmlError(w, 404, "NoSuchKey")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	default:
 		xmlError(w, 405, "MethodNotAllowed")
 	}
@@ -397,4 +410,102 @@ func TestS3Integration(t *testing.T) {
 		t.Fatal(err)
 	}
 	blobContract(t, s, fmt.Sprintf("test-%d/", time.Now().UnixNano()))
+}
+
+// deleteContract checks the garbage collector's deletion: removal, repeated
+// deletion of a missing key, and key validation.
+func deleteContract(t *testing.T, s interface {
+	BlobStore
+	Deleter
+}) {
+	t.Helper()
+	ctx := context.Background()
+	keep, gone := "tenants/1:2/attempts/a/keep.pack", "tenants/1:2/attempts/a/gone.pack"
+	for _, key := range []string{keep, gone} {
+		if err := s.Put(ctx, key, []byte(key)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if err := s.Delete(ctx, gone); err != nil {
+			t.Fatalf("delete %d: %v", i, err)
+		}
+	}
+	if _, err := s.Get(ctx, gone); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted object still readable: %v", err)
+	}
+	if b, err := s.Get(ctx, keep); err != nil || string(b) != keep {
+		t.Fatalf("sibling object lost: %q %v", b, err)
+	}
+	if err := s.Delete(ctx, keep); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"../escape", "/absolute", "a/.hidden", ""} {
+		if err := s.Delete(ctx, key); err == nil {
+			t.Errorf("invalid key deleted: %q", key)
+		}
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := s.Delete(cancelled, keep); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled delete: %v", err)
+	}
+}
+
+func TestLocalDelete(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewLocal(dir, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	deleteContract(t, s)
+	if s.Stats().Deletes != 3 {
+		t.Fatalf("delete counter: %+v", s.Stats())
+	}
+	// The emptied attempt directory is removed; its parents are kept.
+	if _, err := os.Stat(dir + "/tenants/1:2/attempts/a"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("empty attempt directory kept: %v", err)
+	}
+	if _, err := os.Stat(dir + "/tenants/1:2/attempts"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(dir+"/tenants/1:2/attempts/dir", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(context.Background(), "tenants/1:2/attempts/dir"); err == nil {
+		t.Fatal("directory deleted as an object")
+	}
+}
+
+func TestS3DeleteIsOrdinaryAndBudgeted(t *testing.T) {
+	for _, notFound := range []bool{false, true} {
+		backend := &basicS3{objects: map[string][]byte{}, deleteMissingNotFound: notFound}
+		srv := httptest.NewServer(backend)
+		s := s3ForTest(t, srv.URL, 1024, 1)
+		deleteContract(t, s)
+		srv.Close()
+		if backend.conditional.Load() != 0 {
+			t.Fatal("conditional delete request")
+		}
+		if stats := s.Stats(); stats.Deletes != 3 {
+			t.Fatalf("delete attempts: %+v", stats)
+		}
+	}
+	t.Setenv("AWS_ACCESS_KEY_ID", "test-only")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test-only-secret")
+	backend := &basicS3{objects: map[string][]byte{"/test/x": []byte("x")}}
+	srv := httptest.NewServer(backend)
+	defer srv.Close()
+	s, err := NewS3(S3Config{Endpoint: srv.URL, Bucket: "test", MaxAttempts: 1, Timeout: 5 * time.Second,
+		RequestsPerSecond: 100, MaxConcurrentRequests: 1, MaxQueuedRequests: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(context.Background(), "x"); err != nil {
+		t.Fatal(err)
+	}
+	if budget := s.BudgetStats(); budget.Attempts != 1 || budget.InFlightRequests != 0 {
+		t.Fatalf("delete was not budgeted: %+v", budget)
+	}
 }

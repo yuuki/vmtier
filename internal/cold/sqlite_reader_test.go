@@ -72,6 +72,15 @@ func publishSQLite(t *testing.T, f *sqliteFixture, tenant, source string, start 
 	if err != nil {
 		t.Fatal(err)
 	}
+	var keys []string
+	for _, ref := range refs {
+		keys = append(keys, ref.DataKey, ref.IndexKey)
+	}
+	if len(keys) > 0 {
+		if err = f.db.RecordPendingObjects(ctx, tenant, keys); err != nil {
+			t.Fatal(err)
+		}
+	}
 	_, err = f.db.PublishWindow(ctx, s.Generation, catalog.Publication{Tenant: tenant, SourceID: source, Start: start, End: start + 100, Packs: refs})
 	if err != nil {
 		t.Fatal(err)

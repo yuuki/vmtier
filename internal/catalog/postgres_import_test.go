@@ -25,6 +25,7 @@ func TestPostgresImportSQLitePreservesMetadata(t *testing.T) {
 	// interval with no references during migration.
 	publications[4].Packs[0].DataBytes = 0
 	for i, publication := range publications {
+		recordPublication(t, source, publication)
 		if _, err := source.PublishWindow(ctx, uint64(i), publication); err != nil {
 			t.Fatal(err)
 		}
@@ -134,7 +135,9 @@ func TestPostgresImportSQLiteRejectsCorruptSource(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, dsn, db := postgresTestDatabase(t)
 			source := sqliteTestStore(t, contract())
-			if _, err := source.PublishWindow(ctx, 0, sqlitePublication("1:2", "a", 100, 1)); err != nil {
+			first := sqlitePublication("1:2", "a", 100, 1)
+			recordPublication(t, source, first)
+			if _, err := source.PublishWindow(ctx, 0, first); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := source.db.ExecContext(ctx, tc.sql); err != nil {
@@ -155,6 +158,7 @@ func TestPostgresImportSQLiteFailureRollsBackAllMetadata(t *testing.T) {
 	first := sqlitePublication("1:2", "a", 100, 1)
 	second := sqlitePublication("1:2", "a", 200, 1)
 	for i, publication := range []Publication{first, second} {
+		recordPublication(t, source, publication)
 		if _, err := source.PublishWindow(ctx, uint64(i), publication); err != nil {
 			t.Fatal(err)
 		}

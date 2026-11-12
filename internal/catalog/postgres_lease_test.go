@@ -154,7 +154,9 @@ func TestPostgresLeaseExpiresDuringPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Fenced(lease).PublishWindow(ctx, 0, sqlitePublication("1:2", "a", 100, 1)); !errors.Is(err, ErrLeaseLost) {
+	delayed := sqlitePublication("1:2", "a", 100, 1)
+	recordPublication(t, p, delayed)
+	if _, err := p.Fenced(lease).PublishWindow(ctx, 0, delayed); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("publication committed after lease expiry: %v", err)
 	}
 	if state := postgresStatus(t, ctx, p); state.Generation != 0 || state.Coverage[0].End != 100 {
@@ -170,7 +172,9 @@ func TestPostgresLeaseExpiresDuringPublication(t *testing.T) {
 
 func TestPostgresUpgradeAddsFencingExplicitly(t *testing.T) {
 	ctx, dsn, db, p := postgresTestStore(t, contract())
-	if _, err := publishPostgresTest(ctx, p, 0, sqlitePublication("1:2", "a", 100, 1)); err != nil {
+	first := sqlitePublication("1:2", "a", 100, 1)
+	recordPublication(t, p, first)
+	if _, err := publishPostgresTest(ctx, p, 0, first); err != nil {
 		t.Fatal(err)
 	}
 	before := postgresStatus(t, ctx, p)
@@ -178,7 +182,7 @@ func TestPostgresUpgradeAddsFencingExplicitly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reconstruct the stage-1 schema shape while preserving a committed window.
-	if _, err := db.ExecContext(ctx, `DROP TABLE archive_lease; UPDATE catalog_state SET schema_version=1`); err != nil {
+	if _, err := db.ExecContext(ctx, `DROP TABLE archive_lease, pending_objects; UPDATE catalog_state SET schema_version=1`); err != nil {
 		t.Fatal(err)
 	}
 	if old, err := OpenPostgres(ctx, dsn, "test"); err == nil {

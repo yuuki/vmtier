@@ -182,6 +182,7 @@ func TestPostgresPublicationReplayAndRestart(t *testing.T) {
 	c.Sources = append(c.Sources, Source{ID: "b", Fingerprint: strings.Repeat("b", 64)})
 	ctx, dsn, _, s := postgresTestStore(t, c)
 	first := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, s, first)
 	if g, err := publishPostgresTest(ctx, s, 0, first); err != nil || g != 1 {
 		t.Fatalf("publish: generation=%d err=%v", g, err)
 	}
@@ -241,6 +242,7 @@ func TestPostgresPublicationFailureIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, s, p)
 	if _, err := publishPostgresTest(ctx, s, 0, p); err == nil {
 		t.Fatal("injected storage failure succeeded")
 	}
@@ -253,6 +255,9 @@ func TestPostgresPublicationFailureIsAtomic(t *testing.T) {
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM "+pq.QuoteIdentifier(table)).Scan(&n); err != nil || n != 0 {
 			t.Fatalf("partial rows persisted in %s: n=%d err=%v", table, n, err)
 		}
+	}
+	if counts, err := s.UnpublishedObjects(ctx); err != nil || counts.Pending != 4 {
+		t.Fatalf("failed publication consumed pending records: %+v %v", counts, err)
 	}
 	if _, err := db.ExecContext(ctx, `ALTER TABLE packs DROP CONSTRAINT injected_storage_failure`); err != nil {
 		t.Fatal(err)
@@ -268,8 +273,18 @@ func TestPostgresRejectsInvalidTransitions(t *testing.T) {
 	if _, err := publishPostgresTest(ctx, s, 1, first); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale generation accepted: %v", err)
 	}
+	if _, err := publishPostgresTest(ctx, s, 0, first); !errors.Is(err, ErrUnrecordedObject) {
+		t.Fatalf("unrecorded object key accepted: %v", err)
+	}
+	recordPublication(t, s, first)
 	if _, err := publishPostgresTest(ctx, s, 0, first); err != nil {
 		t.Fatal(err)
+	}
+	if counts, err := s.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{}) {
+		t.Fatalf("publication left pending records: %+v %v", counts, err)
+	}
+	if err := s.RecordPendingObjects(ctx, "1:2", []string{first.Packs[0].DataKey}); !errors.Is(err, ErrInvalidPublication) {
+		t.Fatalf("published key recorded as pending: %v", err)
 	}
 	before := postgresStatus(t, ctx, s)
 	for _, tc := range []struct {
@@ -319,6 +334,9 @@ func TestPostgresIndependentWriters(t *testing.T) {
 				if identical {
 					p = sqlitePublication("1:2", "a", 100, 1)
 				}
+				if !identical || i == 0 {
+					recordPublication(t, first, p)
+				}
 				wg.Add(1)
 				go func(s *Postgres, p Publication) {
 					defer wg.Done()
@@ -354,7 +372,9 @@ func TestPostgresIndependentWriters(t *testing.T) {
 func TestPostgresSelectionBoundsAndSnapshots(t *testing.T) {
 	ctx, _, _, s := postgresTestStore(t, contract())
 	for i := 0; i < 2; i++ {
-		if _, err := publishPostgresTest(ctx, s, uint64(i), sqlitePublication("1:2", "a", 100+int64(i)*100, 2)); err != nil {
+		next := sqlitePublication("1:2", "a", 100+int64(i)*100, 2)
+		recordPublication(t, s, next)
+		if _, err := publishPostgresTest(ctx, s, uint64(i), next); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -468,7 +488,9 @@ func TestPostgresSnapshotAcrossPublicationBoundary(t *testing.T) {
 func TestPostgresCatalogPlanRefusalClassification(t *testing.T) {
 	ctx, _, _, p := postgresTestStore(t, contract())
 	for i := 0; i < 2; i++ {
-		if _, err := publishPostgresTest(ctx, p, uint64(i), sqlitePublication("1:2", "a", 100+int64(i)*100, 2)); err != nil {
+		next := sqlitePublication("1:2", "a", 100+int64(i)*100, 2)
+		recordPublication(t, p, next)
+		if _, err := publishPostgresTest(ctx, p, uint64(i), next); err != nil {
 			t.Fatal(err)
 		}
 	}

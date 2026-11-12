@@ -108,13 +108,18 @@ These observations do not list the blob backend:
 | `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
 | `vmtier_query_limit_refusals_total{reason=...}` | Resource refusals with a fixed reason vocabulary: `memory_admission`, `shared_reads`, `read_bytes`, `decoded_bytes`, `catalog_plan`, `blocks`, `series`, or `response_bytes`. Other backend failures and cancellations do not masquerade as limit refusals. |
 | `vmtier_archive_failed_windows_total{tenant=...,source=...,reason=...}` | Errored attempts for configured tenant/source pairs only; reasons are `error`, `timeout`, and `canceled`. A retry increments again; skipped/backoff windows do not. Shutdown cancellation is counted if a window was attempted. No timestamp or error-message labels are used. |
+| `vmtier_catalog_unpublished_objects{state="pending\|deleting"}` | Object ledger records of attempts that have not published: pending keys of running or failed attempts, and keys claimed by garbage collection whose deletion has not finished. Counts objects, not bytes. Omitted when the catalog cannot be read. |
+| `vmtier_orphan_gc_*`, `vmtier_object_delete_requests_total` | [Garbage collection](serve.md#garbage-collection) passes, failures, claimed and deleted objects, last success, and DELETE attempts. |
 
 Attempt/refusal counters and cache/admission state start over on process restart;
 committed totals are read afresh from SQLite. An errored attempt is not necessarily
 a new missing window: failure after commit acknowledgement can leave the window
 committed, so interpret failures together with coverage and lag. The service does
-not estimate orphan bytes or perform automatic GC. Use provider accounting for
-actual bucket growth and host monitoring for disk availability and peak RSS.
+not estimate orphan bytes. Garbage collection is opt-in and does not cover objects
+left before the ledger existed. Use provider accounting for actual bucket growth and
+host monitoring for disk availability and peak RSS. A steadily growing `pending`
+count with garbage collection enabled means attempts fail faster than they are
+collected, or that collection fails; check `vmtier_orphan_gc_failed_passes_total`.
 Each capacity scrape aggregates the complete `packs` and `windows` tables on
 the catalog's single SQLite connection. The shared five-second scrape context
 bounds the observation time, not the number of rows scanned. Large catalogs or
@@ -146,7 +151,7 @@ do not add an in-memory catalog mirror.
 | Missing or corrupt object, or GET failure | Fail the query. Restore the original bytes, verify them, and retest; do not replace the failure with an empty result. |
 | Hot retention deadline exceeded | Do not commit an empty window as success. Missing data needs another complete recovery copy. |
 
-Published object keys are never reused. A new attempt uses a fresh nonce and keys, so a lost PUT response or generation conflict can leave orphan objects. Queries read only catalog references. After a lost commit response, reload the authority before deciding what remains to publish. vmtier supports bounded, single-PUT objects; multipart abort and cleanup are out of scope.
+Published object keys are never reused. A new attempt uses a fresh nonce and keys, so a lost PUT response or generation conflict can leave orphan objects. Every key is recorded in the catalog's object ledger before its upload, so [garbage collection](serve.md#garbage-collection) can delete these orphans later. Queries read only catalog references. After a lost commit response, reload the authority before deciding what remains to publish. A publication whose keys garbage collection claimed fails with `object key is not a pending upload of this catalog`; the next attempt uses fresh keys. vmtier supports bounded, single-PUT objects; multipart abort and cleanup are out of scope.
 
 ## Late writes, backfill, and deletion
 
@@ -164,8 +169,10 @@ If Hot still holds the entire history, removing the Cold node restores a Hot-onl
 
 ## GC, Cold retention, and upgrades
 
-vmtier performs no GC or Cold TTL deletion. Its append-only catalog retains existing entries, and it deletes neither referenced objects nor orphans. This avoids deletion races but allows storage usage to grow. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
+[Garbage collection](serve.md#garbage-collection), when enabled, deletes only the objects of attempts that never published and that the catalog recorded before their upload. It never deletes a published object, so readers holding older query plans are unaffected. It needs `DeleteObject` permission on the prefix. With PostgreSQL, every replica may enable it; only the archiver lease holder collects. Objects of other catalogs sharing the bucket, such as the one kept for rollback after a restore, are never touched by it.
 
-Any future deletion implementation must account for query lifetime and all readers that may still hold old references. That implementation is deferred; do not approximate it with an arbitrary lifecycle expiration.
+vmtier performs no Cold TTL deletion (#44). Its append-only catalog retains existing entries, so storage still grows with the archived data. Orphans from before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1) are not collected. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
+
+Any future deletion of published data must account for query lifetime and all readers that may still hold old references. That implementation is deferred; do not approximate it with an arbitrary lifecycle expiration.
 
 Follow the [compatibility upgrade procedure](compatibility.md) for codec, RPC, and reference-version checks. Packs carry revision checks and are not automatically migrated by replacing the binary.

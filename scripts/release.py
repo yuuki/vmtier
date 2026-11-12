@@ -689,6 +689,10 @@ def smoke(args):
         status = json.loads(run([binary, 'catalog-inspect', '-path', catalog, '-id', 'release-smoke'], capture=True))
         if status.get('id') != 'release-smoke' or status.get('generation') != 0:
             raise ReleaseError(f'unexpected SQLite catalog status {status}')
+        # A current catalog upgrades as a no-op that verifies and prints its state.
+        upgraded = json.loads(run([binary, 'catalog-upgrade', '-path', catalog, '-id', 'release-smoke'], capture=True))
+        if upgraded != status:
+            raise ReleaseError(f'catalog-upgrade changed a current SQLite catalog: {upgraded}')
         if args.install_to:
             target = Path(args.install_to)
             target.parent.mkdir(parents=True, exist_ok=True)

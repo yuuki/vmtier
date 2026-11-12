@@ -42,7 +42,8 @@ tests; older VM revisions do not qualify the current dependency set.
   [independent catalog](adr/0002-independent-catalog.md),
   [first-release scope](adr/0003-first-release-scope.md),
   [PostgreSQL HA](adr/0004-postgresql-catalog.md),
-  [release artifacts](adr/0005-release-artifacts.md).
+  [release artifacts](adr/0005-release-artifacts.md),
+  [orphan garbage collection](adr/0006-orphan-garbage-collection.md).
 - [Related implementations](prior-art.md) and [third-party notices](../THIRD_PARTY_NOTICES.md).
 - [Validation evidence index](evidence.md): scoped reports and retained raw results.
 

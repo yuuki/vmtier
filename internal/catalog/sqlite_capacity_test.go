@@ -14,7 +14,9 @@ func TestSQLiteCapacityCountsCommittedObjectsAndSurvivesRestart(t *testing.T) {
 	if err != nil || initial.Packs != 0 || initial.Windows != 0 || initial.DatabaseBytes <= 0 || initial.CommittedDataBytes != 0 || initial.CommittedIndexBytes != 0 {
 		t.Fatalf("initial capacity=%+v err=%v", initial, err)
 	}
-	if _, err := s.PublishWindow(ctx, 0, sqlitePublication("1:2", "a", 100, 2)); err != nil {
+	first := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, s, first)
+	if _, err := s.PublishWindow(ctx, 0, first); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.PublishWindow(ctx, 1, sqlitePublication("1:2", "a", 200, 0)); err != nil {

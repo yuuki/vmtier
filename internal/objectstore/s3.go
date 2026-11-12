@@ -35,9 +35,10 @@ type S3Config struct {
 	MaxQueuedRequests     int
 }
 
-// S3 uses ordinary PutObject, GetObject and single-range GetObject only.
-// It does not send conditional headers or require ETags. Catalog publication is
-// handled by a separate authority, never by this data-plane client.
+// S3 uses ordinary PutObject, GetObject and single-range GetObject, plus
+// DeleteObject for garbage collection only. It does not send conditional
+// headers or require ETags. Catalog publication is handled by a separate
+// authority, never by this data-plane client.
 type S3 struct {
 	client         *s3.Client
 	bucket, prefix string
@@ -73,6 +74,8 @@ func (t countedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 	case http.MethodPut:
 		t.stats.puts.Add(1)
+	case http.MethodDelete:
+		t.stats.deletes.Add(1)
 	}
 	if r.Body != nil {
 		r.Body = countedBody{r.Body, &t.stats.uploaded}
@@ -240,6 +243,27 @@ func (s *S3) Put(ctx context.Context, key string, data []byte) error {
 	_, err := s.client.PutObject(ctx, in)
 	if err != nil {
 		return s3Error(err)
+	}
+	return nil
+}
+
+var _ Deleter = (*S3)(nil)
+
+// Delete removes one object with an ordinary DeleteObject request, which the
+// request budget covers like every other attempt. S3 answers success for a
+// missing key; a provider that answers NoSuchKey is treated the same way.
+func (s *S3) Delete(ctx context.Context, key string) error {
+	if err := validKey(key); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(s.prefix + key)})
+	if err != nil {
+		if err = s3Error(err); errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return err
 	}
 	return nil
 }

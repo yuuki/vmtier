@@ -105,7 +105,8 @@ func ImportV2(ctx context.Context, dir, newID string, manifest *Manifest, blob B
 		pub := Publication{Tenant: e.Tenant, SourceID: e.SourceID, Start: e.Start, End: e.End,
 			Packs: []PackRef{{DataKey: e.DataKey, IndexKey: e.IndexKey, DataSHA256: idx.SHA256,
 				IndexSHA256: e.IndexSHA256, DataBytes: idx.Size, IndexBytes: int64(len(data))}}}
-		generation, err = s.PublishWindow(ctx, generation, pub)
+		// Imported objects are referenced by the source catalog, never pending.
+		generation, err = s.publish(ctx, generation, pub, false)
 		if err != nil {
 			return nil, fmt.Errorf("import window: %w", err)
 		}
@@ -184,6 +185,15 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 	if err := copyDatabaseImage(ctx, filepath.Join(backupDir, SQLiteFile), filepath.Join(stage, SQLiteFile), meta); err != nil {
 		return nil, err
 	}
+	expected := meta.Status
+	if expected.SchemaVersion == 1 {
+		// A backup taken before the object ledger existed is upgraded in the
+		// staging copy after its checksum was verified; the backup is unchanged.
+		if err := UpgradeSQLite(ctx, stage, expected.ID); err != nil {
+			return nil, fmt.Errorf("upgrade schema 1 backup: %w", err)
+		}
+		expected.SchemaVersion = SQLiteSchemaVersion
+	}
 	s, err := OpenSQLite(ctx, stage, meta.Status.ID)
 	if err != nil {
 		return nil, err
@@ -193,7 +203,7 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 	if err != nil {
 		return nil, err
 	}
-	if !reflect.DeepEqual(status, meta.Status) {
+	if !reflect.DeepEqual(status, expected) {
 		return nil, errors.New("backup metadata disagrees with database state")
 	}
 	if err := validateRestoredReferences(ctx, s, status); err != nil {
@@ -226,7 +236,39 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 	if err := checkRestoredWindows(ctx, tx, status); err != nil {
 		return err
 	}
+	if err := checkRestoredLedger(ctx, tx, status); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// checkRestoredLedger requires every recorded object key to be a valid,
+// unpublished key of a configured tenant, so that garbage collection of the
+// restored catalog can never delete a published object.
+func checkRestoredLedger(ctx context.Context, tx *sql.Tx, status SQLiteStatus) error {
+	rows, err := tx.QueryContext(ctx, `SELECT object_key, created_ms, state FROM pending_objects ORDER BY object_key`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key, state string
+		var created int64
+		if err := rows.Scan(&key, &created, &state); err != nil {
+			return err
+		}
+		if (state != pendingState && state != deletingState) || created < 0 || checkClaimedKey(status.Contract, key) != nil {
+			return errors.New("backup contains an invalid object ledger record")
+		}
+		var published bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM packs WHERE data_key=? OR index_key=?)`, key, key).Scan(&published); err != nil {
+			return err
+		}
+		if published {
+			return errors.New("backup object ledger records a published object key")
+		}
+	}
+	return rows.Err()
 }
 
 func checkRestoredForeignKeys(ctx context.Context, tx *sql.Tx) error {

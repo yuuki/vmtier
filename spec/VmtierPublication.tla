@@ -17,12 +17,21 @@
 (*     does not learn whether its transaction committed, and may replay    *)
 (*     the same publication;                                               *)
 (*   - an upload can store wrong bytes, and any attempt can be abandoned,  *)
-(*     leaving an unreferenced orphan object.                              *)
+(*     leaving an unreferenced orphan object;                              *)
+(*   - garbage collection claims, deletes and forgets the recorded keys of *)
+(*     unpublished attempts at any time, racing every archiver step.       *)
+(*                                                                         *)
+(* Every attempt records its key in the catalog's object ledger before its *)
+(* PUT; publication consumes that pending record in its transaction, and   *)
+(* garbage collection deletes only the objects of keys it claimed.         *)
 (*                                                                         *)
 (* Code this models (see spec/README.md for the full mapping):             *)
 (*   AcquireLease, RenewLease, ReleaseLease internal/catalog/postgres_lease.go *)
 (*   publishWindow, writePublication      internal/catalog/postgres.go      *)
 (*   uploadPack (nonce key, PUT, read-back) internal/archive/pipeline.go    *)
+(*   RecordPendingObjects, ClaimUnpublishedObjects, ForgetDeletedObjects    *)
+(*                                        internal/catalog/postgres_pending.go *)
+(*   Collector.RunPass                    internal/archive/gc.go            *)
 (*   RunPass, publishStream               internal/archive/sqlite.go        *)
 (*   runArchiveLeadership                 cmd/vmtier/postgres_service.go    *)
 (*                                                                         *)
@@ -46,13 +55,17 @@ CONSTANTS
     FreshKeys,        \* TRUE as in uploadPack: every attempt gets a new key
     ReadBack,         \* TRUE as in uploadPack: compare the stored bytes
     FencePublication, \* TRUE as in publishWindow: validate the lease
+    Ledger,           \* TRUE as in uploadPack: record each key before its PUT
+    CheckPending,     \* TRUE as in publishWindow: consume a pending record
+    Collect,          \* TRUE when garbage collection runs
     NoOwner,          \* model value: the lease row has no owner
     Absent,           \* model value: no object under a key
     Corrupt           \* model value: an object with wrong bytes
 
 ASSUME NumWindows \in Nat \ {0} /\ MaxAttempts \in Nat /\ MaxTokens \in Nat
 ASSUME TTL \in Nat \ {0} /\ MaxTime \in Nat /\ MaxLostReplies \in Nat
-ASSUME {FreshKeys, ReadBack, FencePublication} \subseteq BOOLEAN
+ASSUME {FreshKeys, ReadBack, FencePublication, Ledger, CheckPending, Collect} \subseteq BOOLEAN
+ASSUME (CheckPending \/ Collect) => Ledger
 
 Indexes == 0..(NumWindows - 1)
 Wins    == Streams \X Indexes
@@ -63,6 +76,8 @@ Keys == IF FreshKeys THEN 1..MaxAttempts ELSE Wins
 
 Modes  == {"follower", "leader", "draining"}
 Phases == {"none", "staged", "uploaded", "verified"}
+\* pending_objects: "none" (no row), "pending" or "deleting" (claimed).
+LedgerStates == {"none", "pending", "deleting"}
 
 \* Placeholders of the same type as real keys, so that TLC compares like values.
 NoKey   == IF FreshKeys THEN 0 ELSE <<NoOwner, 0>>
@@ -82,12 +97,13 @@ VARIABLES
     localGen,     \* generation of the archiver's last Status read
     localCov,     \* coverage of the archiver's last Status read
     stage,        \* the archiver's current attempt
-    granted       \* history: <<token, owner>> of every acquisition
+    granted,      \* history: <<token, owner>> of every acquisition
+    ledger        \* pending_objects: state of each key
 
 vars == <<dbNow, lease, gen, coverage, windows, objects, nextAttempt,
-          lostReplies, mode, held, localGen, localCov, stage, granted>>
+          lostReplies, mode, held, localGen, localCov, stage, granted, ledger>>
 
-catalog == <<lease, gen, coverage, windows>>
+catalog == <<lease, gen, coverage, windows, ledger>>
 local   == <<mode, held, localGen, localCov, stage>>
 
 -----------------------------------------------------------------------------
@@ -117,6 +133,7 @@ TypeOK ==
     /\ localCov \in [Archivers -> [Streams -> 0..NumWindows]]
     /\ stage \in [Archivers -> StageRows]
     /\ granted \subseteq (1..MaxTokens) \X Archivers
+    /\ ledger \in [Keys -> LedgerStates]
 
 \* Database reply outcomes: whether the reply to the archiver is lost.
 Replies == IF lostReplies < MaxLostReplies THEN BOOLEAN ELSE {FALSE}
@@ -149,6 +166,7 @@ Init ==
     /\ localCov = [p \in Archivers |-> [s \in Streams |-> 0]]
     /\ stage = [p \in Archivers |-> NoStage]
     /\ granted = {}
+    /\ ledger = [k \in Keys |-> "none"]
 
 \* The database clock moves on. Nothing tells an archiver that its lease
 \* expired: it finds out only when a renewal or publication is refused.
@@ -175,7 +193,7 @@ Acquire(p) ==
            /\ held' = [held EXCEPT ![p] = IF lost THEN 0 ELSE next.token]
            /\ CountLost(lost)
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt,
-                   localGen, localCov, stage>>
+                   localGen, localCov, stage, ledger>>
 
 \* RenewLease extends only a live acquisition. Any error, including a lost
 \* reply to a renewal that did commit, makes runArchiveLeadership cancel and
@@ -188,7 +206,7 @@ Renew(p) ==
         /\ mode' = IF ok /\ ~lost THEN mode ELSE [mode EXCEPT ![p] = "draining"]
         /\ CountLost(lost)
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt, held,
-                   localGen, localCov, stage, granted>>
+                   localGen, localCov, stage, granted, ledger>>
 
 \* The context of the leadership ends for another reason (shutdown, a renewal
 \* timeout): the archive work is cancelled and drained.
@@ -211,7 +229,7 @@ Release(p) ==
     /\ mode' = [mode EXCEPT ![p] = "follower"]
     /\ held' = [held EXCEPT ![p] = 0]
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt,
-                   lostReplies, localGen, localCov, stage, granted>>
+                   lostReplies, localGen, localCov, stage, granted, ledger>>
 
 \* RunPass starts with Status: one consistent read of the catalog.
 LoadStatus(p) ==
@@ -225,6 +243,9 @@ LoadStatus(p) ==
 \* publishStream: the next window of a stream after the coverage the archiver
 \* last read. An archiver keeps going with its stale view after a failure in
 \* the same pass, as RunPass does with its local generation.
+\* RecordPendingObjects records the key before its PUT, in its own short
+\* transaction, and refuses a key that is published or already recorded. A
+\* lost reply to it is the same as the attempt starting and being abandoned.
 StartAttempt(p, s) ==
     /\ mode[p] = "leader"
     /\ Idle(p)
@@ -232,11 +253,13 @@ StartAttempt(p, s) ==
     /\ nextAttempt < MaxAttempts
     /\ LET i == localCov[p][s]
            k == IF FreshKeys THEN nextAttempt + 1 ELSE <<s, i>>
-       IN stage' = [stage EXCEPT ![p] =
+       IN /\ ~Ledger \/ (ledger[k] = "none" /\ \A x \in windows : x.key # k)
+          /\ ledger' = IF Ledger THEN [ledger EXCEPT ![k] = "pending"] ELSE ledger
+          /\ stage' = [stage EXCEPT ![p] =
                 [stream |-> s, idx |-> i, key |-> k, phase |-> "staged"]]
     /\ nextAttempt' = nextAttempt + 1
-    /\ UNCHANGED <<dbNow, catalog, objects, lostReplies, mode, held,
-                   localGen, localCov, granted>>
+    /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, objects, lostReplies,
+                   mode, held, localGen, localCov, granted>>
 
 \* blobs.Put of the verified export. It may store wrong bytes. An upload
 \* already in flight can finish while the archiver drains.
@@ -273,8 +296,10 @@ Abandon(p) ==
 \*  1. validate the lease (owner, token, expiry by database time);
 \*  2. an existing window replays only with the same digest;
 \*  3. otherwise the expected generation must match (ErrConflict), the window
-\*     must start at the stream's coverage end, and its keys must be new;
-\*  4. insert the window and its keys, advance coverage and generation.
+\*     must start at the stream's coverage end, its keys must be new, and
+\*     each must still have its pending record (ErrUnrecordedObject);
+\*  4. consume the pending records, insert the window and its keys, advance
+\*     coverage and generation.
 \* A lost reply leaves the archiver unsure: it may replay the same
 \* publication, abandon it, or reload the catalog first.
 Publish(p) ==
@@ -283,11 +308,13 @@ Publish(p) ==
         existing == {x \in windows : x.stream = st.stream /\ x.idx = st.idx}
         replay   == existing # {} /\ \A x \in existing : x.key = st.key
         keyUsed  == \E x \in windows : x.key = st.key
+        pending  == ~CheckPending \/ ledger[st.key] = "pending"
         commit   == /\ leaseOK
                     /\ existing = {}
                     /\ gen = localGen[p]
                     /\ coverage[st.stream] = st.idx
                     /\ ~keyUsed
+                    /\ pending
         row      == [stream |-> st.stream, idx |-> st.idx, key |-> st.key,
                      token |-> held[p], gen |-> gen + 1]
     IN
@@ -298,6 +325,8 @@ Publish(p) ==
         /\ coverage' = IF commit THEN [coverage EXCEPT ![st.stream] = st.idx + 1]
                        ELSE coverage
         /\ gen' = IF commit THEN gen + 1 ELSE gen
+        /\ ledger' = IF commit /\ CheckPending
+                     THEN [ledger EXCEPT ![st.key] = "none"] ELSE ledger
         /\ CountLost(lost)
         /\ IF lost
            THEN UNCHANGED <<mode, localGen, localCov, stage>>
@@ -314,8 +343,34 @@ Publish(p) ==
                 /\ UNCHANGED <<localGen, localCov>>
     /\ UNCHANGED <<dbNow, lease, objects, nextAttempt, held, granted>>
 
+\* ClaimUnpublishedObjects: a pending key whose key is not published becomes
+\* deleting, in one transaction. Its row lock orders it with a publication
+\* that consumes the same record. The minimum age only spares running
+\* attempts (liveness), so the model lets a claim happen at any time.
+Claim(k) ==
+    /\ Collect
+    /\ ledger[k] = "pending"
+    /\ \A x \in windows : x.key # k
+    /\ ledger' = [ledger EXCEPT ![k] = "deleting"]
+    /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, objects, nextAttempt,
+                   lostReplies, local, granted>>
+
+\* Collector.RunPass deletes the object of a claimed key, then forgets the
+\* record (ForgetDeletedObjects). A failure in between only repeats the
+\* deletion in the next pass, so the model takes both as one step. An upload
+\* still in flight can store the object again afterwards (Put), leaving an
+\* orphan whose key can no longer be published: it has no pending record.
+DeleteClaimed(k) ==
+    /\ Collect
+    /\ ledger[k] = "deleting"
+    /\ objects' = [objects EXCEPT ![k] = Absent]
+    /\ ledger' = [ledger EXCEPT ![k] = "none"]
+    /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, nextAttempt,
+                   lostReplies, local, granted>>
+
 Next ==
     \/ Tick
+    \/ \E k \in Keys : Claim(k) \/ DeleteClaimed(k)
     \/ \E p \in Archivers :
         \/ Acquire(p) \/ Renew(p) \/ StepDown(p) \/ Release(p)
         \/ LoadStatus(p) \/ Put(p) \/ VerifyUpload(p) \/ Abandon(p)
@@ -357,6 +412,11 @@ MonotoneFencing ==
 \* A fencing token is handed to one owner only.
 TokensUnique ==
     \A g, h \in granted : g[1] = h[1] => g[2] = h[2]
+
+\* A published key has no ledger record: garbage collection can never claim
+\* it, so it never deletes a published object.
+PublishedKeysUnrecorded ==
+    \A x \in windows : ledger[x.key] = "none"
 
 \* Published windows are append-only and immutable.
 WindowsAppendOnly == [][windows \subseteq windows']_vars

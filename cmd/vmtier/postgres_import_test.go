@@ -55,6 +55,9 @@ func TestPostgresCLIImportsStoppedSQLiteWithoutBlobAccess(t *testing.T) {
 			DataSHA256: strings.Repeat("a", 64), IndexSHA256: strings.Repeat("b", 64), DataBytes: 12, IndexBytes: 34,
 		}},
 	}
+	if err := source.RecordPendingObjects(ctx, first.Tenant, []string{first.Packs[0].DataKey, first.Packs[0].IndexKey}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := source.PublishWindow(ctx, 0, first); err != nil {
 		t.Fatal(err)
 	}

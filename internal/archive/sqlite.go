@@ -174,7 +174,7 @@ func (a *Archiver) publishStream(ctx context.Context, cfg Config, source Source,
 	if err != nil {
 		return generation, out, err
 	}
-	refs, samples, err := stageVerifiedPacks(ctx, a.Store, cfg, source, tenant, start, end)
+	refs, samples, err := stageVerifiedPacks(ctx, a.Store, a.Catalog, cfg, source, tenant, start, end)
 	if err != nil {
 		return generation, out, err
 	}

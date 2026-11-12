@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	SQLiteSchemaVersion     = 1
+	SQLiteSchemaVersion     = 2
 	SQLiteFile              = "catalog.db"
 	MaxPacksPerWindow       = 1024
 	SQLiteMaxPacksPerWindow = MaxPacksPerWindow
@@ -119,6 +119,7 @@ type Repository interface {
 	Status(context.Context) (Status, error)
 	PublishWindow(context.Context, uint64, Publication) (uint64, error)
 	Select(context.Context, Selection) (QueryPlan, error)
+	ObjectLedger
 	Close() error
 }
 

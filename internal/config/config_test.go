@@ -57,6 +57,54 @@ func TestSQLiteServiceLimits(t *testing.T) {
 		t.Fatal("custom scheduling limits ignored")
 	}
 }
+func TestOrphanGCSettings(t *testing.T) {
+	c := good()
+	c.Catalog.Type = "sqlite"
+	c.Store = Store{Type: "s3", Bucket: "fixture"}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if interval, minAge := c.OrphanGC(); interval != 0 || minAge != 0 {
+		t.Fatalf("garbage collection enabled by default: %v %v", interval, minAge)
+	}
+	c.Service.OrphanGCInterval = "1h"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if interval, minAge := c.OrphanGC(); interval != time.Hour || minAge != DefaultOrphanGCMinAge {
+		t.Fatalf("defaults: %v %v", interval, minAge)
+	}
+	c.Service.OrphanGCMinAge = "720h"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if _, minAge := c.OrphanGC(); minAge != 720*time.Hour {
+		t.Fatalf("custom minimum age ignored: %v", minAge)
+	}
+	cases := map[string]func(*Config){
+		"legacy catalog":          func(c *Config) { c.Catalog.Type = "local" },
+		"age without interval":    func(c *Config) { c.Service.OrphanGCInterval = "" },
+		"busy loop":               func(c *Config) { c.Service.OrphanGCInterval = "1ms" },
+		"long interval":           func(c *Config) { c.Service.OrphanGCInterval = "25h" },
+		"submillisecond interval": func(c *Config) { c.Service.OrphanGCInterval = "1s1ns" },
+		"age below timeout":       func(c *Config) { c.Service.OrphanGCMinAge = "1m" },
+		"long age":                func(c *Config) { c.Service.OrphanGCMinAge = "721h" },
+		"invalid age":             func(c *Config) { c.Service.OrphanGCMinAge = "30d" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			bad := c
+			mutate(&bad)
+			if err := bad.Validate(); err == nil {
+				t.Fatal("invalid garbage collection configuration accepted")
+			}
+		})
+	}
+	c.Service = Service{ArchiveTimeout: "10ms", OrphanGCInterval: "10ms", OrphanGCMinAge: "10ms"}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
 func TestValidateNormalizesIdentity(t *testing.T) {
 	c := good()
 	if e := c.Validate(); e != nil {

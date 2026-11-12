@@ -14,7 +14,7 @@ import (
 	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
-const PostgreSQLSchemaVersion = 2
+const PostgreSQLSchemaVersion = 3
 
 // Postgres stores catalog metadata in an explicitly initialized PostgreSQL
 // schema. It permits independent clients; publication is serialized by a row
@@ -75,7 +75,17 @@ CREATE TABLE %[1]s.packs (
  FOREIGN KEY (data_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id),
  FOREIGN KEY (index_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id)
 );
-` + postgresLeaseSchema
+` + postgresLeaseSchema + postgresPendingSchema
+
+// postgresPendingSchema is the object ledger added by schema 3.
+const postgresPendingSchema = `
+CREATE TABLE %[1]s.pending_objects (
+ object_key TEXT PRIMARY KEY CHECK (octet_length(object_key) BETWEEN 1 AND 1024),
+ created_ms BIGINT NOT NULL CHECK (created_ms >= 0),
+ state TEXT NOT NULL CHECK (state IN ('pending', 'deleting'))
+);
+CREATE INDEX pending_objects_age ON %[1]s.pending_objects (state, created_ms);
+`
 
 // CreatePostgres initializes new tables and binds the immutable archive
 // contract in one transaction. Provision a dedicated database or schema first;
@@ -226,7 +236,7 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
 	}
 	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
-		return out, errors.New("unsupported catalog schema or VM version; explicit migration required")
+		return out, fmt.Errorf("unsupported catalog schema %d or VM version %s; explicit catalog-upgrade or migration required", out.SchemaVersion, out.VMVersion)
 	}
 	if out.ID != p.id || !validID(out.ID) || generation < 0 {
 		return out, errors.New("invalid catalog identity or generation")
@@ -351,6 +361,9 @@ func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publicati
 	if end != publication.Start {
 		return 0, fmt.Errorf("%w: window must start at stream coverage end %d", ErrInvalidPublication, end)
 	}
+	if err = p.consumePending(ctx, tx, publication); err != nil {
+		return 0, err
+	}
 	next := state.Generation + 1
 	if err = p.writePublication(ctx, tx, publication, next, digest); err != nil {
 		return 0, err
@@ -365,6 +378,26 @@ func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publicati
 		return 0, err
 	}
 	return next, nil
+}
+
+// consumePending deletes the pending record of every referenced key. A key
+// that garbage collection claimed is no longer pending: its row lock orders the
+// claim and this deletion, so exactly one of them succeeds.
+func (p *Postgres) consumePending(ctx context.Context, tx *sql.Tx, publication Publication) error {
+	for _, ref := range publication.Packs {
+		for _, key := range []string{ref.DataKey, ref.IndexKey} {
+			result, err := tx.ExecContext(ctx, `DELETE FROM `+p.table("pending_objects")+` WHERE object_key=$1 AND state=$2`, key, pendingState)
+			if err != nil {
+				return err
+			}
+			if n, err := result.RowsAffected(); err != nil {
+				return err
+			} else if n != 1 {
+				return fmt.Errorf("%w: %w", ErrInvalidPublication, ErrUnrecordedObject)
+			}
+		}
+	}
+	return nil
 }
 
 // writePublication inserts a new window with its object keys and packs, then
