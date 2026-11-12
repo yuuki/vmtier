@@ -9,6 +9,7 @@ Raw artifacts remain under [`results/`](results/) at their existing paths.
 
 | Report | Scope |
 | --- | --- |
+| [vm-version-investigation.md](vm-version-investigation.md) | Historical OSS cluster RPC/native/semantic boundaries, including v1.133.0 stale-conflict refusal and v1.134.0 differential results; does not extend support |
 | [postgres-ha-validation.md](postgres-ha-validation.md) | PostgreSQL leases/fencing, gateway failover, stopped SQLite migration, and local synchronous-database faults; current integration and retained earlier-pin stage evidence |
 | [serve-validation.md](serve-validation.md) | SQLite service and differential baseline |
 | [sqlite-catalog-validation.md](sqlite-catalog-validation.md) | SQLite repository and original offline commands |
@@ -22,6 +23,7 @@ Raw artifacts remain under [`results/`](results/) at their existing paths.
 | [recovery-validation.md](recovery-validation.md) | Offline recovery and JSON v2 cutover |
 | [foundation-validation.md](foundation-validation.md) | Foundation checks |
 | [ci-evidence-validation.md](ci-evidence-validation.md) | CI evidence packaging |
+| [release-validation.md](release-validation.md) | Hosted and cross-environment reproducible release builds, release workflow without a tag, systemd deployment example |
 | [validation.md](validation.md) | Historical JSON v2 MVP baseline |
 
 The [all-S3 v1 reports](results/legacy-v1/README.md) belong to a superseded

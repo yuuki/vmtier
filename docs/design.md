@@ -148,6 +148,10 @@ again before publication. Scheduling delay, archive duration, retries, outage,
 and recovery must fit remaining headroom. Configuration alone does not prove
 that a deployment meets this constraint. VM retention remains independent of
 vmtier; vmtier neither deletes Hot data nor changes Hot retention.
+[`spec/lean/VmtierTiming.lean`](../spec/README.md#the-timing-contract-in-lean)
+proves that these checks leave every window archivable for `R - H - s - w`
+milliseconds, that a published window is complete, and that a query the
+gateway accepts misses no accepted sample.
 
 Freeze coverage start, `H`, `L`, `w`, dedup interval, tenants, sources, VM codec
 identity, and the blob locator in the catalog contract. The blob locator includes
@@ -451,11 +455,11 @@ acceptance criterion: stock-VM comparisons are recorded separately, and the
 success only for the retained small fixture. The [workload/memory](workload-validation.md)
 and [catalog](catalog-capacity-validation.md) reports qualify a scoped local envelope for #11/#14. Remaining evidence includes
 real Sakura (#15), natural retention (#16), enforced ingress lateness (#17),
-and a hosted release run with published artifacts (#19). The
-[release tooling](releasing.md) is implemented. Byte-identical builds have been
-observed only locally, with a builder image equivalent to `release/Dockerfile`.
-Hosted CI, attestation, and publication have not run; no result is recorded in
-the evidence index. The scoped [offline recovery/cutover
+and a tagged release run with published artifacts (#19). The
+[release tooling](releasing.md) is implemented. Hosted CI builds, a tagless run
+of the release workflow, and a rebuild outside GitHub produced byte-identical
+artifacts ([release validation](release-validation.md)); attestation and
+publication have not run. The scoped [offline recovery/cutover
 suite](recovery-validation.md) exercises #18 against stock VM and local objects,
 including older-backup catch-up and process crashes. Its expired-source refusal
 fixture reconstructs absent history; it does not establish natural retention

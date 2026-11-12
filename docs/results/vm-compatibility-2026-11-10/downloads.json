@@ -1,0 +1,37 @@
+{
+  "v1.81.2": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.81.2/victoria-metrics-linux-amd64-v1.81.2-cluster.tar.gz",
+    "sha256": "37d77d5d325f6c1b5d4477650cb7ecf714f3bbfab5862896cd9cd955dc6f6a8a",
+    "checksums": "37d77d5d325f6c1b5d4477650cb7ecf714f3bbfab5862896cd9cd955dc6f6a8a  victoria-metrics-linux-amd64-v1.81.2-cluster.tar.gz\n0cd53ea60dc8f64cd62096e79eeb10a37dda13ad6318035e8918c759c451ca0b  vminsert-prod\ne1277ff2a3ace83ab8d20e12bdc3ea11e9c79009f45a0b24fa6ae0115dc83c0c  vmselect-prod\n312c499a8b181b92bfda350ca8cf5cce8f9b196ddc356444e1190cbe96492ec1  vmstorage-prod\n"
+  },
+  "v1.82.0": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.82.0/victoria-metrics-linux-amd64-v1.82.0-cluster.tar.gz",
+    "sha256": "fcbb07a851ffdbd28b86d3b7d410251429f7f3f8daaf3f3767a5e663523c3efe",
+    "checksums": "fcbb07a851ffdbd28b86d3b7d410251429f7f3f8daaf3f3767a5e663523c3efe  victoria-metrics-linux-amd64-v1.82.0-cluster.tar.gz\n17dc7784f2c0bd57e58469dcea3c06ecc928efa0fb863488153c0539214818df  vminsert-prod\naa67861ea850aadd38e566301c5b1e707732a8ba09b3835c1a337280ebd95f60  vmselect-prod\n2a4c1e2ed166a24e465e414a1180a90ee17497c263f866de2b59cac4382a084e  vmstorage-prod\n"
+  },
+  "v1.79.0": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.79.0/victoria-metrics-linux-amd64-v1.79.0-cluster.tar.gz",
+    "sha256": "3fef2dc2bcc215680aa76d9aa31efae7edb02e4e26fe19be7c2bfbeffbe4addc",
+    "checksums": "3fef2dc2bcc215680aa76d9aa31efae7edb02e4e26fe19be7c2bfbeffbe4addc  victoria-metrics-linux-amd64-v1.79.0-cluster.tar.gz\nc40349298b2828494d8c9bcd1b7eb79f79c2113af52f79b4ecba588707311b7f  vminsert-prod\nb074d176c01ec3dfaf776501b33926cd9595978229c9002f20aab8ae248cc2a6  vmselect-prod\n63fe472cee1736fd3c393eac8f35e3227eabea2aa7cffbbd63cd1e4eeb01424a  vmstorage-prod\n"
+  },
+  "v1.128.0": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.128.0/victoria-metrics-linux-amd64-v1.128.0-cluster.tar.gz",
+    "sha256": "d67416e7c3891f48507a47115a454e2b1bed1912c6a4b8976309a9ec105d62af",
+    "checksums": "d67416e7c3891f48507a47115a454e2b1bed1912c6a4b8976309a9ec105d62af  victoria-metrics-linux-amd64-v1.128.0-cluster.tar.gz\nfddf47141acda8438dc90820b0283e07ef1f4a4d5943b672a71732363a335c3d  vminsert-prod\n15559c949553971f926b93706ad58e4ab0330ed54dd2d4d3d916e03d41763898  vmselect-prod\n81f84b7455a744084adde8fc663862c6376d67e36d3121068b099899043281e2  vmstorage-prod\n"
+  },
+  "v1.133.0": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.133.0/victoria-metrics-linux-amd64-v1.133.0-cluster.tar.gz",
+    "sha256": "0b9ac184715b625c0f2cc01a8c7e3ea7dc35f72bb034a65e2de4ea8abd43f486",
+    "checksums": "0b9ac184715b625c0f2cc01a8c7e3ea7dc35f72bb034a65e2de4ea8abd43f486  victoria-metrics-linux-amd64-v1.133.0-cluster.tar.gz\n8b508a459ff0c0294b58575484f630921286b1ed58d1d0725b7b290332757412  vminsert-prod\n6c34efdcc5e19f16c933d9222477d17f661eb613db100f35551cde366e6caabc  vmselect-prod\nd32fe680f3e6bee19af46f4b4a1bff18783d98c84637ced0128018de96f32144  vmstorage-prod\n"
+  },
+  "v1.78.1": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.78.1/victoria-metrics-amd64-v1.78.1-cluster.tar.gz",
+    "sha256": "3182dd1ed22395a2e85484761b5a70635c6dac7b8a5f5e0a6e3e257c2b82412f",
+    "checksums": "3182dd1ed22395a2e85484761b5a70635c6dac7b8a5f5e0a6e3e257c2b82412f  victoria-metrics-amd64-v1.78.1-cluster.tar.gz\n25ec7701df14a9e1266cd26b1568f26f161ec233d374e0e5ca926448418d71cc  vminsert-prod\n2da5b75704c986ff74d1ce4619db88668ca1430a11d6c58d2634c83bff4c91fb  vmselect-prod\na1792496453a73b41ccf71d23f51128e2c5d1188ed1bdde498ab4ec01041de2e  vmstorage-prod\n"
+  },
+  "v1.134.0": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.134.0/victoria-metrics-linux-amd64-v1.134.0-cluster.tar.gz",
+    "sha256": "3a294561183c47c643e899740d69422344d614e76559b955fcb0fae6a34d561a",
+    "checksums": "3a294561183c47c643e899740d69422344d614e76559b955fcb0fae6a34d561a  victoria-metrics-linux-amd64-v1.134.0-cluster.tar.gz\nb927cc17a0bb310c4606c38c3a172624978b2d146f895d031ecbe2e68066616f  vminsert-prod\n3ab7ad3ffa77c17386c3f26a535b443e64da361e70bfbd334a4f15177476bda7  vmselect-prod\n771637cbd8d340717a57421844ee2b57af5633fda15431518a34a480fdb7ba82  vmstorage-prod\n"
+  }
+}

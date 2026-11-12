@@ -51,7 +51,7 @@ see [HA deployment](docs/ha-deployment.md) for fencing and aggregate S3 budgets.
 
 ## Get started
 
-Build from the repository root with Go 1.27.3, CGO and a C compiler,
+Build from the repository root with Go 1.27.4, CGO and a C compiler,
 Python 3.15.2, curl, and standard Linux build tools:
 
 ```sh
@@ -61,7 +61,7 @@ make build
 ```
 
 Bootstrap downloads checksum-pinned stock VM sources into `.deps/`, verifies
-the committed Go modules, and regenerates `vendor/`. CI uses Go 1.27.3 and Python 3.15.2 on Linux amd64.
+the committed Go modules, and regenerates `vendor/`. CI uses Go 1.27.4 and Python 3.15.2 on Linux amd64.
 
 Release archives are static `linux/amd64` binaries built in a digest-pinned
 container and reproduced byte for byte by a second build. Each archive ships

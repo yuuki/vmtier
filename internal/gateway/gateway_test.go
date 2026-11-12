@@ -83,6 +83,35 @@ func TestMatcherSemantics(t *testing.T) {
 	}
 }
 
+// TestMatcherAssertionsFollowStockVM pins zero-width assertions to what stock
+// v1.155.0-cluster vmselect/vmstorage returned for `m{a=~EXPR}` over a="0",
+// "ab" and "x": VM evaluates them after splitting off the literal prefix, so
+// several results differ from a plain anchored Go regexp. Cold must answer as
+// Hot does.
+func TestMatcherAssertionsFollowStockVM(t *testing.T) {
+	values := []string{"0", "ab", "x"}
+	for _, tc := range []struct{ expr, want string }{
+		{`0^`, "100"},  // Go: 000
+		{`a^b`, "010"}, // Go: 000
+		{`x\b`, "000"}, // Go: 001
+		{`^0$`, "100"},
+		{`a\b`, "000"},
+		{`a\B`, "000"},
+		{`(?m)0$`, "100"},
+		{`0$x`, "000"},
+	} {
+		m, err := CompileMatcher([][]storage.TagFilter{{{Key: []byte("a"), Value: []byte(tc.expr), IsRegexp: true}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range values {
+			if got := m.MatchLabels(map[string]string{"__name__": "m", "a": v}); got != (tc.want[i] == '1') {
+				t.Errorf("a=~%q on %q: got %v, stock VM %v", tc.expr, v, got, !got)
+			}
+		}
+	}
+}
+
 func TestSearchMetadataAndTimeFiltering(t *testing.T) {
 	a := New(backendFunc(func(context.Context, *storage.SearchQuery) ([]storage.MetricBlock, error) {
 		return []storage.MetricBlock{

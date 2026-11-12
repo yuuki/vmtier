@@ -1,0 +1,577 @@
+[
+  {
+    "version": "v1.100.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.100.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "4839aa54d291cd1fa702c2918ec9aa698382ae042cb520175026d81d3946e7f7"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.100.0-cluster/lib/storage/dedup.go",
+        "sha256": "6aa738efe35561b62fac76bec966cb00eaa46ba4fb74b487f5c615f2229b3684"
+      },
+      "lib/storage/block.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.100.0-cluster/lib/storage/block.go",
+        "sha256": "18b0060eecc5b22eb5cab1658fc7dfbc67aec1a4e2d70a96d5a2b9a044343189"
+      }
+    },
+    "dedup_rule": "earlier_rule",
+    "native_header": "includes_max_timestamp_and_precision"
+  },
+  {
+    "version": "v1.110.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.110.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "764c97a37569c7b5e78cd12596a7607d86d4c85b5b357085f6cb6deb2df38ac7"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.110.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      }
+    },
+    "dedup_rule": "prefer_stale"
+  },
+  {
+    "version": "v1.120.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.120.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "059c3e01cf90e942412caadff28fe7b1385d408bd625ec847191eabcb9d5245c"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.120.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      }
+    },
+    "dedup_rule": "prefer_stale"
+  },
+  {
+    "version": "v1.128.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.128.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "55318ff27fbba0d1028095a880ac58f5c14019bdc03e74d7c544f914dc751da5"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.128.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      },
+      "lib/storage/block.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.128.0-cluster/lib/storage/block.go",
+        "sha256": "3f4be36a8cb3327826b0c3b11522961d481ac903970f18ab0c17e91bb2ae5846"
+      }
+    },
+    "dedup_rule": "prefer_stale",
+    "native_header": "includes_max_timestamp_and_precision"
+  },
+  {
+    "version": "v1.129.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.129.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "55318ff27fbba0d1028095a880ac58f5c14019bdc03e74d7c544f914dc751da5"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.129.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      }
+    },
+    "dedup_rule": "prefer_stale"
+  },
+  {
+    "version": "v1.130.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.130.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "a15c7bba08762fd1a3dc0bb737fb5f3683f2a2e16b9a4891971fffb1e3917cdd"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.130.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      }
+    },
+    "dedup_rule": "prefer_stale"
+  },
+  {
+    "version": "v1.131.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.131.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "823db64109da203ff382f9c89b13d464ffcc32f2f2f41ae8cfe7d5d2a2b47833"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.131.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      }
+    },
+    "dedup_rule": "prefer_stale"
+  },
+  {
+    "version": "v1.132.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.132.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "823db64109da203ff382f9c89b13d464ffcc32f2f2f41ae8cfe7d5d2a2b47833"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.132.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      }
+    },
+    "dedup_rule": "prefer_stale"
+  },
+  {
+    "version": "v1.133.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.133.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "823db64109da203ff382f9c89b13d464ffcc32f2f2f41ae8cfe7d5d2a2b47833"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.133.0-cluster/lib/storage/dedup.go",
+        "sha256": "9b62f47185bc3a71dccda88c9c040f8ce3253410d7acd1db1c9422ab2fecbcd4"
+      }
+    },
+    "dedup_rule": "prefer_stale"
+  },
+  {
+    "version": "v1.134.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.134.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "823db64109da203ff382f9c89b13d464ffcc32f2f2f41ae8cfe7d5d2a2b47833"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.134.0-cluster/lib/storage/dedup.go",
+        "sha256": "08a9e6a44edf41e6b3b8445fec54ee8e03250e32854ccd919cf89481e07dc58a"
+      }
+    },
+    "dedup_rule": "prefer_numeric"
+  },
+  {
+    "version": "v1.135.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.135.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "9acf8f311af3431baa04e0e0c56c0539d9c71e592317bdd1bf19ef36227441f5"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.135.0-cluster/lib/storage/dedup.go",
+        "sha256": "fefbe854e04930b1ae4144d429bed68340f76185a1e7b46cdc3d9f6759b2cb43"
+      }
+    },
+    "dedup_rule": "prefer_numeric"
+  },
+  {
+    "version": "v1.140.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.140.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "b6d4246f575c48b9b7f940fc09fddbbe8a7184006730d890dfcb7675abd6dab2"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.140.0-cluster/lib/storage/dedup.go",
+        "sha256": "fefbe854e04930b1ae4144d429bed68340f76185a1e7b46cdc3d9f6759b2cb43"
+      }
+    },
+    "dedup_rule": "prefer_numeric"
+  },
+  {
+    "version": "v1.145.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.145.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "4a1a707fa380170f3b1b0a0a8fd8f086241511b60b496b7855261ce0bdcbd438"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.145.0-cluster/lib/storage/dedup.go",
+        "sha256": "fefbe854e04930b1ae4144d429bed68340f76185a1e7b46cdc3d9f6759b2cb43"
+      }
+    },
+    "dedup_rule": "prefer_numeric"
+  },
+  {
+    "version": "v1.150.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.150.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "b8107858ad16233d49acf9948712427c14e94b2a37085b53fec4a49fbf334006"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.150.0-cluster/lib/storage/dedup.go",
+        "sha256": "fefbe854e04930b1ae4144d429bed68340f76185a1e7b46cdc3d9f6759b2cb43"
+      }
+    },
+    "dedup_rule": "prefer_numeric"
+  },
+  {
+    "version": "v1.154.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.154.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "d5a66bdaf2d48845e01c4538bfab79ea7e1edf628aa5d85b911c0f57bdf2091c"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.154.0-cluster/lib/storage/dedup.go",
+        "sha256": "fefbe854e04930b1ae4144d429bed68340f76185a1e7b46cdc3d9f6759b2cb43"
+      }
+    },
+    "dedup_rule": "prefer_numeric"
+  },
+  {
+    "version": "v1.155.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.155.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "d5a66bdaf2d48845e01c4538bfab79ea7e1edf628aa5d85b911c0f57bdf2091c"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.155.0-cluster/lib/storage/dedup.go",
+        "sha256": "fefbe854e04930b1ae4144d429bed68340f76185a1e7b46cdc3d9f6759b2cb43"
+      }
+    },
+    "dedup_rule": "prefer_numeric"
+  },
+  {
+    "version": "v1.50.0-cluster",
+    "rpc_names": [
+      "labelValues_v2",
+      "searchMetricNames_v1",
+      "search_v4"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.50.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "52634019e210c664cd54f54479808898e479022ab570554aa6d6b4ffd8f3ec81"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.50.0-cluster/lib/storage/dedup.go",
+        "sha256": "4d5c19416cb9988b3ae1e86f80bbd2f2385a8c2eacb6a366e99098e0f8d474d9"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  },
+  {
+    "version": "v1.60.0-cluster",
+    "rpc_names": [
+      "labelValues_v2",
+      "searchMetricNames_v1",
+      "search_v4"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.60.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "916c70f0fa7b84c79e4ade546a1fe9c94285ef59af106bdf70e5a26dd1f3a077"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.60.0-cluster/lib/storage/dedup.go",
+        "sha256": "4d5c19416cb9988b3ae1e86f80bbd2f2385a8c2eacb6a366e99098e0f8d474d9"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  },
+  {
+    "version": "v1.70.0-cluster",
+    "rpc_names": [
+      "labelValues_v2",
+      "searchMetricNames_v1",
+      "search_v4"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.70.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "9cb8d3e87e65f80a7cfaf4d4d3884e5561b38035eca4a3d4a1e35d982ff244ee"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.70.0-cluster/lib/storage/dedup.go",
+        "sha256": "0949de593e5f1fbb349b89cd67f465881a6aceb42ef0bf564e481eda905c9255"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  },
+  {
+    "version": "v1.75.0-cluster",
+    "rpc_names": [
+      "labelValues_v2",
+      "searchMetricNames_v1",
+      "search_v4"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.75.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "74fd5502e7fa681f78f78c7c75da9399c5abc04c4aed1d4c1124ef35445c50f3"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.75.0-cluster/lib/storage/dedup.go",
+        "sha256": "c9235d22dfcaf1780e5bd351ebf1f80e28684b8686dc87a7a0ec293c42222f3a"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  },
+  {
+    "version": "v1.77.0-cluster",
+    "rpc_names": [
+      "labelValues_v3",
+      "searchMetricNames_v2",
+      "search_v5"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.77.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "7142b506f3f9c588316c58513a7281b09b930774b3eae222407270deec9ded5e"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.77.0-cluster/lib/storage/dedup.go",
+        "sha256": "e73902424997a810f0d7252f59d7d252a24d6eb8d8d3e8781a45797098d1470c"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  },
+  {
+    "version": "v1.78.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v6"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.78.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "6229585fb9fe6b1282e516ccafb924098c381827bb75400510fd9fdec5d07c38"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.78.0-cluster/lib/storage/dedup.go",
+        "sha256": "e73902424997a810f0d7252f59d7d252a24d6eb8d8d3e8781a45797098d1470c"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  },
+  {
+    "version": "v1.78.1-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v6"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.78.1-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "6229585fb9fe6b1282e516ccafb924098c381827bb75400510fd9fdec5d07c38"
+      }
+    }
+  },
+  {
+    "version": "v1.79.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.79.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "d2072c35ed78bf2ea2ea8617164b9b8bf7d4189041e56c2e599b91dc2cc92c68"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.79.0-cluster/lib/storage/dedup.go",
+        "sha256": "e73902424997a810f0d7252f59d7d252a24d6eb8d8d3e8781a45797098d1470c"
+      },
+      "lib/storage/block.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.79.0-cluster/lib/storage/block.go",
+        "sha256": "7a9504a80acfdcd805535e3efac4ef7d79c0abff9715e1a5fa724c5750140b99"
+      }
+    },
+    "dedup_rule": "earlier_rule",
+    "native_header": "older_header"
+  },
+  {
+    "version": "v1.80.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.80.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "21d1bc5c8767c5f15e1cf5c8679ee5b78a5cf64e4979f8e29a7fd046c11ec71b"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.80.0-cluster/lib/storage/dedup.go",
+        "sha256": "e73902424997a810f0d7252f59d7d252a24d6eb8d8d3e8781a45797098d1470c"
+      },
+      "lib/storage/block.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.80.0-cluster/lib/storage/block.go",
+        "sha256": "7a9504a80acfdcd805535e3efac4ef7d79c0abff9715e1a5fa724c5750140b99"
+      }
+    },
+    "dedup_rule": "earlier_rule",
+    "native_header": "older_header"
+  },
+  {
+    "version": "v1.85.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.85.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "92183f02b3816855b7d29d02da5217d695797b372be43a0f6a5a5b120e5e21cd"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.85.0-cluster/lib/storage/dedup.go",
+        "sha256": "47b8a91362d51055cfbab1d7fe8e42b38be3f348e9b814a159f82a1c1cb13d86"
+      },
+      "lib/storage/block.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.85.0-cluster/lib/storage/block.go",
+        "sha256": "80c14e761957510cab1fa026f9072deba48918d2648356cac58ca49a33e8326e"
+      }
+    },
+    "dedup_rule": "earlier_rule",
+    "native_header": "includes_max_timestamp_and_precision"
+  },
+  {
+    "version": "v1.90.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.90.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "ae6ff5ff713d04dd323e0acc96080b57c624ee1fe7eb197d77cf2b7928ea8299"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.90.0-cluster/lib/storage/dedup.go",
+        "sha256": "6ec3c5037faaf006c01aebb86bc7a2f54b8170883c082bbc3ba213da7c3e6de8"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  },
+  {
+    "version": "v1.95.0-cluster",
+    "rpc_names": [
+      "labelNames_v5",
+      "labelValues_v5",
+      "searchMetricNames_v3",
+      "search_v7"
+    ],
+    "sources": {
+      "app/vmselect/netstorage/netstorage.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.95.0-cluster/app/vmselect/netstorage/netstorage.go",
+        "sha256": "c3a006b49563d4cfa798185ed253174994b53321426853f5817a222153952582"
+      },
+      "lib/storage/dedup.go": {
+        "url": "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/v1.95.0-cluster/lib/storage/dedup.go",
+        "sha256": "6ec3c5037faaf006c01aebb86bc7a2f54b8170883c082bbc3ba213da7c3e6de8"
+      }
+    },
+    "dedup_rule": "earlier_rule"
+  }
+]

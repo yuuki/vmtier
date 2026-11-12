@@ -1,0 +1,8 @@
+{"time":"2026-11-10T15:01:33.909974394Z","level":"INFO","msg":"gateway started","vm":"v1.155.0-cluster","rpc":"127.0.0.1:33335","http":"127.0.0.1:57733"}
+2026-11-10T15:01:33.910Z	info	VictoriaMetrics/lib/vmselectapi/server.go:146	accepting vmselect conns at 127.0.0.1:33335
+2026-11-10T15:01:34.335Z	error	VictoriaMetrics/lib/vmselectapi/server.go:210	cannot process vmselect conn 127.0.0.1:48162: cannot process vmselect request: cannot execute "search_v6": unsupported rpcName: "search_v6"
+2026-11-10T15:01:34.340Z	error	VictoriaMetrics/lib/vmselectapi/server.go:210	cannot process vmselect conn 127.0.0.1:48170: cannot process vmselect request: cannot execute "search_v6": unsupported rpcName: "search_v6"
+2026-11-10T15:01:34.344Z	error	VictoriaMetrics/lib/vmselectapi/server.go:210	cannot process vmselect conn 127.0.0.1:48184: cannot process vmselect request: cannot execute "search_v6": unsupported rpcName: "search_v6"
+2026-11-10T15:01:34.344Z	error	VictoriaMetrics/lib/vmselectapi/server.go:210	cannot process vmselect conn 127.0.0.1:48196: cannot process vmselect request: cannot execute "search_v6": unsupported rpcName: "search_v6"
+2026-11-10T15:01:34.346Z	error	VictoriaMetrics/lib/vmselectapi/server.go:210	cannot process vmselect conn 127.0.0.1:48200: cannot process vmselect request: cannot execute "search_v6": unsupported rpcName: "search_v6"
+2026-11-10T15:01:34.348Z	error	VictoriaMetrics/lib/vmselectapi/server.go:210	cannot process vmselect conn 127.0.0.1:48202: cannot process vmselect request: cannot execute "search_v6": unsupported rpcName: "search_v6"

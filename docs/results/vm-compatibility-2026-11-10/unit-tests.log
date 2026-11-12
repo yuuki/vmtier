@@ -1,0 +1,4 @@
+ok  	github.com/yuuki/vmtier/internal/pack	0.041s
+ok  	github.com/yuuki/vmtier/internal/archive	9.286s
+ok  	github.com/yuuki/vmtier/internal/gateway	0.052s
+ok  	github.com/yuuki/vmtier/internal/catalog	0.900s

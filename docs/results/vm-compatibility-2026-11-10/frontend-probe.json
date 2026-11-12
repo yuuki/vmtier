@@ -1,0 +1,195 @@
+{
+  "scope": "Cold frontend RPC only; current packs, no historical native export",
+  "candidates": [
+    {
+      "binary": "/workspace/vmtier/.bin/vmselect",
+      "sha256": "1e2a7da599dddb55c0bf31ea7fcd1212495930d498400a43e3af4d3580da0746",
+      "version": "2026/11/10 15:01:34 INFO: metrics: disable exposing PSI metrics because of failed init: open /sys/fs/cgroup/cpu.pressure: no such file or directory\nv1.155.0-cluster-vmtier-e2e-cab3d5fbeeedd5d0374c1dabde93939af4c2499c",
+      "checks": [
+        {
+          "api": "query",
+          "status": "passed"
+        },
+        {
+          "api": "query_range",
+          "status": "passed"
+        },
+        {
+          "api": "series",
+          "status": "passed"
+        },
+        {
+          "api": "labels",
+          "status": "passed"
+        },
+        {
+          "api": "label/__name__/values",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "binary": "/workspace/scratch/vm-compat/v1.78.1/vmselect",
+      "sha256": "2da5b75704c986ff74d1ce4619db88668ca1430a11d6c58d2634c83bff4c91fb",
+      "version": "vmselect-20220707-232251-tags-v1.78.1-cluster-0-gd27a375d3",
+      "checks": [
+        {
+          "api": "query",
+          "status": "failed",
+          "http_status": 422,
+          "body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error when executing query=\\\"cold_only\\\" for (time=1794307800000, step=300000): cannot evaluate \\\"cold_only\\\": error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:33335: cannot execute funcName=\\\"search_v6\\\" on vmstorage \\\"127.0.0.1:33335\\\": cannot read error message: cannot read 8 bytes with data size: EOF; read only 0 bytes\"}"
+        },
+        {
+          "api": "query_range",
+          "status": "failed",
+          "http_status": 422,
+          "body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error when executing query=\\\"cold_only\\\" on the time range (start=1794298200000, end=1794307800000, step=60000): cannot execute query: cannot evaluate \\\"cold_only\\\": error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:33335: cannot execute funcName=\\\"search_v6\\\" on vmstorage \\\"127.0.0.1:33335\\\": cannot read error message: cannot read 8 bytes with data size: EOF; read only 0 bytes\"}"
+        },
+        {
+          "api": "series",
+          "status": "failed",
+          "http_status": 422,
+          "body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"cannot fetch data for \\\"accountID=1, projectID=2, filters=[{__name__=\\\\\\\"cold_only\\\\\\\"}], timeRange=[1794298200000..1794307800000]\\\": error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:33335: cannot execute funcName=\\\"search_v6\\\" on vmstorage \\\"127.0.0.1:33335\\\": cannot read error message: cannot read 8 bytes with data size: EOF; read only 0 bytes\"}"
+        },
+        {
+          "api": "labels",
+          "status": "passed"
+        },
+        {
+          "api": "label/__name__/values",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "binary": "/workspace/scratch/vm-compat/v1.79.0/vmselect",
+      "sha256": "b074d176c01ec3dfaf776501b33926cd9595978229c9002f20aab8ae248cc2a6",
+      "version": "vmselect-20220714-171308-tags-v1.79.0-cluster-0-ga87f143e9",
+      "checks": [
+        {
+          "api": "query",
+          "status": "passed"
+        },
+        {
+          "api": "query_range",
+          "status": "passed"
+        },
+        {
+          "api": "series",
+          "status": "passed"
+        },
+        {
+          "api": "labels",
+          "status": "passed"
+        },
+        {
+          "api": "label/__name__/values",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "selected_GOMAXPROCS": "2",
+    "selection": "argument",
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "name": "catalog",
+        "kind": "managed",
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "catalog",
+          "-path",
+          "/workspace/scratch/vm-compat/run-134-ready/catalog-authority",
+          "-id",
+          "vmtier-e2e-authority",
+          "-http",
+          "127.0.0.1:42295"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 9908,
+        "exit_code": 0
+      },
+      {
+        "name": "gateway",
+        "kind": "managed",
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "gateway",
+          "-config",
+          "/workspace/scratch/vm-compat/frontend-probe/config.json",
+          "-listen",
+          "127.0.0.1:33335",
+          "-http",
+          "127.0.0.1:57733"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 9915,
+        "exit_code": 0
+      },
+      {
+        "name": "frontend-0",
+        "kind": "managed",
+        "command": [
+          "/workspace/vmtier/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:60323",
+          "-storageNode=127.0.0.1:33335",
+          "-replicationFactor=1",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 9929,
+        "exit_code": 0
+      },
+      {
+        "name": "frontend-1",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/v1.78.1/vmselect",
+          "-httpListenAddr=127.0.0.1:55223",
+          "-storageNode=127.0.0.1:33335",
+          "-replicationFactor=1",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 9944,
+        "exit_code": 0
+      },
+      {
+        "name": "frontend-2",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/v1.79.0/vmselect",
+          "-httpListenAddr=127.0.0.1:37575",
+          "-storageNode=127.0.0.1:33335",
+          "-replicationFactor=1",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 9959,
+        "exit_code": 0
+      }
+    ]
+  }
+}

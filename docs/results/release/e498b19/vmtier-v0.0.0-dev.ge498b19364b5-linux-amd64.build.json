@@ -1,0 +1,533 @@
+{
+  "binary": {
+    "linking": "static",
+    "path": "vmtier",
+    "sha256": "6f15664c3c37d26b7cbec632890e0b504fc3876205fabe3347e40ab860d6a893",
+    "size": 14520472
+  },
+  "build": {
+    "command": "go build -mod=vendor -trimpath -buildvcs=false -tags netgo,osusergo,musl -ldflags \"-s -w -X main.version=v0.0.0-dev.ge498b19364b5 -X main.commit=e498b19364b5e115ce57990004e98a55bff35dc9 -linkmode=external -extldflags=-static\" -o vmtier ./cmd/vmtier",
+    "ldflags": "-s -w -X main.version=v0.0.0-dev.ge498b19364b5 -X main.commit=e498b19364b5e115ce57990004e98a55bff35dc9 -linkmode=external -extldflags=-static",
+    "settings": {
+      "-buildmode": "exe",
+      "-compiler": "gc",
+      "-tags": "netgo,osusergo,musl",
+      "-trimpath": "true",
+      "CGO_ENABLED": "1",
+      "GOAMD64": "v1",
+      "GOARCH": "amd64",
+      "GOOS": "linux"
+    },
+    "tags": [
+      "netgo",
+      "osusergo",
+      "musl"
+    ]
+  },
+  "builder": {
+    "alpine_release": "3.24.4",
+    "base_image": "docker.io/library/golang:1.27.3-alpine3.24@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18",
+    "cc": "gcc (Alpine 15.2.0) 15.2.0",
+    "dockerfile": "release/Dockerfile",
+    "dockerfile_sha256": "c4b8736e9297e8adf2f0ca600a766274f1586acf414c478c64e8dfab432eec09",
+    "ld": "GNU ld (GNU Binutils) 2.45.1",
+    "packages": [
+      "gcc-15.2.0-r5",
+      "libgcc-15.2.0-r5",
+      "musl-1.2.6-r3",
+      "musl-dev-1.2.6-r3",
+      "binutils-2.45.1-r1"
+    ],
+    "script": "release/build.sh",
+    "script_sha256": "f2cf8286407b7a1883744a59171b2af45f2f6bd6864a50b956dfbf0f83826f54"
+  },
+  "commit": "e498b19364b5e115ce57990004e98a55bff35dc9",
+  "embedded": {
+    "sqlite": {
+      "cpe": "cpe:2.3:a:sqlite:sqlite:3.54.1:*:*:*:*:*:*:*",
+      "license": "blessing",
+      "module": "github.com/mattn/go-sqlite3",
+      "purl": "pkg:generic/sqlite@3.54.1",
+      "version": "3.54.1"
+    },
+    "zstd": {
+      "cpe": "cpe:2.3:a:facebook:zstandard:1.5.7:*:*:*:*:*:*:*",
+      "license": "(BSD-3-Clause OR GPL-2.0-only) AND MIT",
+      "module": "github.com/valyala/gozstd",
+      "purl": "pkg:github/facebook/zstd@v1.5.7",
+      "version": "1.5.7"
+    }
+  },
+  "go": {
+    "CC": "gcc",
+    "CGO_CFLAGS": "-O2 -g",
+    "CGO_ENABLED": "1",
+    "CGO_LDFLAGS": "-O2 -g",
+    "GOAMD64": "v1",
+    "GOARCH": "amd64",
+    "GOFLAGS": "-modcacherw",
+    "GOOS": "linux",
+    "GOPROXY": "https://proxy.golang.org,direct",
+    "GOSUMDB": "sum.golang.org",
+    "GOTOOLCHAIN": "local",
+    "GOVERSION": "go1.27.3"
+  },
+  "modules": [
+    {
+      "direct": true,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/VictoriaMetrics/VictoriaMetrics/LICENSE"
+      ],
+      "notices_sha256": "5df108834fd84937c71ed7a5407ca61ff73fb3de83708ee8986b69703502d94e",
+      "path": "github.com/VictoriaMetrics/VictoriaMetrics",
+      "requires": [
+        "github.com/VictoriaMetrics/easyproto",
+        "github.com/VictoriaMetrics/fastcache",
+        "github.com/VictoriaMetrics/metrics",
+        "github.com/VictoriaMetrics/metricsql",
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
+        "github.com/aws/aws-sdk-go-v2/credentials",
+        "github.com/aws/aws-sdk-go-v2/internal/configsources",
+        "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+        "github.com/aws/aws-sdk-go-v2/internal/v4a",
+        "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding",
+        "github.com/aws/aws-sdk-go-v2/service/internal/checksum",
+        "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+        "github.com/aws/aws-sdk-go-v2/service/internal/s3shared",
+        "github.com/aws/aws-sdk-go-v2/service/s3",
+        "github.com/aws/smithy-go",
+        "github.com/cespare/xxhash/v2",
+        "github.com/golang/snappy",
+        "github.com/klauspost/compress",
+        "github.com/valyala/bytebufferpool",
+        "github.com/valyala/fastrand",
+        "github.com/valyala/gozstd",
+        "github.com/valyala/histogram",
+        "github.com/valyala/quicktemplate",
+        "golang.org/x/sys"
+      ],
+      "sum": "h1:sPlpHZEdUMBGcCWiWjRJlYyCiDZac4UkwuBKJyzLgFw=",
+      "version": "v1.155.0-cluster"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/VictoriaMetrics/easyproto/LICENSE"
+      ],
+      "notices_sha256": "485898f3f6fc12bced06db6709db639eae3ef29fbe97193a152bb8ed3f89e8f2",
+      "path": "github.com/VictoriaMetrics/easyproto",
+      "requires": [],
+      "sum": "h1:FJT9uNXA2isppFuJErbLqD306KoFlehl7Wn2dg/6oIE=",
+      "version": "v1.2.0"
+    },
+    {
+      "direct": false,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/VictoriaMetrics/fastcache/LICENSE"
+      ],
+      "notices_sha256": "c2f8e2ceabdffc3af44d0e7671275e2f95c1983df699e2fd77cd24c6f43ddfa1",
+      "path": "github.com/VictoriaMetrics/fastcache",
+      "requires": [
+        "github.com/cespare/xxhash/v2",
+        "github.com/golang/snappy",
+        "golang.org/x/sys"
+      ],
+      "sum": "h1:rBabE0iIxcqKEMCwUmwHZ9dgEqXerg8FRbRDUvC7OVc=",
+      "version": "v1.13.3"
+    },
+    {
+      "direct": false,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/VictoriaMetrics/metrics/LICENSE"
+      ],
+      "notices_sha256": "f522a7c459f2b43efc7af95ad840ce5a15df27598f64f8bb716c0d00eb8afbf8",
+      "path": "github.com/VictoriaMetrics/metrics",
+      "requires": [
+        "github.com/valyala/fastrand",
+        "github.com/valyala/histogram",
+        "golang.org/x/sys"
+      ],
+      "sum": "h1:Tv8dZRAjkO90rBTxYrWOHUWFBHsAKdKcZYmS/Wbo2EU=",
+      "version": "v1.45.0"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/VictoriaMetrics/metricsql/LICENSE"
+      ],
+      "notices_sha256": "23d8070d80973db107879ff559f827ed6f093335a20660b4de6293490e8d6a69",
+      "path": "github.com/VictoriaMetrics/metricsql",
+      "requires": [
+        "github.com/VictoriaMetrics/metrics",
+        "github.com/valyala/fastrand",
+        "github.com/valyala/histogram",
+        "golang.org/x/sys"
+      ],
+      "sum": "h1:ntNG1DIPuodX4K/PA/fHHOW3ZyfIQBi/vjTldKxjpW8=",
+      "version": "v0.87.6"
+    },
+    {
+      "direct": true,
+      "license": "Apache-2.0 AND BSD-3-Clause",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/LICENSE.txt",
+        "licenses/github.com/aws/aws-sdk-go-v2/NOTICE.txt",
+        "licenses/github.com/aws/aws-sdk-go-v2/internal/sync/singleflight/LICENSE"
+      ],
+      "notices_sha256": "8768678c7f57b48c8453be37989baf22581c32307ca72e8e870445327982d058",
+      "path": "github.com/aws/aws-sdk-go-v2",
+      "requires": [
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:jBmtzRtGWVAzbfc4RBWo1dTte0ZZH8p9U42YJIw2+Bw=",
+      "version": "v1.47.7"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
+      "requires": [
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:SJNA4XaM8Z09adeTHf/vME93jzl44lJV70pSawIBXac=",
+      "version": "v1.7.26"
+    },
+    {
+      "direct": true,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/credentials/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/credentials",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/aws-sdk-go-v2/internal/configsources",
+        "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+        "github.com/aws/aws-sdk-go-v2/internal/v4a",
+        "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding",
+        "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:LUFG3364w8wKBhGxGQ2XUxCCs+yOUrSg0dWUtBJskp8=",
+      "version": "v1.20.15"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/internal/configsources/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/internal/configsources",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:DKtPO+uoekvZX1tIFGVlWypYGSYkHPb7rliUI1wZtEw=",
+      "version": "v1.5.10"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/internal/endpoints/v2/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:r8p95YELmfmuV9VvAaFcLesVBZduCCCccxpzQKkNThw=",
+      "version": "v2.8.10"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/internal/v4a/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/internal/v4a",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:iytL6kFchhbCWWEfLzMGq1+yRecF7+BOXnp70J9zNRM=",
+      "version": "v1.5.10"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding",
+      "requires": [
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:jGzHjc2jDx08Rji1JTBtMxuXUDG7muTEw+ExYXqFzPg=",
+      "version": "v1.13.24"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/service/internal/checksum/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/service/internal/checksum",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:+YhA5h9QMjVsOHfkfY/iVU7FfbT25LcGttfVzzed6v8=",
+      "version": "v1.11.11"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/service/internal/presigned-url/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:3nCD0vZOTTMypcaEEJW0rAWqEgUXVzfmNn3dDI1IQ7I=",
+      "version": "v1.14.10"
+    },
+    {
+      "direct": false,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/service/internal/s3shared/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/service/internal/s3shared",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:bCz6PRKhO7ErM3F0XqLl8pbQq+r0Fra6R8PpfPnjgbo=",
+      "version": "v1.20.10"
+    },
+    {
+      "direct": true,
+      "license": "Apache-2.0",
+      "notices": [
+        "licenses/github.com/aws/aws-sdk-go-v2/service/s3/LICENSE.txt"
+      ],
+      "notices_sha256": "3a6a028fa38d601e98ce56042c85a9bb96d6893e78cabf510dc2a090264f2a25",
+      "path": "github.com/aws/aws-sdk-go-v2/service/s3",
+      "requires": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
+        "github.com/aws/aws-sdk-go-v2/internal/configsources",
+        "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2",
+        "github.com/aws/aws-sdk-go-v2/internal/v4a",
+        "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding",
+        "github.com/aws/aws-sdk-go-v2/service/internal/checksum",
+        "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url",
+        "github.com/aws/aws-sdk-go-v2/service/internal/s3shared",
+        "github.com/aws/smithy-go"
+      ],
+      "sum": "h1:0g/xXBWQEyR6Mcxo1ukBYqzeRX0bQ/ZdXrtKkIo+yT0=",
+      "version": "v1.114.8"
+    },
+    {
+      "direct": true,
+      "license": "Apache-2.0 AND BSD-3-Clause",
+      "notices": [
+        "licenses/github.com/aws/smithy-go/LICENSE",
+        "licenses/github.com/aws/smithy-go/NOTICE",
+        "licenses/github.com/aws/smithy-go/internal/sync/singleflight/LICENSE",
+        "licenses/github.com/aws/smithy-go/transport/http/protocol/internal/json/internal/stdlib/LICENSE"
+      ],
+      "notices_sha256": "a4171d1c1e12fe5807613890d4a549e287bfa3d94f5a8e12f46a73f328f4d9ef",
+      "path": "github.com/aws/smithy-go",
+      "requires": [],
+      "sum": "h1:aEmdAq7gVCoGCnvf1NnELlu3I6D/nhqrC321FyFiQkQ=",
+      "version": "v1.28.8"
+    },
+    {
+      "direct": false,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/cespare/xxhash/v2/LICENSE.txt"
+      ],
+      "notices_sha256": "1983783e6f4a42c0fbdf48c90eee5d63a9b9a1496144ec43cf9a76db3ccd8385",
+      "path": "github.com/cespare/xxhash/v2",
+      "requires": [],
+      "sum": "h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=",
+      "version": "v2.3.0"
+    },
+    {
+      "direct": false,
+      "license": "BSD-3-Clause",
+      "notices": [
+        "licenses/github.com/golang/snappy/LICENSE"
+      ],
+      "notices_sha256": "4e8772b64cfd0ac9bf7680b7552e74ccc14a479278c1277bfcf601f182c8af99",
+      "path": "github.com/golang/snappy",
+      "requires": [],
+      "sum": "h1:Oy607GVXHs7RtbggtPBnr2RmDArIsAefDwvrdWvRhGs=",
+      "version": "v1.0.0"
+    },
+    {
+      "direct": true,
+      "license": "BSD-3-Clause AND Apache-2.0 AND MIT",
+      "notices": [
+        "licenses/github.com/klauspost/compress/LICENSE",
+        "licenses/github.com/klauspost/compress/gzhttp/LICENSE",
+        "licenses/github.com/klauspost/compress/internal/lz4ref/LICENSE",
+        "licenses/github.com/klauspost/compress/internal/snapref/LICENSE",
+        "licenses/github.com/klauspost/compress/s2/LICENSE",
+        "licenses/github.com/klauspost/compress/s2/cmd/internal/filepathx/LICENSE",
+        "licenses/github.com/klauspost/compress/s2/cmd/internal/readahead/LICENSE",
+        "licenses/github.com/klauspost/compress/snappy/LICENSE",
+        "licenses/github.com/klauspost/compress/snappy/xerial/LICENSE",
+        "licenses/github.com/klauspost/compress/zstd/internal/xxhash/LICENSE.txt"
+      ],
+      "notices_sha256": "a2d7d1dc9c6bd2b97a9443783cba96615b7fbd4a02e6f9a515c1613f9886284f",
+      "path": "github.com/klauspost/compress",
+      "requires": [],
+      "sum": "h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTfY5j4=",
+      "version": "v1.20.3"
+    },
+    {
+      "direct": true,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/lib/pq/LICENSE.md"
+      ],
+      "notices_sha256": "c572a3b1c3a3331832f04a173dd5dfb7bdafd60811c31b5a46bcb25501ff0e7b",
+      "path": "github.com/lib/pq",
+      "requires": [],
+      "sum": "h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=",
+      "version": "v1.10.9"
+    },
+    {
+      "direct": true,
+      "license": "MIT AND blessing",
+      "notices": [
+        "licenses/github.com/mattn/go-sqlite3/LICENSE"
+      ],
+      "notices_sha256": "6e8f92304ca6eab55c014eac923cd59c9459ae935bf3602a70a26a4b68cec39f",
+      "path": "github.com/mattn/go-sqlite3",
+      "requires": [],
+      "sum": "h1:mnTM0owzUMrKuLo+0w51NUiB0ir2Fo7kFXlPt/l3BGs=",
+      "version": "v1.14.53"
+    },
+    {
+      "direct": false,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/valyala/bytebufferpool/LICENSE"
+      ],
+      "notices_sha256": "b0e840da82fa2b3848eb186a53a7b272dc4d441af12c0983a816fe9e506131e3",
+      "path": "github.com/valyala/bytebufferpool",
+      "requires": [],
+      "sum": "h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=",
+      "version": "v1.0.0"
+    },
+    {
+      "direct": false,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/valyala/fastrand/LICENSE"
+      ],
+      "notices_sha256": "d4c3e41321c442942be51c511001b155e2cbeaa4260d8afcdfd03f4b7adbec4f",
+      "path": "github.com/valyala/fastrand",
+      "requires": [],
+      "sum": "h1:f+5HkLW4rsgzdNoleUOB69hyT9IlD2ZQh9GyDMfb5G8=",
+      "version": "v1.1.0"
+    },
+    {
+      "direct": false,
+      "license": "MIT AND (BSD-3-Clause OR GPL-2.0-only)",
+      "notices": [
+        "licenses/github.com/valyala/gozstd/LICENSE",
+        "licenses/github.com/valyala/gozstd/zstd/COPYING",
+        "licenses/github.com/valyala/gozstd/zstd/LICENSE",
+        "licenses/github.com/valyala/gozstd/zstd/build/LICENSE",
+        "licenses/github.com/valyala/gozstd/gozstd-v1.27.0-zstd-NOTICE"
+      ],
+      "notices_sha256": "4a9aaa887ca7f29212825881229cb3f0a881741de0b02612fa2f41ba59bdee68",
+      "path": "github.com/valyala/gozstd",
+      "requires": [],
+      "sum": "h1:p2TKFyJWNf8wWgk2DetUpGVv8SyfEalP6wDLIG4Cf+w=",
+      "version": "v1.27.0"
+    },
+    {
+      "direct": false,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/valyala/histogram/LICENSE"
+      ],
+      "notices_sha256": "1613753d77e61265755e94dbf2e3335dd8ed74eeba318869f8f81f2e88d10d1b",
+      "path": "github.com/valyala/histogram",
+      "requires": [
+        "github.com/valyala/fastrand"
+      ],
+      "sum": "h1:wyYGAZZt3CpwUiIb9AU/Zbllg1llXyrtApRS815OLoQ=",
+      "version": "v1.2.0"
+    },
+    {
+      "direct": false,
+      "license": "MIT",
+      "notices": [
+        "licenses/github.com/valyala/quicktemplate/LICENSE",
+        "licenses/github.com/valyala/quicktemplate/qtc/LICENSE"
+      ],
+      "notices_sha256": "5dde477e2cdbaeaecf2d99ccc55120aade4324c56ffbcff9727e9d5a224b92b4",
+      "path": "github.com/valyala/quicktemplate",
+      "requires": [
+        "github.com/klauspost/compress",
+        "github.com/valyala/bytebufferpool"
+      ],
+      "sum": "h1:zU0tjbIqTRgKQzFY1L42zq0qR3eh4WoQQdIdqCysW5k=",
+      "version": "v1.8.0"
+    },
+    {
+      "direct": true,
+      "license": "BSD-3-Clause",
+      "notices": [
+        "licenses/golang.org/x/sys/LICENSE",
+        "licenses/golang.org/x/sys/PATENTS"
+      ],
+      "notices_sha256": "2281e21a4229aa20e9ecb05d5350a71a65fe6ab079f992a56b3d769712ef3f66",
+      "path": "golang.org/x/sys",
+      "requires": [],
+      "sum": "h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=",
+      "version": "v0.49.0"
+    }
+  ],
+  "notices": [
+    "licenses/go/LICENSE",
+    "licenses/go/PATENTS",
+    "licenses/go/runtime-memmove_amd64.s-NOTICE",
+    "licenses/musl/COPYRIGHT"
+  ],
+  "platform": "linux/amd64",
+  "repository": "https://github.com/yuuki/vmtier",
+  "reproducibility": "Identical bytes require the same commit, release/Dockerfile base digest, the Alpine package versions listed under builder.packages, and the module versions in go.sum. Alpine mirrors keep only current package releases, so a later rebuild can need the recorded packages from an archive. Archive bytes also depend on the zlib used by the packaging Python; compare binary.sha256 when rebuilding elsewhere.",
+  "schema": "vmtier-build/v1",
+  "source_date_epoch": 1794051014,
+  "version": "v0.0.0-dev.ge498b19364b5"
+}

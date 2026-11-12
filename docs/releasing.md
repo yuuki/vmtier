@@ -8,10 +8,12 @@ release workflow saves a **draft**; publishing it is a separate maintainer actio
 [ADR 0005](adr/0005-release-artifacts.md) records why the pipeline is shaped
 this way.
 
-No release has been published, and the release workflow has not yet run on
-GitHub. This page describes the tooling and the procedure; reproducibility has
-so far been checked only locally, with a builder image equivalent to
-`release/Dockerfile`. Each release's notes must state the support scope below.
+No release has been published. The CI `release-check` job has reproduced the
+archive on GitHub-hosted runners, a rebuild outside GitHub matched it byte for
+byte, and a tagless run of the release workflow passed every gate except
+`publish`; [release validation](release-validation.md) records the runs and
+checksums. Each
+release's notes must state the support scope below.
 
 ## Support scope
 
@@ -20,7 +22,7 @@ so far been checked only locally, with a builder image equivalent to
 | Platform | Linux on x86-64 (`GOAMD64=v1`), statically linked against musl; no glibc version requirement |
 | VictoriaMetrics | OSS `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c` only ([compatibility](compatibility.md)) |
 | Runtime | `vmtier serve` with one SQLite owner, or with a PostgreSQL catalog, multiple Cold read gateways, and one leased archiver ([limits](limits.md), [HA deployment](ha-deployment.md)) |
-| Evidence | Local differential, recovery, workload, catalog, and PostgreSQL HA reports in the [evidence index](evidence.md), plus the release run's `release-e2e-evidence` artifact |
+| Evidence | Local differential, recovery, workload, catalog, and PostgreSQL HA reports in the [evidence index](evidence.md), hosted CI and reproducibility runs in [release validation](release-validation.md), plus the release run's `release-e2e-evidence` artifact |
 
 The following remain unqualified: real Sakura Object Storage (#15), natural Hot
 retention expiry (#16), and enforced ingress lateness (#17). HA, GC, Cold TTL,
@@ -33,7 +35,7 @@ pre-releases (`v0.1.0-rc.1`) and do not describe them as production-supported.
 
 | Asset | Contents |
 | --- | --- |
-| `vmtier-VERSION-linux-amd64.tar.gz` | `vmtier`, `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `examples/serve-sakura.json` and `examples/serve-postgres.json`, `BUILD.json`, `sbom.cdx.json`, `go-version-m.txt`, and `licenses/` |
+| `vmtier-VERSION-linux-amd64.tar.gz` | `vmtier`, `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `examples/serve-sakura.json`, `examples/serve-postgres.json`, `examples/systemd/vmtier.service` and `examples/systemd/vmtier.env`, `BUILD.json`, `sbom.cdx.json`, `go-version-m.txt`, and `licenses/` |
 | `vmtier-VERSION-linux-amd64.build.json` | Build record: commit, `SOURCE_DATE_EPOCH`, builder digest, Alpine package versions, Go environment, exact build command, binary SHA-256, every linked module with its `go.sum` hash, SPDX license expression, notice files, and requirements, and the C libraries compiled into modules |
 | `vmtier-VERSION-linux-amd64.cdx.json` | CycloneDX 1.6 SBOM of the binary: linked Go modules with their requirement graph, SQLite and zstd (with CPEs), the Go standard library, musl, and libgcc |
 | `SHA256SUMS` | SHA-256 of the three files above |
@@ -59,8 +61,8 @@ detect; header notices in a new C dependency still need manual review.
 | Input | Pin |
 | --- | --- |
 | Source | `git archive` of the tagged commit; every exported file must match its committed blob, so local git attributes or filters cannot alter it, and the build refuses uncommitted tracked changes |
-| Builder | [`release/Dockerfile`](../release/Dockerfile): `golang:1.27.3-alpine3.24` pinned by digest, with `gcc` and `musl-dev` from Alpine |
-| Go | 1.27.3, `GOTOOLCHAIN=local`; [`release/build.sh`](../release/build.sh) fails unless it equals the `go` directive in `go.mod` |
+| Builder | [`release/Dockerfile`](../release/Dockerfile): `golang:1.27.4-alpine3.24` pinned by digest, with `gcc` and `musl-dev` from Alpine |
+| Go | 1.27.4, `GOTOOLCHAIN=local`; [`release/build.sh`](../release/build.sh) fails unless it equals the `go` directive in `go.mod` |
 | Modules | `go.mod`/`go.sum`, fetched from the module proxy, rejected unless they match the committed `go.sum` hashes, re-hashed by `go mod verify`, then vendored |
 | C toolchain | GCC, binutils, and musl versions are recorded in the build record; the builder refuses a musl version without a matching notice |
 | Flags | `CGO_ENABLED=1`, tags `netgo,osusergo,musl`, `-trimpath -buildvcs=false`, `-ldflags "-s -w -X main.version=… -X main.commit=… -linkmode=external -extldflags=-static"` |
@@ -87,6 +89,9 @@ tar -xzf vmtier-VERSION-linux-amd64.tar.gz
 vmtier-VERSION-linux-amd64/vmtier version
 ```
 
+To run the verified binary as a service, follow
+[install a release archive](getting-started.md#install-a-release-archive).
+
 Pin the signer workflow and tag: `--repo` alone accepts an attestation made by
 any workflow in the repository on any ref. A passing check shows that
 `release.yml` at that tag signed these bytes. It does not show that the tag was
@@ -110,7 +115,9 @@ python3 scripts/release.py compare /path/to/downloaded /tmp/vmtier-rebuild
 - Archive bytes also depend on the zlib that the packaging Python uses. If only
   the `.tar.gz` checksum differs, compare `binary.sha256` in the build records.
 - Builds need network access to the Go module proxy and Alpine mirrors. Modules
-  are not mirrored by this project.
+  are not mirrored by this project. Behind a TLS-intercepting proxy, the builder
+  needs the proxy's CA; [release validation](release-validation.md#independent-rebuild-in-another-environment)
+  shows an equivalent builder image that still reproduced the hosted bytes.
 
 ## Maintainer procedure
 
@@ -147,6 +154,27 @@ python3 scripts/release.py compare /path/to/downloaded /tmp/vmtier-rebuild
 
 `workflow_dispatch` runs the same build, reproducibility, and qualification gates
 on any ref without attesting or creating a release.
+
+### First release
+
+`v0.1.0-rc.1` was the first tag. Its run stopped at `qualify` because
+govulncheck reported GO-2026-6859 in the Go 1.27.3 standard library, so nothing
+was signed or released ([release validation](release-validation.md#tag-v010-rc1)).
+The next candidate is `v0.1.0-rc.2`, built with Go 1.27.4; do not reuse the
+`rc.1` name. Until #15, #16, and #17 close with recorded evidence, use only
+tags with a hyphen: the workflow then creates a GitHub pre-release, and its
+notes say that it is not production-supported. The remaining steps:
+
+1. Apply the [repository settings](#repository-settings) below; the tag push
+   is the first run that can sign or create a release.
+2. Merge the release preparation to `main` and wait for its `test`, `security`,
+   and `PostgreSQL fault qualification` runs to pass. A `workflow_dispatch`
+   run of `release.yml` on that commit rehearses every gate except `publish`.
+3. Tag that commit and push the tag as in step 4 above.
+4. Approve the `publish` job, review the draft as in step 6, and publish it.
+5. Add the tag's run, `SHA256SUMS`, and attestation links to
+   [release validation](release-validation.md), and verify the published assets
+   from a clean directory with the commands above.
 
 ### Repository settings
 

@@ -1,0 +1,185 @@
+{
+  "fixture": "Two vmstorage nodes: same metric and timestamps; values 1,2 on node 0, stale markers on node 1. Dedup 1ms everywhere.",
+  "binary_sha256": {
+    "vmstorage": "d32fe680f3e6bee19af46f4b4a1bff18783d98c84637ced0128018de96f32144",
+    "vminsert": "8b508a459ff0c0294b58575484f630921286b1ed58d1d0725b7b290332757412",
+    "vmselect": "6c34efdcc5e19f16c933d9222477d17f661eb613db100f35551cde366e6caabc",
+    "vmtier": "29de384815e35ac17fe970422e6c139c249cb5fe35a0ac50c84d2d97f8e6226e"
+  },
+  "candidate_version": "2026/11/10 15:05:11 INFO: metrics: disable exposing PSI metrics because of failed init: open /sys/fs/cgroup/cpu.pressure: no such file or directory\nvmselect-20260102-123114-tags-v1.133.0-cluster-0-gcfca33124e",
+  "start_ms": 1794301200000,
+  "end_ms": 1794312000000,
+  "native_sha256": "c30e9297dae21d6e20a773279a078fa1c76b258577b89410bd4e82a7c90e2c1e",
+  "source_raw": {
+    "resultType": "matrix",
+    "result": [
+      {
+        "metric": {
+          "__name__": "replica_conflict"
+        },
+        "values": [
+          [
+            1794301230,
+            "NaN"
+          ],
+          [
+            1794301260,
+            "NaN"
+          ]
+        ]
+      }
+    ]
+  },
+  "archive_exit_code": 1,
+  "archive_output": "{\"time\":\"2026-11-10T15:05:13.917817883Z\",\"level\":\"INFO\",\"msg\":\"archive window selected\",\"start_ms\":1794301200000,\"end_ms\":1794304800000,\"sources\":1,\"tenants\":1}\n{\"time\":\"2026-11-10T15:05:13.933464842Z\",\"level\":\"ERROR\",\"msg\":\"vmtier failed\",\"error\":\"raw verification tenant 1:2 source hot: incomplete or invalid raw verification JSON: raw source/native stale marker mismatch\"}\n",
+  "catalog": {
+    "version": 2,
+    "vm_version": "v1.155.0-cluster",
+    "id": "collision-probe",
+    "generation": 0,
+    "contract": {
+      "coverage_start_ms": 0,
+      "window_ms": 0,
+      "archive_age_ms": 0,
+      "lateness_ms": 0,
+      "dedup_ms": 0,
+      "tenants": null,
+      "sources": null
+    },
+    "entries": []
+  },
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "selected_GOMAXPROCS": "2",
+    "selection": "argument",
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "name": "source-storage-0-full",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/replica-133-complete/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:35025",
+          "-vminsertAddr=127.0.0.1:41147",
+          "-vmselectAddr=127.0.0.1:41391",
+          "-storageDataPath=/workspace/scratch/vm-compat/replica-133-complete/source-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11173,
+        "exit_code": 0
+      },
+      {
+        "name": "source-storage-1-full",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/replica-133-complete/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:47033",
+          "-vminsertAddr=127.0.0.1:39177",
+          "-vmselectAddr=127.0.0.1:45143",
+          "-storageDataPath=/workspace/scratch/vm-compat/replica-133-complete/source-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11204,
+        "exit_code": 0
+      },
+      {
+        "name": "source-insert-full",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/replica-133-complete/harness-root/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:59201",
+          "-storageNode=127.0.0.1:41147,127.0.0.1:39177",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11234,
+        "exit_code": 0
+      },
+      {
+        "name": "source-select-full",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/replica-133-complete/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:46063",
+          "-storageNode=127.0.0.1:41391,127.0.0.1:45143",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=/workspace/scratch/vm-compat/replica-133-complete/source-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11262,
+        "exit_code": 0
+      },
+      {
+        "name": "direct-insert-0",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/v1.133.0/vminsert",
+          "-httpListenAddr=127.0.0.1:49695",
+          "-storageNode=127.0.0.1:41147",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11288,
+        "exit_code": 0
+      },
+      {
+        "name": "direct-insert-1",
+        "kind": "managed",
+        "command": [
+          "/workspace/scratch/vm-compat/v1.133.0/vminsert",
+          "-httpListenAddr=127.0.0.1:54907",
+          "-storageNode=127.0.0.1:39177",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11317,
+        "exit_code": 0
+      },
+      {
+        "name": "init",
+        "kind": "one-shot",
+        "command": [
+          "/workspace/vmtier/.bin/vmtier",
+          "catalog-init",
+          "-path",
+          "/workspace/scratch/vm-compat/replica-133-complete/catalog.json",
+          "-id",
+          "collision-probe"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0
+      }
+    ]
+  }
+}
