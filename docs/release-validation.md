@@ -5,9 +5,11 @@ This report records the release-pipeline evidence for
 [`e498b19364b5e115ce57990004e98a55bff35dc9`](https://github.com/yuuki/vmtier/commit/e498b19364b5e115ce57990004e98a55bff35dc9)
 on `main`, before any version tag. Untagged builds are named
 `v0.0.0-dev.ge498b19364b5`; a tag changes the version string, so these bytes
-are not the bytes of a release. No release has been published and no
-attestation has been made. [Releases](releasing.md) describes the pipeline and
-the support scope.
+are not the bytes of a release. The runs of the tags follow:
+[`v0.1.0-rc.1`](#tag-v010-rc1) stopped before attestation, and
+[`v0.1.0-rc.2`](#tag-v010-rc2) passed every gate, attested its files, and
+created a draft pre-release. [Releases](releasing.md) describes the pipeline
+and the support scope.
 
 ## Hosted `release-check`
 
@@ -115,6 +117,73 @@ dry run above. `publish` did not run, so nothing was attested and no draft or
 release exists. The candidate is not released; the next one, `v0.1.0-rc.2`,
 is built with Go 1.27.4.
 
+## Tag `v0.1.0-rc.2`
+
+The maintainer pushed `v0.1.0-rc.2` on squash commit
+[`903be7e`](https://github.com/yuuki/vmtier/commit/903be7e87db9ce18df100d88b9fc9b857babc951)
+(#41), whose `test`
+([43020426369](https://github.com/yuuki/vmtier/actions/runs/43020426369)),
+`security`, `PostgreSQL fault qualification`, and `Code Complexity` runs had
+passed. The tag is annotated and unsigned.
+
+| Run | Jobs |
+| --- | --- |
+| [43130380192](https://github.com/yuuki/vmtier/actions/runs/43130380192) (2026-11-12 00:51–01:14 UTC) | `build (first)`, `build (second)` (main ancestry check, build, smoke), `reproducibility`, `qualify`, `publish`: success |
+
+Both builds smoke-tested binary SHA-256
+`0a9955438171b315579b557e5b94b3edbb1a3148c2d97fb7bf61211ca25eda6e`
+(14,685,112 bytes), and `reproducibility` reported
+`reproducible: 3 artifacts match`. The recorded `SHA256SUMS` has SHA-256
+`54f0dc2c646b7211b13c4c719159f586aaa17d4d4b0b549371c5410d9b6ab231`:
+
+```text
+7fe62dafe6d480c61f4256f197d16ebf6c0452de094e7d303fc32ededd6a7274  vmtier-v0.1.0-rc.2-linux-amd64.build.json
+5eb5b595d7f026ca57604d4c7a61aab32dc9f09164b22d7064ffe090313f5915  vmtier-v0.1.0-rc.2-linux-amd64.cdx.json
+b64a3e71949dc553897c35ccd0403734e5f86aad93c985d6d82b78e5fcc2377f  vmtier-v0.1.0-rc.2-linux-amd64.tar.gz
+```
+
+The `dist-first` artifact (ID `13904254509`, ZIP SHA-256
+`7859855cc2065628a2321380d548c1f36447fb3dcc8fe1c4ec643a691d8a666c`) was
+downloaded, and `python3 scripts/release.py verify --sums-sha256 54f0dc2c…`
+accepted it. Its build record names commit `903be7e` and the binary above.
+
+`qualify` installed the verified binary, and `govulncheck -mode=binary`
+(v1.9.0) reported `No vulnerabilities found.`, the gate that stopped rc.1. It
+then ran the stock-VM suites. Artifact `release-e2e-evidence` (ID
+`13905987646`, ZIP SHA-256
+`b200845670006dfebc5b11dc150d0befe4d9119cd1c9f5651f3374bc603f5e1e`, inner
+`e2e-evidence.tar.gz` SHA-256
+`9a0e0ee9874e8be116389eb503bb65565c3658a88ffa3cdf56c05e5bb2048965`, 2,601
+members) was downloaded and extracted with the `tarfile` data filter. Every
+report says `passed`, and every report's provenance records vmtier binary
+SHA-256 `0a995543…25eda6e`, the packaged binary:
+
+| Suite | Report SHA-256 |
+| --- | --- |
+| `ci-workload` (workload qualification smoke, 40 exact comparisons) | `5609fb5345407d9dffdb35451d98d03ea88e7fc4ce0f15ac367a89cf4e8e8464` |
+| `ci-local` (JSON v2, local) | `e907690e5eb503dd6d27a081485e68651683e494c3ae9905427676009d3c55fc` |
+| `ci-s3` (JSON v2, S3 test double, 2 replicas) | `d2f80568c08b693b96b74eb124a15ba8b8c90d18409859b79f29ac2b534e75e0` |
+| `ci-serve-local` (SQLite `serve`, local) | `05cc066bf96ab1f9e31e23f4c45b33d89106fb7435dd0e2f60021da660eab96d` |
+| `ci-serve-s3` (SQLite `serve`, S3 test double, 2 replicas) | `4ef65d5713af062b22c47ec9c15a90ce6991e50af1ebf960ca56e18e110cbbc0` |
+| `ci-recovery-local` (offline recovery and JSON v2 cutover) | `90d58ddb98942bc3a5343cd62c4955cef00c647d511a4350c678396534eedfa0` |
+| `ci-postgres-ha` (PostgreSQL, fenced archivers, gateway failover) | `0c288d643ad4192d12482cffb1be6e363b55d9c25fe8536f53b14b09a5fd2d3c` |
+| `ci-postgres-migration` (stopped SQLite to PostgreSQL) | `a3b40adb05773ee613ec8f3eed0c2bef6e80be64ac471c878ad3613700711730` |
+
+The artifact is retained until 2027-02-10.
+
+`publish` accepted only the files whose `SHA256SUMS` had the recorded SHA-256,
+then made two attestations, signed through Sigstore:
+
+| Attestation | Subjects | Rekor |
+| --- | --- | --- |
+| [SLSA build provenance](https://github.com/yuuki/vmtier/attestations/66493895) | the three files of `SHA256SUMS` | [log index 3821245003](https://search.sigstore.dev?logIndex=3821245003) |
+| [CycloneDX SBOM](https://github.com/yuuki/vmtier/attestations/66493904) | `vmtier-v0.1.0-rc.2-linux-amd64.tar.gz@sha256:b64a3e71…cc2377f` | [log index 3821245206](https://search.sigstore.dev?logIndex=3821245206) |
+
+It then created the draft pre-release `vmtier v0.1.0-rc.2` with the four
+files. Publishing the draft is the maintainer's step; after it, verify the
+published assets from a clean directory with the commands of
+[verify a release archive](releasing.md#verify-a-release-archive).
+
 ## Archive contents
 
 The archive has 142 entries. Beside the binary, the top-level `LICENSE`,
@@ -163,6 +232,7 @@ stock VM.
 | Smoke test, maintainer procedure, deployment example | `smoke` in every build job, stock-VM suites against the packaged binary in `qualify`, [maintainer procedure](releasing.md#maintainer-procedure), systemd example above | Met |
 | Evidence before claiming release support; excluded areas | [Evidence index](evidence.md), this report; Sakura (#15), natural retention (#16), and enforced ingress lateness (#17) remain open | Not met: pre-releases only |
 
-The first tagged release, its attestations, and its publication remain
-maintainer actions (see [first release](releasing.md#first-release)). Record the
-tag's run and checksums here once they exist.
+The run, checksums, and attestations of the first candidate that passed every
+gate, `v0.1.0-rc.2`, are recorded [above](#tag-v010-rc2). Its publication
+remains a maintainer action (see [first release](releasing.md#first-release)),
+and it is a pre-release: the last criterion is still not met.
