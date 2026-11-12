@@ -190,7 +190,8 @@ func archiveWorkers(c *config.Config, blobs objectstore.BlobStore, stats *servic
 		if gcInterval == 0 {
 			return worker
 		}
-		collector := &archive.Collector{Store: deleter, Catalog: repo, MinAge: gcMinAge}
+		collector := &archive.Collector{Store: deleter, Catalog: repo, MinAge: gcMinAge,
+			Retention: c.ColdRetentionPeriod(), Window: cfg.Window, Origin: cfg.CoverageStart, Retire: repo, Now: time.Now}
 		return &collectingWorker{archiver: worker, collector: collector, interval: gcInterval, stats: &stats.orphanGC}
 	}, nil
 }
@@ -297,6 +298,10 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 					lag = 0
 				}
 				fmt.Fprintf(w, "vmtier_stream_coverage_end_ms{tenant=%q,source=%q} %d\nvmtier_stream_archive_lag_seconds{tenant=%q,source=%q} %.3f\nvmtier_stream_retention_headroom_seconds{tenant=%q,source=%q} %.3f\n", stream.Tenant, stream.SourceID, stream.End, stream.Tenant, stream.SourceID, lag, stream.Tenant, stream.SourceID, float64(stream.End+c.Retention().Milliseconds()-time.Now().UnixMilli())/1000)
+			}
+			fmt.Fprintf(w, "vmtier_catalog_retired_windows %d\n", state.RetiredWindows)
+			for _, stream := range state.Coverage {
+				fmt.Fprintf(w, "vmtier_stream_coverage_start_ms{tenant=%q,source=%q} %d\n", stream.Tenant, stream.SourceID, stream.Start)
 			}
 			for tenant, end := range coverage {
 				lag := float64(reader.RequiredEnd(time.Now())-end) / 1000

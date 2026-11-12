@@ -231,7 +231,8 @@ read transaction. Enforce candidate/plan limits during selection, then release t
 transaction before S3 I/O. Referenced objects are immutable and are not deleted in
 this release, so long-lived transactions and generation leases are unnecessary.
 Garbage collection deletes only objects that no window ever referenced
-([ADR 0006](adr/0006-orphan-garbage-collection.md)).
+([ADR 0006](adr/0006-orphan-garbage-collection.md)) or that Cold retention retired
+long enough ago that no query still reads them ([ADR 0007](adr/0007-cold-retention.md)).
 Catalog failure remains a query error, including with a warm object cache.
 
 ## Archive pipeline and bounded verification
@@ -518,15 +519,16 @@ recent-only Hot reconstruction. These checks remain unexecuted today.
   election controllers and endpoint redundancy remain deployment responsibilities.
 - Disk-backed sample verification, arbitrary high cardinality, and unbounded queries.
 - New postings/binary indexes, compaction, downsampling, and another storage format.
-- Automatic backfill, deletion/tombstones, and Cold TTL (#44). Garbage collection of
-  failed attempts' objects is implemented through the catalog's object ledger
-  ([ADR 0006](adr/0006-orphan-garbage-collection.md)); compaction (#45),
-  downsampling (#46) and multipart upload (#47) are tracked separately.
+- Automatic backfill and deletion/tombstones. Garbage collection of failed
+  attempts' objects ([ADR 0006](adr/0006-orphan-garbage-collection.md)) and Cold
+  retention ([ADR 0007](adr/0007-cold-retention.md)) are implemented through the
+  catalog's object ledger; compaction (#45), downsampling (#46) and multipart
+  upload (#47) are tracked separately.
 - Dynamic tenant/source topology (#48) and transparent cross-version VM upgrades.
 - Kubernetes operators, a web UI, and another public query language/API.
 
 Without Cold retention, storage grows with archived data. Garbage collection removes
 recorded failed-attempt objects only when enabled. Expose usage and keep lifecycle
-deletion disabled. If bounded Cold retention or legal deletion is required,
+deletion disabled. If deletion of selected series or legal deletion is required,
 this release is unsuitable until that feature is designed. This support boundary
 is preferable to incomplete deletion semantics under a general production claim.

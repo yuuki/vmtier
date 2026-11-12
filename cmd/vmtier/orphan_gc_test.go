@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,7 +91,7 @@ func TestSQLiteCLIUpgradeAddsObjectLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`DROP TABLE pending_objects; UPDATE catalog_state SET schema_version=1`); err != nil {
+	if _, err := db.Exec(`DROP TABLE pending_objects; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -183,12 +184,28 @@ func TestServiceWorkerCollectsUnpublishedObjects(t *testing.T) {
 		"vmtier_orphan_gc_enabled 1\n", "vmtier_orphan_gc_passes_total 1\n", "vmtier_orphan_gc_claimed_objects_total 2\n",
 		"vmtier_orphan_gc_deleted_objects_total 2\n", "vmtier_orphan_gc_failed_passes_total 0\n",
 		"vmtier_object_delete_requests_total 2\n",
-		"vmtier_catalog_unpublished_objects{state=\"pending\"} 0\n", "vmtier_catalog_unpublished_objects{state=\"deleting\"} 0\n",
+		"vmtier_catalog_unpublished_objects{state=\"pending\"} 0\n", "vmtier_catalog_unpublished_objects{state=\"retired\"} 0\n",
+		"vmtier_catalog_unpublished_objects{state=\"deleting\"} 0\n", "vmtier_cold_retired_windows_total 0\n", "vmtier_catalog_retired_windows 0\n",
+		fmt.Sprintf("vmtier_stream_coverage_start_ms{tenant=\"1:2\",source=\"hot\"} %d\n", c.CoverageStart),
 	} {
 		if !strings.Contains(metrics, want) {
 			t.Fatalf("metrics lack %q:\n%s", want, metrics)
 		}
 	}
+	// Cold retention retires through the same collector.
+	c.ColdRetention, c.Service.OrphanGCMinAge = "720h", "10m"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	newWorker, err = archiveWorkers(&c, store, &stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retaining := newWorker(db).(*collectingWorker).collector.(*archive.Collector)
+	if retaining.Retention != 720*time.Hour || retaining.Retire == nil || retaining.Origin != c.CoverageStart || retaining.Window != time.Hour {
+		t.Fatalf("Cold retention not wired: %+v", retaining)
+	}
+	c.ColdRetention = ""
 	// Disabled collection runs the archiver alone and says so.
 	c.Service.OrphanGCInterval, c.Service.OrphanGCMinAge = "", ""
 	if err := c.Validate(); err != nil {

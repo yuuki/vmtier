@@ -68,6 +68,7 @@ type Config struct {
 	Sources                                  []Source `json:"sources"`
 	ArchiveAge                               string   `json:"archive_age"`
 	HotRetention                             string   `json:"hot_retention"`
+	ColdRetention                            string   `json:"cold_retention,omitempty"`
 	Lateness                                 string   `json:"lateness"`
 	SafetyMargin                             string   `json:"safety_margin"`
 	Window                                   string   `json:"window"`
@@ -81,6 +82,7 @@ type Config struct {
 	archiveInterval                          time.Duration
 	archiveLeaseTTL                          time.Duration
 	orphanGCInterval, orphanGCMinAge         time.Duration
+	coldRetention                            time.Duration
 }
 
 func Read(path string) (*Config, error) {
@@ -144,7 +146,38 @@ func (c *Config) Validate() error {
 	if err := c.normalizeSources(); err != nil {
 		return err
 	}
+	if err := c.validateColdRetention(); err != nil {
+		return err
+	}
 	return c.validateBudgets()
+}
+
+// MinColdRetentionGCAge is the smallest garbage collection age with Cold
+// retention: a query that selected a window before its retirement may read
+// its objects for up to the gateway's 30-second request cap.
+const MinColdRetentionGCAge = 10 * time.Minute
+
+// validateColdRetention parses the optional Cold retention. Retired objects
+// are deleted by garbage collection, which must be enabled. Cold must keep
+// data longer than Hot, so that retirement never removes the only copy of a
+// range that queries are guaranteed to find.
+func (c *Config) validateColdRetention() error {
+	c.coldRetention = 0
+	if c.ColdRetention == "" {
+		return nil
+	}
+	d, err := time.ParseDuration(c.ColdRetention)
+	if err != nil || d%time.Millisecond != 0 || d <= c.retention || d > 100*365*24*time.Hour {
+		return errors.New("cold_retention must be whole milliseconds greater than hot_retention, up to 876000h")
+	}
+	if c.orphanGCInterval == 0 {
+		return errors.New("cold_retention requires service.orphan_gc_interval, which deletes retired objects")
+	}
+	if c.orphanGCMinAge < MinColdRetentionGCAge {
+		return errors.New("cold_retention requires service.orphan_gc_min_age of at least 10m")
+	}
+	c.coldRetention = d
+	return nil
 }
 
 // validateCatalog also trims the trailing slashes of an HTTP catalog URL.
@@ -451,6 +484,10 @@ func (c *Config) ArchiveInterval() time.Duration { return c.archiveInterval }
 func (c *Config) ArchiveTimeout() time.Duration { return c.archiveTimeout }
 
 func (c *Config) ArchiveLeaseTTL() time.Duration { return c.archiveLeaseTTL }
+
+// ColdRetentionPeriod returns how long Cold keeps archived windows; zero
+// keeps them.
+func (c *Config) ColdRetentionPeriod() time.Duration { return c.coldRetention }
 
 // OrphanGC returns the garbage collection interval, zero when disabled, and
 // the age at which an unpublished object may be claimed.

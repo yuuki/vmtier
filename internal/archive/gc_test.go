@@ -215,3 +215,64 @@ func (d *failingDeleter) Delete(ctx context.Context, key string) error {
 	}
 	return d.Deleter.Delete(ctx, key)
 }
+
+// Cold retention retires the windows below the boundary from the catalog and
+// garbage collection then deletes their objects; later windows stay readable.
+func TestCollectorRetiresWindowsBelowColdRetention(t *testing.T) {
+	server, _ := newSQLiteSource(t, "multipack")
+	cfg := baseConfig(server.URL)
+	cfg.PackLimits.MaxBlocks = 1
+	a, catalogPath := newSQLiteArchiver(t, cfg)
+	blobDir := filepath.Join(filepath.Dir(catalogPath), "blobs")
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if result, err := a.RunPass(ctx, testNow); err != nil || result.CommittedWindows != 1 {
+			t.Fatalf("pass %d: %+v %v", i, result, err)
+		}
+	}
+	all := publishedObjects(t, a.Catalog, cfg, "7:3")
+	if RetentionBoundary(testNow, 2*time.Hour, cfg.Window) != cfg.CoverageStart+cfg.Window.Milliseconds() {
+		t.Fatal("fixture boundary is not the end of the first window")
+	}
+	collector := &Collector{Store: a.Store.(objectstore.Deleter), Catalog: a.Catalog, MinAge: time.Hour,
+		Retention: 2 * time.Hour, Window: cfg.Window, Origin: cfg.CoverageStart, Retire: a.Catalog, Now: func() time.Time { return testNow }}
+	result, err := collector.RunPass(ctx)
+	if err != nil || result.Retired != 1 {
+		t.Fatalf("retirement: %+v %v", result, err)
+	}
+	state, err := a.Catalog.Status(ctx)
+	if err != nil || state.Coverage[0].Start != cfg.CoverageStart+cfg.Window.Milliseconds() || state.RetiredWindows != 1 {
+		t.Fatalf("status after retirement: %+v %v", state, err)
+	}
+	kept := publishedObjects(t, a.Catalog, cfg, "7:3")
+	if len(kept) == 0 || len(kept) >= len(all) {
+		t.Fatalf("retirement kept %d of %d objects", len(kept), len(all))
+	}
+	// The retired objects survive until they are old enough to be claimed.
+	if objects := storedObjects(t, blobDir); len(objects) != len(all) {
+		t.Fatalf("retired objects deleted before the minimum age: %v", objects)
+	}
+	collector.MinAge = time.Millisecond
+	time.Sleep(5 * time.Millisecond)
+	result, err = collector.RunPass(ctx)
+	if err != nil || result.Retired != 0 || result.Deleted != len(all)-len(kept) {
+		t.Fatalf("collection of retired objects: %+v %v", result, err)
+	}
+	if objects := storedObjects(t, blobDir); strings.Join(objects, "\n") != strings.Join(kept, "\n") {
+		t.Fatalf("bucket holds %v, catalog references %v", objects, kept)
+	}
+	plan, err := a.Catalog.Select(ctx, catalog.Selection{Tenant: "7:3", Start: cfg.CoverageStart, End: testNow.UnixMilli()})
+	if err != nil || len(plan.Windows) != 1 || plan.Windows[0].Start != state.Coverage[0].Start {
+		t.Fatalf("plan after retirement: %+v %v", plan, err)
+	}
+	// Archiving continues at the coverage end.
+	if result, err := a.RunPass(ctx, testNow.Add(time.Hour)); err != nil || result.CommittedWindows != 1 {
+		t.Fatalf("archive after retirement: %+v %v", result, err)
+	}
+	// Nothing is retired while the boundary has not passed the origin.
+	early := *collector
+	early.Now = func() time.Time { return time.UnixMilli(cfg.CoverageStart).Add(2 * time.Hour) }
+	if result, err := early.RunPass(ctx); err != nil || result.Retired != 0 {
+		t.Fatalf("retired before the boundary passed the origin: %+v %v", result, err)
+	}
+}

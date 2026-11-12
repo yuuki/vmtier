@@ -36,12 +36,14 @@ CREATE TABLE %[1]s.catalog_state (
  vm_version TEXT NOT NULL,
  generation BIGINT NOT NULL CHECK (generation >= 0),
  contract_json TEXT NOT NULL CHECK (octet_length(contract_json) <= 1048576),
- blob_json TEXT NOT NULL CHECK (octet_length(blob_json) <= 16384)
+ blob_json TEXT NOT NULL CHECK (octet_length(blob_json) <= 16384),
+ retired_windows BIGINT NOT NULL DEFAULT 0 CHECK (retired_windows >= 0 AND retired_windows <= generation)
 );
 CREATE TABLE %[1]s.coverage (
  tenant TEXT NOT NULL,
  source_id TEXT NOT NULL,
  end_ms BIGINT NOT NULL CHECK (end_ms >= 0),
+ start_ms BIGINT NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
  PRIMARY KEY (tenant, source_id)
 );
 CREATE TABLE %[1]s.windows (
@@ -82,9 +84,16 @@ const postgresPendingSchema = `
 CREATE TABLE %[1]s.pending_objects (
  object_key TEXT PRIMARY KEY CHECK (octet_length(object_key) BETWEEN 1 AND 1024),
  created_ms BIGINT NOT NULL CHECK (created_ms >= 0),
- state TEXT NOT NULL CHECK (state IN ('pending', 'deleting'))
+ state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting'))
 );
 CREATE INDEX pending_objects_age ON %[1]s.pending_objects (state, created_ms);
+`
+
+// postgresRetentionUpgrade adds the retention columns of schema 3 to an older
+// catalog: every stream starts at the coverage origin and nothing is retired.
+const postgresRetentionUpgrade = `
+ALTER TABLE %[1]s.catalog_state ADD COLUMN retired_windows BIGINT NOT NULL DEFAULT 0 CHECK (retired_windows >= 0 AND retired_windows <= generation);
+ALTER TABLE %[1]s.coverage ADD COLUMN start_ms BIGINT NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms);
 `
 
 // CreatePostgres initializes new tables and binds the immutable archive
@@ -123,12 +132,12 @@ func CreatePostgres(ctx context.Context, dsn, id string, c Contract, blob BlobLo
 	}
 	cb, _ := json.Marshal(c)
 	bb, _ := json.Marshal(blob)
-	if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("catalog_state")+` VALUES(1,$1,$2,$3,0,$4,$5)`, PostgreSQLSchemaVersion, id, pack.VMVersion, string(cb), string(bb)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("catalog_state")+`(singleton,schema_version,catalog_id,vm_version,generation,contract_json,blob_json,retired_windows) VALUES(1,$1,$2,$3,0,$4,$5,0)`, PostgreSQLSchemaVersion, id, pack.VMVersion, string(cb), string(bb)); err != nil {
 		return nil, err
 	}
 	for _, tenant := range c.Tenants {
 		for _, source := range c.Sources {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+` VALUES($1,$2,$3)`, tenant, source.ID, c.CoverageStart); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+`(tenant,source_id,end_ms,start_ms) VALUES($1,$2,$3,$3)`, tenant, source.ID, c.CoverageStart); err != nil {
 				return nil, err
 			}
 		}
@@ -221,13 +230,31 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 	if standby {
 		return out, errors.New("PostgreSQL catalog requires the primary; standby reads are not supported")
 	}
-	var generation int64
+	var generation, retired int64
 	var cb, bb []byte
-	query := `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json FROM ` + p.table("catalog_state") + ` WHERE singleton=1 AND octet_length(contract_json)<=1048576 AND octet_length(blob_json)<=16384`
+	// Schemas before 3 have no retention columns: nothing is retired and every
+	// stream starts at the coverage origin.
+	retiredColumn, startColumn := "retired_windows", "start_ms"
+	if version < 3 {
+		retiredColumn, startColumn = "0", "-1"
+	}
+	// Check the version first: another schema may lack the columns read below.
+	var stored int
+	if err := tx.QueryRowContext(ctx, `SELECT schema_version FROM `+p.table("catalog_state")+` WHERE singleton=1`).Scan(&stored); err != nil {
+		var pgErr *pq.Error
+		if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
+			return out, ErrNotInitialized
+		}
+		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
+	}
+	if stored != version {
+		return out, fmt.Errorf("unsupported catalog schema %d; explicit catalog-upgrade or migration required", stored)
+	}
+	query := `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json,` + retiredColumn + ` FROM ` + p.table("catalog_state") + ` WHERE singleton=1 AND octet_length(contract_json)<=1048576 AND octet_length(blob_json)<=16384`
 	if lock {
 		query += ` FOR UPDATE`
 	}
-	err := tx.QueryRowContext(ctx, query).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb)
+	err := tx.QueryRowContext(ctx, query).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb, &retired)
 	if err != nil {
 		var pgErr *pq.Error
 		if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
@@ -238,10 +265,10 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
 		return out, fmt.Errorf("unsupported catalog schema %d or VM version %s; explicit catalog-upgrade or migration required", out.SchemaVersion, out.VMVersion)
 	}
-	if out.ID != p.id || !validID(out.ID) || generation < 0 {
+	if out.ID != p.id || !validID(out.ID) || generation < 0 || retired < 0 || retired > generation {
 		return out, errors.New("invalid catalog identity or generation")
 	}
-	out.Generation = uint64(generation)
+	out.Generation, out.RetiredWindows = uint64(generation), uint64(retired)
 	if err = strictSQLiteJSON(cb, &out.Contract); err != nil {
 		return out, err
 	}
@@ -261,18 +288,21 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 			expected[tenant+"\x00"+source.ID] = true
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT tenant,source_id,end_ms FROM `+p.table("coverage")+` ORDER BY tenant,source_id LIMIT $1`, len(expected)+1)
+	rows, err := tx.QueryContext(ctx, `SELECT tenant,source_id,end_ms,`+startColumn+` FROM `+p.table("coverage")+` ORDER BY tenant,source_id LIMIT $1`, len(expected)+1)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var c StreamCoverage
-		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End); err != nil {
+		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End, &c.Start); err != nil {
 			return out, err
 		}
+		if version < 3 {
+			c.Start = out.Contract.CoverageStart
+		}
 		key := c.Tenant + "\x00" + c.SourceID
-		if !expected[key] || c.End < out.Contract.CoverageStart || (c.End-out.Contract.CoverageStart)%out.Contract.WindowMS != 0 {
+		if !expected[key] || !validStreamCoverage(out.Contract, c) {
 			return out, errors.New("invalid stream coverage")
 		}
 		delete(expected, key)

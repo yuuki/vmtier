@@ -99,7 +99,7 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 	}
 	// Omit unknown gauges rather than presenting false zeroes.
 	if unpublished, err := reader.Repository.UnpublishedObjects(ctx); err == nil {
-		fmt.Fprintf(w, "vmtier_catalog_unpublished_objects{state=\"pending\"} %d\nvmtier_catalog_unpublished_objects{state=\"deleting\"} %d\n", unpublished.Pending, unpublished.Deleting)
+		fmt.Fprintf(w, "vmtier_catalog_unpublished_objects{state=\"pending\"} %d\nvmtier_catalog_unpublished_objects{state=\"retired\"} %d\nvmtier_catalog_unpublished_objects{state=\"deleting\"} %d\n", unpublished.Pending, unpublished.Retired, unpublished.Deleting)
 	}
 	// Local file capacity is a SQLite capability, not a requirement on the
 	// backend-neutral publication repository. Other backends omit these gauges.

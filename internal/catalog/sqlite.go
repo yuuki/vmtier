@@ -42,12 +42,14 @@ CREATE TABLE catalog_state (
  vm_version TEXT NOT NULL,
  generation INTEGER NOT NULL CHECK (generation >= 0),
  contract_json TEXT NOT NULL,
- blob_json TEXT NOT NULL
+ blob_json TEXT NOT NULL,
+ retired_windows INTEGER NOT NULL DEFAULT 0 CHECK (retired_windows >= 0 AND retired_windows <= generation)
 );
 CREATE TABLE coverage (
  tenant TEXT NOT NULL,
  source_id TEXT NOT NULL,
  end_ms INTEGER NOT NULL CHECK (end_ms >= 0),
+ start_ms INTEGER NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
  PRIMARY KEY (tenant, source_id)
 ) WITHOUT ROWID;
 CREATE TABLE windows (
@@ -80,9 +82,16 @@ const sqlitePendingSchema = `
 CREATE TABLE pending_objects (
  object_key TEXT PRIMARY KEY CHECK (length(object_key) BETWEEN 1 AND 1024),
  created_ms INTEGER NOT NULL CHECK (created_ms >= 0),
- state TEXT NOT NULL CHECK (state IN ('pending', 'deleting'))
+ state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting'))
 ) WITHOUT ROWID;
 CREATE INDEX pending_objects_age ON pending_objects (state, created_ms);
+`
+
+// sqliteRetentionUpgrade adds the retention columns of schema 2 to a schema 1
+// catalog: every stream starts at the coverage origin and nothing is retired.
+const sqliteRetentionUpgrade = `
+ALTER TABLE catalog_state ADD COLUMN retired_windows INTEGER NOT NULL DEFAULT 0 CHECK (retired_windows >= 0 AND retired_windows <= generation);
+ALTER TABLE coverage ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms);
 `
 
 // CreateSQLite explicitly binds a new catalog contract. Existing state is never
@@ -152,12 +161,12 @@ func CreateSQLite(ctx context.Context, dir, id string, c Contract, blob BlobLoca
 	}
 	cb, _ := json.Marshal(c)
 	bb, _ := json.Marshal(blob)
-	if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_state VALUES(1,?,?,?,?,?,?)`, SQLiteSchemaVersion, id, pack.VMVersion, 0, string(cb), string(bb)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_state(singleton,schema_version,catalog_id,vm_version,generation,contract_json,blob_json,retired_windows) VALUES(1,?,?,?,?,?,?,0)`, SQLiteSchemaVersion, id, pack.VMVersion, 0, string(cb), string(bb)); err != nil {
 		return nil, err
 	}
 	for _, tenant := range c.Tenants {
 		for _, source := range c.Sources {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO coverage VALUES(?,?,?)`, tenant, source.ID, c.CoverageStart); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO coverage(tenant,source_id,end_ms,start_ms) VALUES(?,?,?,?)`, tenant, source.ID, c.CoverageStart, c.CoverageStart); err != nil {
 				return nil, err
 			}
 		}
@@ -316,19 +325,33 @@ func readSQLiteStatus(ctx context.Context, q sqliteQueryer, expectedID string) (
 // readSQLiteStatusVersion reads the catalog state of an exact schema version.
 func readSQLiteStatusVersion(ctx context.Context, q sqliteQueryer, expectedID string, version int) (SQLiteStatus, error) {
 	var out SQLiteStatus
-	var generation int64
+	var generation, retired int64
 	var cb, bb []byte
-	err := q.QueryRowContext(ctx, `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json FROM catalog_state WHERE singleton=1 AND length(contract_json)<=1048576 AND length(blob_json)<=16384`).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb)
+	// Schema 1 has no retention columns: nothing is retired and every stream
+	// starts at the coverage origin.
+	retiredColumn, startColumn := "retired_windows", "start_ms"
+	if version == 1 {
+		retiredColumn, startColumn = "0", "-1"
+	}
+	// Check the version first: another schema may lack the columns read below.
+	var stored int
+	if err := q.QueryRowContext(ctx, `SELECT schema_version FROM catalog_state WHERE singleton=1`).Scan(&stored); err != nil {
+		return out, fmt.Errorf("read initialized SQLite catalog: %w", err)
+	}
+	if stored != version {
+		return out, fmt.Errorf("unsupported catalog schema %d; explicit offline catalog-upgrade or migration required", stored)
+	}
+	err := q.QueryRowContext(ctx, `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json,`+retiredColumn+` FROM catalog_state WHERE singleton=1 AND length(contract_json)<=1048576 AND length(blob_json)<=16384`).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb, &retired)
 	if err != nil {
 		return out, fmt.Errorf("read initialized SQLite catalog: %w", err)
 	}
 	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
 		return out, fmt.Errorf("unsupported catalog schema %d or VM version %s; explicit offline catalog-upgrade or migration required", out.SchemaVersion, out.VMVersion)
 	}
-	if out.ID != expectedID || !validID(out.ID) || generation < 0 {
+	if out.ID != expectedID || !validID(out.ID) || generation < 0 || retired < 0 || retired > generation {
 		return out, errors.New("invalid catalog identity or generation")
 	}
-	out.Generation = uint64(generation)
+	out.Generation, out.RetiredWindows = uint64(generation), uint64(retired)
 	if err = strictSQLiteJSON(cb, &out.Contract); err != nil {
 		return out, err
 	}
@@ -348,18 +371,21 @@ func readSQLiteStatusVersion(ctx context.Context, q sqliteQueryer, expectedID st
 			expected[tenant+"\x00"+source.ID] = true
 		}
 	}
-	rows, err := q.QueryContext(ctx, `SELECT tenant,source_id,end_ms FROM coverage ORDER BY tenant,source_id`)
+	rows, err := q.QueryContext(ctx, `SELECT tenant,source_id,end_ms,`+startColumn+` FROM coverage ORDER BY tenant,source_id`)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var c StreamCoverage
-		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End); err != nil {
+		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End, &c.Start); err != nil {
 			return out, err
 		}
+		if version == 1 {
+			c.Start = out.Contract.CoverageStart
+		}
 		key := c.Tenant + "\x00" + c.SourceID
-		if !expected[key] || c.End < out.Contract.CoverageStart || (c.End-out.Contract.CoverageStart)%out.Contract.WindowMS != 0 {
+		if !expected[key] || !validStreamCoverage(out.Contract, c) {
 			return out, errors.New("invalid stream coverage")
 		}
 		delete(expected, key)

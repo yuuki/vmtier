@@ -14,8 +14,8 @@ It remains under development: the [first-release design](design.md) tracks workl
 provider, retention, ingress, recovery, and release qualification. The
 [stage 2 validation](serve-validation.md) is historical evidence for its recorded
 revision; new implementation and focused tests do not replace that provenance.
-Garbage collection of failed attempts' objects is [opt-in](#garbage-collection);
-Cold retention and compaction remain unimplemented. This SQLite deployment has no automatic failover;
+Garbage collection of failed attempts' objects and [Cold retention](#cold-retention)
+are opt-in; compaction remains unimplemented. This SQLite deployment has no automatic failover;
 [PostgreSQL HA](ha-deployment.md) is the separate multi-instance option.
 
 ## Configuration and startup
@@ -99,6 +99,7 @@ settings in its [configuration guide](postgres-catalog.md#configuration-and-life
 | `query_memory_bytes` | Shared query work reservations; omitted or zero uses 256 MiB. Must cover one effective `max_query_bytes` reservation, at most 8 GiB. See [query work admission](#query-work-admission). |
 | `max_pack_blocks` | Optional per-pack block limit, 1–100,000; omitted or zero uses 100,000. Changes packing, not window capacity or the immutable contract. See [archive packing](archive-packs.md). |
 | `service.archive_interval`, `service.archive_timeout` | Default `30s` and `2m`; each accepts 10 ms through 24 hours. See [scheduling](#scheduling-and-publication). |
+| `cold_retention` | Optional; omitted keeps Cold data forever. Whole milliseconds greater than `hot_retention`, up to `876000h`. Requires `service.orphan_gc_interval` and a `service.orphan_gc_min_age` of at least `10m`. See [Cold retention](#cold-retention). |
 | `service.orphan_gc_interval`, `service.orphan_gc_min_age` | Garbage collection of failed attempts' objects; omitted interval disables it. The interval accepts 10 ms through 24 hours; the minimum age defaults to `24h`, accepts up to `720h`, and must be at least `archive_timeout`. See [garbage collection](#garbage-collection). |
 | `store.requests_per_second`, `store.max_concurrent_requests`, `store.max_queued_requests` | Shared S3 limits; see [shared S3 budget](#shared-s3-budget). |
 
@@ -182,6 +183,26 @@ restore), and orphans created before the [schema upgrade](sqlite-catalog.md#upgr
 are never touched. Deletion needs `DeleteObject` permission on the prefix and
 counts against the shared S3 budget. See
 [ADR 0006](adr/0006-orphan-garbage-collection.md) for the design.
+
+## Cold retention
+
+With `cold_retention` set, each garbage collection pass first retires the windows
+that end at or before `floor((now - cold_retention) / window) * window`, oldest
+first. One catalog transaction removes up to 256 windows, records their object keys
+in the ledger as retired, and advances the stream's start (`start_ms` in
+`catalog-inspect`) past them. Garbage collection deletes the retired objects once
+they reach `service.orphan_gc_min_age`; a query that selected a window before its
+retirement finishes long before that. Nothing is retired until the boundary passes
+`coverage_start_ms`, and retirement never passes a stream's coverage end.
+
+The range below a stream's start is outside the query guarantee, like the range
+before `coverage_start_ms`: Cold returns nothing there and queries return whatever
+Hot still holds, as VictoriaMetrics does beyond its own retention. A stream's start
+never moves back. Lengthening `cold_retention` pauses retirement until the boundary
+passes the start again; data already retired is gone. Restoring a catalog backup
+older than a retirement does not bring that data back: queries over those windows
+fail on the missing objects until the first collection pass retires them again. See
+[ADR 0007](adr/0007-cold-retention.md) for the design.
 
 The time contract is unchanged: `H > L >= 0` and
 `R > H + safety_margin + window`. H, L, window, coverage start, tenants, sources,
@@ -295,7 +316,9 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_orphan_gc_passes_total`, `vmtier_orphan_gc_failed_passes_total` | Garbage collection passes of this process and passes that ended with an error |
 | `vmtier_orphan_gc_claimed_objects_total`, `vmtier_orphan_gc_deleted_objects_total` | Keys claimed (including retried claims) and objects deleted |
 | `vmtier_orphan_gc_last_success_timestamp_seconds` | Last pass without an error; zero before one |
-| `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts) and `deleting` (claimed, deletion unfinished); omitted when the catalog cannot be read |
+| `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts), `retired` (windows removed by Cold retention) and `deleting` (claimed, deletion unfinished); omitted when the catalog cannot be read |
+| `vmtier_cold_retired_windows_total` | Windows this process retired |
+| `vmtier_catalog_retired_windows`, `vmtier_stream_coverage_start_ms{tenant,source}` | Windows retired over the catalog's lifetime, and each stream's retained start |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
 RPC endpoints on a trusted network with suitable access controls/TLS termination.

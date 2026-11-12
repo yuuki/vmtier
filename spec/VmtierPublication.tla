@@ -19,7 +19,9 @@
 (*   - an upload can store wrong bytes, and any attempt can be abandoned,  *)
 (*     leaving an unreferenced orphan object;                              *)
 (*   - garbage collection claims, deletes and forgets the recorded keys of *)
-(*     unpublished attempts at any time, racing every archiver step.       *)
+(*     unpublished attempts at any time, racing every archiver step;       *)
+(*   - Cold retention retires the oldest window of a stream at any time,   *)
+(*     moving its key to the ledger for garbage collection.                *)
 (*                                                                         *)
 (* Every attempt records its key in the catalog's object ledger before its *)
 (* PUT; publication consumes that pending record in its transaction, and   *)
@@ -32,6 +34,7 @@
 (*   RecordPendingObjects, ClaimUnpublishedObjects, ForgetDeletedObjects    *)
 (*                                        internal/catalog/postgres_pending.go *)
 (*   Collector.RunPass                    internal/archive/gc.go            *)
+(*   RetireWindows                        internal/catalog/postgres_pending.go *)
 (*   RunPass, publishStream               internal/archive/sqlite.go        *)
 (*   runArchiveLeadership                 cmd/vmtier/postgres_service.go    *)
 (*                                                                         *)
@@ -58,13 +61,15 @@ CONSTANTS
     Ledger,           \* TRUE as in uploadPack: record each key before its PUT
     CheckPending,     \* TRUE as in publishWindow: consume a pending record
     Collect,          \* TRUE when garbage collection runs
+    Retain,           \* TRUE when Cold retention retires windows
     NoOwner,          \* model value: the lease row has no owner
     Absent,           \* model value: no object under a key
     Corrupt           \* model value: an object with wrong bytes
 
 ASSUME NumWindows \in Nat \ {0} /\ MaxAttempts \in Nat /\ MaxTokens \in Nat
 ASSUME TTL \in Nat \ {0} /\ MaxTime \in Nat /\ MaxLostReplies \in Nat
-ASSUME {FreshKeys, ReadBack, FencePublication, Ledger, CheckPending, Collect} \subseteq BOOLEAN
+ASSUME {FreshKeys, ReadBack, FencePublication, Ledger, CheckPending, Collect, Retain} \subseteq BOOLEAN
+ASSUME Retain => Ledger
 ASSUME (CheckPending \/ Collect) => Ledger
 
 Indexes == 0..(NumWindows - 1)
@@ -76,8 +81,9 @@ Keys == IF FreshKeys THEN 1..MaxAttempts ELSE Wins
 
 Modes  == {"follower", "leader", "draining"}
 Phases == {"none", "staged", "uploaded", "verified"}
-\* pending_objects: "none" (no row), "pending" or "deleting" (claimed).
-LedgerStates == {"none", "pending", "deleting"}
+\* pending_objects: "none" (no row), "pending", "retired" or "deleting"
+\* (claimed).
+LedgerStates == {"none", "pending", "retired", "deleting"}
 
 \* Placeholders of the same type as real keys, so that TLC compares like values.
 NoKey   == IF FreshKeys THEN 0 ELSE <<NoOwner, 0>>
@@ -98,12 +104,16 @@ VARIABLES
     localCov,     \* coverage of the archiver's last Status read
     stage,        \* the archiver's current attempt
     granted,      \* history: <<token, owner>> of every acquisition
-    ledger        \* pending_objects: state of each key
+    ledger,       \* pending_objects: state of each key
+    origin,       \* coverage.start_ms of each stream, as a window index
+    retired       \* catalog_state.retired_windows
 
 vars == <<dbNow, lease, gen, coverage, windows, objects, nextAttempt,
-          lostReplies, mode, held, localGen, localCov, stage, granted, ledger>>
+          lostReplies, mode, held, localGen, localCov, stage, granted, ledger,
+          origin, retired>>
 
-catalog == <<lease, gen, coverage, windows, ledger>>
+retention == <<origin, retired>>
+catalog == <<lease, gen, coverage, windows, ledger, retention>>
 local   == <<mode, held, localGen, localCov, stage>>
 
 -----------------------------------------------------------------------------
@@ -134,6 +144,8 @@ TypeOK ==
     /\ stage \in [Archivers -> StageRows]
     /\ granted \subseteq (1..MaxTokens) \X Archivers
     /\ ledger \in [Keys -> LedgerStates]
+    /\ origin \in [Streams -> 0..NumWindows]
+    /\ retired \in 0..Cardinality(Wins)
 
 \* Database reply outcomes: whether the reply to the archiver is lost.
 Replies == IF lostReplies < MaxLostReplies THEN BOOLEAN ELSE {FALSE}
@@ -167,6 +179,8 @@ Init ==
     /\ stage = [p \in Archivers |-> NoStage]
     /\ granted = {}
     /\ ledger = [k \in Keys |-> "none"]
+    /\ origin = [s \in Streams |-> 0]
+    /\ retired = 0
 
 \* The database clock moves on. Nothing tells an archiver that its lease
 \* expired: it finds out only when a renewal or publication is refused.
@@ -193,7 +207,7 @@ Acquire(p) ==
            /\ held' = [held EXCEPT ![p] = IF lost THEN 0 ELSE next.token]
            /\ CountLost(lost)
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt,
-                   localGen, localCov, stage, ledger>>
+                   localGen, localCov, stage, ledger, retention>>
 
 \* RenewLease extends only a live acquisition. Any error, including a lost
 \* reply to a renewal that did commit, makes runArchiveLeadership cancel and
@@ -206,7 +220,7 @@ Renew(p) ==
         /\ mode' = IF ok /\ ~lost THEN mode ELSE [mode EXCEPT ![p] = "draining"]
         /\ CountLost(lost)
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt, held,
-                   localGen, localCov, stage, granted, ledger>>
+                   localGen, localCov, stage, granted, ledger, retention>>
 
 \* The context of the leadership ends for another reason (shutdown, a renewal
 \* timeout): the archive work is cancelled and drained.
@@ -229,7 +243,8 @@ Release(p) ==
     /\ mode' = [mode EXCEPT ![p] = "follower"]
     /\ held' = [held EXCEPT ![p] = 0]
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt,
-                   lostReplies, localGen, localCov, stage, granted, ledger>>
+                   lostReplies, localGen, localCov, stage, granted, ledger,
+                   retention>>
 
 \* RunPass starts with Status: one consistent read of the catalog.
 LoadStatus(p) ==
@@ -259,7 +274,7 @@ StartAttempt(p, s) ==
                 [stream |-> s, idx |-> i, key |-> k, phase |-> "staged"]]
     /\ nextAttempt' = nextAttempt + 1
     /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, objects, lostReplies,
-                   mode, held, localGen, localCov, granted>>
+                   mode, held, localGen, localCov, granted, retention>>
 
 \* blobs.Put of the verified export. It may store wrong bytes. An upload
 \* already in flight can finish while the archiver drains.
@@ -341,7 +356,7 @@ Publish(p) ==
                 /\ mode' = IF leaseOK THEN mode
                            ELSE [mode EXCEPT ![p] = "draining"]
                 /\ UNCHANGED <<localGen, localCov>>
-    /\ UNCHANGED <<dbNow, lease, objects, nextAttempt, held, granted>>
+    /\ UNCHANGED <<dbNow, lease, objects, nextAttempt, held, granted, retention>>
 
 \* ClaimUnpublishedObjects: a pending key whose key is not published becomes
 \* deleting, in one transaction. Its row lock orders it with a publication
@@ -349,11 +364,11 @@ Publish(p) ==
 \* attempts (liveness), so the model lets a claim happen at any time.
 Claim(k) ==
     /\ Collect
-    /\ ledger[k] = "pending"
+    /\ ledger[k] \in {"pending", "retired"}
     /\ \A x \in windows : x.key # k
     /\ ledger' = [ledger EXCEPT ![k] = "deleting"]
     /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, objects, nextAttempt,
-                   lostReplies, local, granted>>
+                   lostReplies, local, granted, retention>>
 
 \* Collector.RunPass deletes the object of a claimed key, then forgets the
 \* record (ForgetDeletedObjects). A failure in between only repeats the
@@ -366,11 +381,30 @@ DeleteClaimed(k) ==
     /\ objects' = [objects EXCEPT ![k] = Absent]
     /\ ledger' = [ledger EXCEPT ![k] = "none"]
     /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, nextAttempt,
+                   lostReplies, local, granted, retention>>
+
+\* RetireWindows: one transaction removes the oldest window of a stream,
+\* records its key as retired, and advances the stream's start. The clock
+\* decides when (the retention boundary), so the model lets it happen at any
+\* time. A query that selected the window earlier may still read its object;
+\* it must finish before garbage collection's minimum age passes, a timing
+\* assumption outside this model, which has no readers.
+Retire(s) ==
+    /\ Retain
+    /\ \E x \in windows :
+        /\ x.stream = s
+        /\ x.idx = origin[s]
+        /\ windows' = windows \ {x}
+        /\ ledger' = [ledger EXCEPT ![x.key] = "retired"]
+    /\ origin' = [origin EXCEPT ![s] = origin[s] + 1]
+    /\ retired' = retired + 1
+    /\ UNCHANGED <<dbNow, lease, gen, coverage, objects, nextAttempt,
                    lostReplies, local, granted>>
 
 Next ==
     \/ Tick
     \/ \E k \in Keys : Claim(k) \/ DeleteClaimed(k)
+    \/ \E s \in Streams : Retire(s)
     \/ \E p \in Archivers :
         \/ Acquire(p) \/ Renew(p) \/ StepDown(p) \/ Release(p)
         \/ LoadStatus(p) \/ Put(p) \/ VerifyUpload(p) \/ Abandon(p)
@@ -387,17 +421,18 @@ Symmetry == Permutations(Archivers) \cup Permutations(Streams)
 (* Safety properties.                                                      *)
 
 \* Coverage of every stream is contiguous and backed by exactly one
-\* published window per index: no gap, no overlap, no coverage without a
-\* publication ("never advances coverage" on a failed attempt).
+\* published window per index from its start: no gap, no overlap, no coverage
+\* without a publication ("never advances coverage" on a failed attempt).
 CoverageContiguous ==
     \A s \in Streams :
+        /\ origin[s] <= coverage[s]
         /\ {x.idx : x \in {y \in windows : y.stream = s}}
-               = {i \in Indexes : i < coverage[s]}
+               = {i \in Indexes : origin[s] <= i /\ i < coverage[s]}
         /\ \A x, y \in windows :
                x.stream = s /\ y.stream = s /\ x.idx = y.idx => x = y
 
-\* One generation per publication.
-GenerationCounts == gen = Cardinality(windows)
+\* One generation per publication, retired or not.
+GenerationCounts == gen = Cardinality(windows) + retired
 
 \* Every reference in the catalog names an object that holds exactly the
 \* verified window. Orphans are allowed; dangling or corrupt references not.
@@ -418,8 +453,11 @@ TokensUnique ==
 PublishedKeysUnrecorded ==
     \A x \in windows : ledger[x.key] = "none"
 
-\* Published windows are append-only and immutable.
-WindowsAppendOnly == [][windows \subseteq windows']_vars
+\* Published windows are append-only and immutable; a window leaves only by
+\* retirement, which moves its stream's start past it and never back.
+WindowsAppendOnly ==
+    [][/\ \A x \in windows : x \in windows' \/ x.idx < origin'[x.stream]
+       /\ \A s \in Streams : origin[s] <= origin'[s]]_vars
 
 \* Objects referenced by the catalog never change afterwards.
 ReferencedObjectsImmutable ==

@@ -193,6 +193,10 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 			return nil, fmt.Errorf("upgrade schema 1 backup: %w", err)
 		}
 		expected.SchemaVersion = SQLiteSchemaVersion
+		expected.Coverage = append([]StreamCoverage(nil), expected.Coverage...)
+		for i := range expected.Coverage {
+			expected.Coverage[i].Start = expected.Contract.CoverageStart
+		}
 	}
 	s, err := OpenSQLite(ctx, stage, meta.Status.ID)
 	if err != nil {
@@ -257,7 +261,7 @@ func checkRestoredLedger(ctx context.Context, tx *sql.Tx, status SQLiteStatus) e
 		if err := rows.Scan(&key, &created, &state); err != nil {
 			return err
 		}
-		if (state != pendingState && state != deletingState) || created < 0 || checkClaimedKey(status.Contract, key) != nil {
+		if !validLedgerState(state) || created < 0 || checkClaimedKey(status.Contract, key) != nil {
 			return errors.New("backup contains an invalid object ledger record")
 		}
 		var published bool
@@ -289,7 +293,7 @@ func checkRestoredForeignKeys(ctx context.Context, tx *sql.Tx) error {
 }
 
 // checkRestoredCoverage requires each stream's windows to form exactly the
-// contiguous prefix of the coverage it records.
+// contiguous range [start,end) of the coverage it records.
 func checkRestoredCoverage(ctx context.Context, tx *sql.Tx, status SQLiteStatus) error {
 	for _, stream := range status.Coverage {
 		var count int64
@@ -298,8 +302,8 @@ func checkRestoredCoverage(ctx context.Context, tx *sql.Tx, status SQLiteStatus)
 		if err != nil {
 			return err
 		}
-		want := (stream.End - status.Contract.CoverageStart) / status.Contract.WindowMS
-		if count != want || (count > 0 && (!first.Valid || !last.Valid || first.Int64 != status.Contract.CoverageStart || last.Int64 != stream.End)) {
+		want := (stream.End - stream.Start) / status.Contract.WindowMS
+		if count != want || (count > 0 && (!first.Valid || !last.Valid || first.Int64 != stream.Start || last.Int64 != stream.End)) {
 			return errors.New("backup coverage is not a contiguous prefix of its windows")
 		}
 	}
@@ -324,7 +328,7 @@ func checkRestoredWindows(ctx context.Context, tx *sql.Tx, status SQLiteStatus) 
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	if count != status.Generation {
+	if count+status.RetiredWindows != status.Generation {
 		return errors.New("backup generation disagrees with published window count")
 	}
 	return nil

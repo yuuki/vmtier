@@ -315,7 +315,7 @@ func TestPostgresUpgradeAddsObjectLedger(t *testing.T) {
 	if err := p.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `DROP TABLE pending_objects; UPDATE catalog_state SET schema_version=2`); err != nil {
+	if _, err := db.ExecContext(ctx, `DROP TABLE pending_objects; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=2`); err != nil {
 		t.Fatal(err)
 	}
 	if old, err := OpenPostgres(ctx, dsn, "test"); err == nil {
@@ -410,10 +410,13 @@ func TestSQLiteUpgradeAddsObjectLedger(t *testing.T) {
 	}
 }
 
+// sqliteDowngrade turns a schema 2 catalog into the schema 1 shape.
+const sqliteDowngrade = `DROP TABLE pending_objects; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`
+
 // downgradeSQLite closes s and turns its file into the schema 1 shape.
 func downgradeSQLite(t *testing.T, s *SQLite) {
 	t.Helper()
-	if _, err := s.db.Exec(`DROP TABLE pending_objects; UPDATE catalog_state SET schema_version=1`); err != nil {
+	if _, err := s.db.Exec(sqliteDowngrade); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {

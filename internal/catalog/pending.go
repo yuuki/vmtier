@@ -19,8 +19,15 @@ import (
 // it is claimed only keeps garbage collection from discarding running attempts.
 const (
 	pendingState  = "pending"
+	retiredState  = "retired"
 	deletingState = "deleting"
 )
+
+// validLedgerState reports whether a stored ledger state is known. Retired keys
+// belonged to windows that Cold retention removed from the catalog.
+func validLedgerState(state string) bool {
+	return state == pendingState || state == retiredState || state == deletingState
+}
 
 const (
 	// MaxRecordedObjects bounds the keys of one RecordPendingObjects call.
@@ -46,9 +53,10 @@ type ObjectLedger interface {
 	// It never performs object I/O and fails if a key is known already.
 	RecordPendingObjects(ctx context.Context, tenant string, keys []string) error
 	// ClaimUnpublishedObjects returns at most limit keys whose objects may be
-	// deleted: keys claimed earlier but not yet forgotten, then pending keys
-	// recorded at least minAge ago, which it claims. A claimed key can no
-	// longer be published. Ages use the catalog's clock.
+	// deleted: keys claimed earlier but not yet forgotten, then pending and
+	// retired keys recorded at least minAge ago, which it claims. A claimed key
+	// can no longer be published. Ages use the catalog's clock; for a retired
+	// key, minAge is how long a query holding an older plan may still read it.
 	ClaimUnpublishedObjects(ctx context.Context, minAge time.Duration, limit int) ([]string, error)
 	// ForgetDeletedObjects removes claimed keys whose objects were deleted.
 	// Keys that are not claimed are left unchanged.
@@ -57,11 +65,13 @@ type ObjectLedger interface {
 	UnpublishedObjects(ctx context.Context) (UnpublishedObjectCounts, error)
 }
 
-// UnpublishedObjectCounts counts the keys of attempts that have not published.
-// Pending keys may still belong to a running attempt; deleting keys have been
-// claimed by garbage collection and their objects may still exist.
+// UnpublishedObjectCounts counts the keys no window references. Pending keys
+// may still belong to a running attempt; retired keys belonged to windows that
+// Cold retention removed; deleting keys have been claimed by garbage
+// collection and their objects may still exist.
 type UnpublishedObjectCounts struct {
 	Pending  int64 `json:"pending"`
+	Retired  int64 `json:"retired"`
 	Deleting int64 `json:"deleting"`
 }
 

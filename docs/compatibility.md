@@ -119,7 +119,7 @@ compare queries during an upgrade.
 | PUT | Ordinary PutObject with Content-MD5; never reuse a published key. |
 | Reads | GetObject and single-range GET with correct lengths/Content-Range; verify content with SHA-256. |
 | Conditional PUT / ETag | Not required, requested, sent, or used for checksums/CAS. |
-| DELETE | Ordinary DeleteObject, only by opt-in [garbage collection](serve.md#garbage-collection) and only for keys the catalog recorded before upload and then claimed; a missing object counts as deleted. |
+| DELETE | Ordinary DeleteObject, only by opt-in [garbage collection](serve.md#garbage-collection) and only for keys the catalog recorded (before upload, or when [Cold retention](serve.md#cold-retention) retired their window) and then claimed; a missing object counts as deleted. |
 | LIST / multipart | Not used. Object discovery is not provided; garbage collection never lists the bucket. |
 | Commit / CAS | SQLite or PostgreSQL transaction per tenant/source/window in `serve`; PostgreSQL also checks archiver fencing. Legacy JSON v2 uses generation CAS in its HTTP service or local adapter. |
 | Catalog identity | Stable ID, fixed contract, append-only complete windows. Both service backends pin the blob locator. SQLite locks its state directory; PostgreSQL uses DB-time archiver leases. |

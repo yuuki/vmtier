@@ -15,9 +15,9 @@ import (
 
 // orphanGCStats counts garbage collection passes of this process.
 type orphanGCStats struct {
-	enabled                           atomic.Bool
-	passes, failures, claimed, delete atomic.Uint64
-	lastSuccess                       atomic.Int64
+	enabled                                    atomic.Bool
+	passes, failures, claimed, delete, retired atomic.Uint64
+	lastSuccess                                atomic.Int64
 }
 
 func (s *orphanGCStats) write(w io.Writer) {
@@ -27,6 +27,7 @@ func (s *orphanGCStats) write(w io.Writer) {
 	}
 	fmt.Fprintf(w, "vmtier_orphan_gc_enabled %d\nvmtier_orphan_gc_passes_total %d\nvmtier_orphan_gc_failed_passes_total %d\nvmtier_orphan_gc_claimed_objects_total %d\nvmtier_orphan_gc_deleted_objects_total %d\nvmtier_orphan_gc_last_success_timestamp_seconds %d\n",
 		enabled, s.passes.Load(), s.failures.Load(), s.claimed.Load(), s.delete.Load(), s.lastSuccess.Load())
+	fmt.Fprintf(w, "vmtier_cold_retired_windows_total %d\n", s.retired.Load())
 }
 
 // orphanPassRunner runs one garbage collection pass.
@@ -55,17 +56,18 @@ func (w *collectingWorker) RunPass(ctx context.Context, now time.Time) (*archive
 	collected, gcErr := w.collector.RunPass(ctx)
 	w.next = time.Now().Add(w.interval)
 	w.stats.passes.Add(1)
+	w.stats.retired.Add(uint64(collected.Retired))
 	w.stats.claimed.Add(uint64(collected.Claimed))
 	w.stats.delete.Add(uint64(collected.Deleted))
 	if gcErr != nil {
 		if ctx.Err() == nil {
 			w.stats.failures.Add(1)
-			slog.Error("orphan garbage collection failed", "claimed", collected.Claimed, "deleted", collected.Deleted, "error", gcErr)
+			slog.Error("orphan garbage collection failed", "retired", collected.Retired, "claimed", collected.Claimed, "deleted", collected.Deleted, "error", gcErr)
 		}
 	} else {
 		w.stats.lastSuccess.Store(time.Now().Unix())
-		if collected.Deleted > 0 {
-			slog.Info("orphan garbage collection deleted objects", "claimed", collected.Claimed, "deleted", collected.Deleted)
+		if collected.Deleted > 0 || collected.Retired > 0 {
+			slog.Info("orphan garbage collection deleted objects", "retired", collected.Retired, "claimed", collected.Claimed, "deleted", collected.Deleted)
 		}
 	}
 	return result, err

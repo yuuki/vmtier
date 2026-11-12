@@ -105,10 +105,18 @@ func validateS3Prefix(prefix string) error {
 	return nil
 }
 
+// StreamCoverage is the committed range [Start,End) of one stream. Start is
+// the coverage origin until Cold retention retires the oldest windows.
 type StreamCoverage struct {
 	Tenant   string `json:"tenant"`
 	SourceID string `json:"source_id"`
 	End      int64  `json:"end_ms"`
+	Start    int64  `json:"start_ms"`
+}
+
+// validStreamCoverage requires an aligned range inside the contract.
+func validStreamCoverage(c Contract, s StreamCoverage) bool {
+	return s.Start >= c.CoverageStart && s.End >= s.Start && (s.Start-c.CoverageStart)%c.WindowMS == 0 && (s.End-c.CoverageStart)%c.WindowMS == 0
 }
 
 // Repository owns initialized publication metadata independently of blob storage.
@@ -120,6 +128,7 @@ type Repository interface {
 	PublishWindow(context.Context, uint64, Publication) (uint64, error)
 	Select(context.Context, Selection) (QueryPlan, error)
 	ObjectLedger
+	Retainer
 	Close() error
 }
 
@@ -127,13 +136,16 @@ var _ Repository = (*SQLite)(nil)
 
 // Status describes one consistent snapshot of an initialized catalog.
 type Status struct {
-	SchemaVersion int              `json:"schema_version"`
-	VMVersion     string           `json:"vm_version"`
-	ID            string           `json:"id"`
-	Generation    uint64           `json:"generation"`
-	Contract      Contract         `json:"contract"`
-	Blob          BlobLocator      `json:"blob"`
-	Coverage      []StreamCoverage `json:"coverage"`
+	SchemaVersion int    `json:"schema_version"`
+	VMVersion     string `json:"vm_version"`
+	ID            string `json:"id"`
+	Generation    uint64 `json:"generation"`
+	// RetiredWindows counts published windows that Cold retention removed;
+	// Generation counts every publication, retired or not.
+	RetiredWindows uint64           `json:"retired_windows"`
+	Contract       Contract         `json:"contract"`
+	Blob           BlobLocator      `json:"blob"`
+	Coverage       []StreamCoverage `json:"coverage"`
 }
 
 // SQLiteStatus is retained for SQLite maintenance and backup compatibility.

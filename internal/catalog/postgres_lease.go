@@ -199,8 +199,9 @@ func (p *fencedPostgres) Close() error { return nil }
 
 // UpgradePostgres explicitly upgrades schema 1 or 2 to schema 3. Stop legacy
 // writers first. The state lock waits for an in-flight publication, then
-// atomically adds ownership metadata (schema 2) and the object ledger (schema
-// 3) and changes the version so legacy writers reject new work. Repeating a
+// atomically adds ownership metadata (schema 2), the object ledger and the
+// retention columns (schema 3) and changes the version so legacy writers
+// reject new work. Repeating a
 // completed upgrade verifies the current state without changing it.
 func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	p, err := connectPostgres(ctx, dsn, id)
@@ -229,7 +230,8 @@ func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	if version != 1 && version != 2 {
 		return errors.New("unsupported PostgreSQL catalog upgrade source schema")
 	}
-	if _, err = p.readStatusVersion(ctx, tx, false, version); err != nil {
+	old, err := p.readStatusVersion(ctx, tx, false, version)
+	if err != nil {
 		return err
 	}
 	if version == 1 {
@@ -237,7 +239,10 @@ func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresPendingSchema, p.schema)); err != nil {
+	if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresPendingSchema+postgresRetentionUpgrade, p.schema)); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET start_ms=$1`, old.Contract.CoverageStart); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET schema_version=$1 WHERE singleton=1`, PostgreSQLSchemaVersion); err != nil {

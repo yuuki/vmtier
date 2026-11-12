@@ -64,12 +64,12 @@ func (s *SQLite) ClaimUnpublishedObjects(ctx context.Context, minAge time.Durati
 	}
 	cutoff := s.now().Add(-minAge).UnixMilli()
 	if len(keys) < limit && cutoff >= 0 {
-		claimed, err := sqliteLedgerKeys(ctx, tx, `SELECT object_key FROM pending_objects WHERE state=? AND created_ms<=? ORDER BY created_ms,object_key LIMIT ?`, pendingState, cutoff, limit-len(keys))
+		claimed, err := sqliteLedgerKeys(ctx, tx, `SELECT object_key FROM pending_objects WHERE state IN (?,?) AND created_ms<=? ORDER BY created_ms,object_key LIMIT ?`, pendingState, retiredState, cutoff, limit-len(keys))
 		if err != nil {
 			return nil, err
 		}
 		for _, key := range claimed {
-			if _, err = tx.ExecContext(ctx, `UPDATE pending_objects SET state=? WHERE object_key=? AND state=?`, deletingState, key, pendingState); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE pending_objects SET state=? WHERE object_key=? AND state IN (?,?)`, deletingState, key, pendingState, retiredState); err != nil {
 				return nil, err
 			}
 		}
@@ -145,14 +145,14 @@ func (s *SQLite) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCount
 	if _, err = readSQLiteStatus(ctx, tx, s.id); err != nil {
 		return out, err
 	}
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE state='pending'), count(*) FILTER (WHERE state='deleting') FROM pending_objects`).Scan(&out.Pending, &out.Deleting); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE state='pending'), count(*) FILTER (WHERE state='retired'), count(*) FILTER (WHERE state='deleting') FROM pending_objects`).Scan(&out.Pending, &out.Retired, &out.Deleting); err != nil {
 		return UnpublishedObjectCounts{}, err
 	}
 	return out, tx.Commit()
 }
 
 // UpgradeSQLite explicitly upgrades an offline schema 1 catalog to schema 2 by
-// adding the object ledger. It takes the directory lock, so a live service
+// adding the object ledger and the retention columns. It takes the directory lock, so a live service
 // refuses it; take a backup first. Repeating a completed upgrade only verifies
 // the current state.
 func UpgradeSQLite(ctx context.Context, dir, id string) error {
@@ -191,14 +191,112 @@ func (s *SQLite) upgrade(ctx context.Context) error {
 	default:
 		return errors.New("unsupported SQLite catalog upgrade source schema")
 	}
-	if _, err = readSQLiteStatusVersion(ctx, tx, s.id, 1); err != nil {
+	old, err := readSQLiteStatusVersion(ctx, tx, s.id, 1)
+	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, sqlitePendingSchema); err != nil {
+	if _, err = tx.ExecContext(ctx, sqlitePendingSchema+sqliteRetentionUpgrade); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=?`, old.Contract.CoverageStart); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE catalog_state SET schema_version=? WHERE singleton=1`, SQLiteSchemaVersion); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+var _ Retainer = (*SQLite)(nil)
+
+// RetireWindows removes the oldest windows below before in one transaction.
+func (s *SQLite) RetireWindows(ctx context.Context, before int64, limit int) (int, error) {
+	if err := validateRetirement(before, limit); err != nil {
+		return 0, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	state, err := readSQLiteStatus(ctx, tx, s.id)
+	if err != nil {
+		return 0, err
+	}
+	created := s.now().UnixMilli()
+	if created < 0 {
+		return 0, errors.New("catalog clock is before the Unix epoch")
+	}
+	retired := 0
+	for _, stream := range state.Coverage {
+		if retired == limit {
+			break
+		}
+		windows, err := sqliteRetiredWindows(ctx, tx, stream, min(before, stream.End), limit-retired)
+		if err != nil {
+			return 0, err
+		}
+		start, err := nextRetirements(stream.Start, windows)
+		if err != nil {
+			return 0, err
+		}
+		for _, w := range windows {
+			if err = s.retireWindow(ctx, tx, w.id, created); err != nil {
+				return 0, err
+			}
+		}
+		if start != stream.Start {
+			if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=? WHERE tenant=? AND source_id=?`, start, stream.Tenant, stream.SourceID); err != nil {
+				return 0, err
+			}
+		}
+		retired += len(windows)
+	}
+	if retired == 0 {
+		return 0, nil
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE catalog_state SET retired_windows=retired_windows+? WHERE singleton=1`, retired); err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return retired, nil
+}
+
+// sqliteRetiredWindows reads up to limit windows of a stream, in order from its
+// start, that end no later than cut.
+func sqliteRetiredWindows(ctx context.Context, tx *sql.Tx, stream StreamCoverage, cut int64, limit int) ([]retiredWindow, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id,start_ms,end_ms FROM windows WHERE tenant=? AND source_id=? AND start_ms>=? AND end_ms<=? ORDER BY start_ms LIMIT ?`, stream.Tenant, stream.SourceID, stream.Start, cut, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []retiredWindow
+	for rows.Next() {
+		var w retiredWindow
+		if err = rows.Scan(&w.id, &w.start, &w.end); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// retireWindow moves a window's object keys to the ledger and removes it.
+func (s *SQLite) retireWindow(ctx context.Context, tx *sql.Tx, id, created int64) error {
+	keys, err := sqliteLedgerKeys(ctx, tx, `SELECT data_key FROM packs WHERE window_id=? UNION ALL SELECT index_key FROM packs WHERE window_id=?`, id, id)
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO pending_objects(object_key,created_ms,state) VALUES(?,?,?)`, key, created, retiredState); err != nil {
+			return fmt.Errorf("record retired object: %w", err)
+		}
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM packs WHERE window_id=?`, id); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM windows WHERE id=?`, id)
+	return err
 }

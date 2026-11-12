@@ -206,7 +206,8 @@ are rejected.
 
 ## Upgrade schema 1
 
-Schema 2 adds the object ledger used by [garbage collection](serve.md#garbage-collection).
+Schema 2 adds the object ledger used by [garbage collection](serve.md#garbage-collection)
+and the stream starts and retired-window count used by [Cold retention](serve.md#cold-retention).
 `serve` and the offline commands, `catalog-backup` included, refuse a schema 1
 directory until it is upgraded explicitly. Stop the service and take a backup with
 the release that wrote the catalog (`old-vmtier` below) before installing this one,
@@ -235,6 +236,10 @@ backup, upgrading the restored copy.
 - An object ledger: keys are recorded before upload, publication consumes their
   records, and garbage collection claims and forgets the records of attempts that
   never published. A claimed key can no longer be published.
+- Cold retention: a stream's windows are contiguous from its `start_ms`, which
+  begins at the coverage origin and only advances when the oldest windows are
+  retired; `retired_windows` counts them, so the generation equals the remaining
+  windows plus the retired ones.
 - Immutable archive contract and blob locator: an absolute local path or S3
   endpoint/region/bucket/prefix, without credentials.
 - Atomic publication per tenant/source/window, with multiple packs or an explicit

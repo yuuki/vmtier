@@ -103,11 +103,11 @@ func (p *Postgres) initializeImport(ctx context.Context, tx *sql.Tx, newID strin
 	}
 	contractJSON, _ := json.Marshal(state.Contract)
 	blobJSON, _ := json.Marshal(state.Blob)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("catalog_state")+` VALUES(1,$1,$2,$3,$4,$5,$6)`, PostgreSQLSchemaVersion, newID, state.VMVersion, state.Generation, string(contractJSON), string(blobJSON)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("catalog_state")+`(singleton,schema_version,catalog_id,vm_version,generation,contract_json,blob_json,retired_windows) VALUES(1,$1,$2,$3,$4,$5,$6,$7)`, PostgreSQLSchemaVersion, newID, state.VMVersion, state.Generation, string(contractJSON), string(blobJSON), state.RetiredWindows); err != nil {
 		return err
 	}
 	for _, stream := range state.Coverage {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+` VALUES($1,$2,$3)`, stream.Tenant, stream.SourceID, stream.End); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+`(tenant,source_id,end_ms,start_ms) VALUES($1,$2,$3,$4)`, stream.Tenant, stream.SourceID, stream.End, stream.Start); err != nil {
 			return err
 		}
 	}
@@ -136,7 +136,7 @@ func (p *Postgres) copySQLiteLedger(ctx context.Context, tx, snapshot *sql.Tx, s
 		if err = rows.Scan(&key, &created, &recordState); err != nil {
 			return 0, err
 		}
-		if (recordState != pendingState && recordState != deletingState) || created < 0 || checkClaimedKey(state.Contract, key) != nil {
+		if !validLedgerState(recordState) || created < 0 || checkClaimedKey(state.Contract, key) != nil {
 			return 0, errors.New("SQLite import source has an invalid object ledger record")
 		}
 		var published bool
@@ -155,13 +155,15 @@ func (p *Postgres) copySQLiteLedger(ctx context.Context, tx, snapshot *sql.Tx, s
 }
 
 // copySQLiteWindows copies the windows of the SQLite snapshot in generation
-// order, requiring them to be contiguous and to reach each stream's coverage.
+// order, requiring each stream's windows to be contiguous from its start to its
+// coverage end. Retired windows leave gaps in the generations.
 func (p *Postgres) copySQLiteWindows(ctx context.Context, tx, snapshot *sql.Tx, state Status) (importedWindows, error) {
 	var out importedWindows
 	ends := make(map[string]int64, len(state.Coverage))
 	for _, stream := range state.Coverage {
-		ends[stream.Tenant+"\x00"+stream.SourceID] = state.Contract.CoverageStart
+		ends[stream.Tenant+"\x00"+stream.SourceID] = stream.Start
 	}
+	var last uint64
 	rows, err := snapshot.QueryContext(ctx, `SELECT id,tenant,source_id,start_ms,end_ms,generation,pack_count,digest FROM windows ORDER BY generation`)
 	if err != nil {
 		return out, err
@@ -175,10 +177,10 @@ func (p *Postgres) copySQLiteWindows(ctx context.Context, tx, snapshot *sql.Tx, 
 			return out, fmt.Errorf("read SQLite import window: %w", err)
 		}
 		key := window.Tenant + "\x00" + window.SourceID
-		if window.Generation != out.windows+1 || window.Start != ends[key] {
+		if window.Generation <= last || window.Generation > state.Generation || window.Start != ends[key] {
 			return out, errors.New("SQLite import source has noncontiguous generations or stream coverage")
 		}
-		ends[key] = window.End
+		last, ends[key] = window.Generation, window.End
 		if err = p.insertImportWindow(ctx, tx, window, digest); err != nil {
 			return out, err
 		}
@@ -192,7 +194,7 @@ func (p *Postgres) copySQLiteWindows(ctx context.Context, tx, snapshot *sql.Tx, 
 		return out, err
 	}
 	rows.Close()
-	if out.windows != state.Generation {
+	if out.windows+state.RetiredWindows != state.Generation {
 		return out, errors.New("SQLite import window count differs from generation")
 	}
 	for _, stream := range state.Coverage {
@@ -286,8 +288,9 @@ func verifyPostgresImport(ctx context.Context, tx *sql.Tx, p *Postgres, contract
 	// PostgreSQL transaction. Memory remains bounded to a single window.
 	destinationHash := sha256.New()
 	encoder := json.NewEncoder(destinationHash)
-	for generation := uint64(1); generation <= windows; generation++ {
-		row := tx.QueryRowContext(ctx, `SELECT id,tenant,source_id,start_ms,end_ms,generation,pack_count,digest FROM `+p.table("windows")+` WHERE generation=$1`, generation)
+	var last uint64
+	for range windows {
+		row := tx.QueryRowContext(ctx, `SELECT id,tenant,source_id,start_ms,end_ms,generation,pack_count,digest FROM `+p.table("windows")+` WHERE generation>$1 ORDER BY generation LIMIT 1`, last)
 		window, _, err := readImportWindow(ctx, tx, row, p.table("packs"), "$1", contract)
 		if err != nil {
 			return err
@@ -295,6 +298,7 @@ func verifyPostgresImport(ctx context.Context, tx *sql.Tx, p *Postgres, contract
 		if err := encoder.Encode(window); err != nil {
 			return err
 		}
+		last = window.Generation
 	}
 	if !bytes.Equal(destinationHash.Sum(nil), expectedHash) {
 		return errors.New("PostgreSQL import window references differ from SQLite source")

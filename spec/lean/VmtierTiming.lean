@@ -127,6 +127,53 @@ theorem query_complete (c : Contract) (cov lo hi now t : Int)
   generalize requiredEnd c now = req at *
   omega
 
+/-- `archive.RetentionBoundary(now, C, w)`: `(now - C) / w * w` with Go's
+truncating division. Cold retention (`Collector.retire`) retires the windows
+that end at or before it, and runs only once it exceeds the coverage origin;
+a retirement then moves the stream's start to at most this boundary. -/
+def retentionBoundary (C w now : Int) : Int :=
+  Int.tdiv (now - C) w * w
+
+/-- A retirement that runs (its boundary exceeds a nonnegative origin) never
+retires a window younger than `C` at the time it runs. -/
+theorem retentionBoundary_le (C w now origin : Int) (hw : 0 < w)
+    (horigin : 0 ≤ origin) (hpast : origin < retentionBoundary C w now) :
+    retentionBoundary C w now ≤ now - C := by
+  unfold retentionBoundary at *
+  by_cases hx : 0 ≤ now - C
+  · have hdecomp := Int.tdiv_mul_add_tmod (now - C) w
+    have hmod := Int.tmod_nonneg w hx
+    generalize Int.tdiv (now - C) w * w = q at *
+    omega
+  · -- A negative dividend truncates to a quotient of at most zero, so the
+    -- boundary cannot exceed the origin.
+    have hneg : Int.tdiv (now - C) w ≤ 0 := by
+      have := Int.neg_tdiv (-(now - C)) w
+      rw [Int.neg_neg] at this
+      have := Int.tdiv_nonneg (show 0 ≤ -(now - C) by omega) (Int.le_of_lt hw)
+      omega
+    have := Int.mul_nonpos_of_nonpos_of_nonneg hneg (Int.le_of_lt hw)
+    omega
+
+/-- Cold retention never takes a sample a query still needs, for any
+retention `C`. A stream starts at the origin, or, after a retirement at
+`r ≤ now`, at most at that retirement's boundary. Then every accepted sample
+at or after the origin and younger than `C` that an accepted query asks for
+lies in Cold's retained range `[start, cov)` or is younger than `R`. Samples
+older than `C`, like those before the origin, are outside the guarantee. -/
+theorem retention_complete (c : Contract) (C origin start r cov lo hi now t : Int)
+    (horigin : 0 ≤ origin)
+    (hstart : start = origin ∨
+      (origin < retentionBoundary C c.w r ∧ start ≤ retentionBoundary C c.w r ∧ r ≤ now))
+    (hacc : gatewayAccepts c cov lo hi now)
+    (ht : lo ≤ t ∧ t ≤ hi) (hold : origin ≤ t) (hyoung : now - C < t) :
+    (start ≤ t ∧ t < cov) ∨ now - c.R < t := by
+  have hq := query_complete c cov lo hi now t hacc ht
+  rcases hstart with h | ⟨hpast, hle, hr⟩
+  · omega
+  · have := retentionBoundary_le C c.w r origin c.window_pos horigin hpast
+    omega
+
 /-- The headroom condition is needed: with `R = H + w` (so `R > H + s + w`
 fails), a query at `now = 25` with coverage ending at the required end
 `10` passes the gateway, yet a sample at `10` is neither below the coverage

@@ -19,7 +19,9 @@ windows publish no pack references. Interrupted attempts do not advance coverage
 their uncommitted objects remain as orphans. Every key is recorded in the catalog's
 object ledger before its upload, and publication consumes those records, so opt-in
 garbage collection deletes exactly the objects of attempts that never published
-([ADR 0006](adr/0006-orphan-garbage-collection.md)).
+([ADR 0006](adr/0006-orphan-garbage-collection.md)). Opt-in Cold retention removes
+the oldest windows from the catalog, advancing each stream's retained start, and
+hands their keys to garbage collection ([ADR 0007](adr/0007-cold-retention.md)).
 
 The catalog is the authority. It binds the timing contract, tenants, sources,
 identity, and blob locator. It cannot be rebuilt from an object listing. SQLite

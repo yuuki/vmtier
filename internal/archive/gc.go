@@ -24,11 +24,30 @@ type Collector struct {
 	MinAge time.Duration
 	// Batch bounds the keys of one claim; MaxBatches bounds a pass.
 	Batch, MaxBatches int
+	// Retention, when positive, retires windows that ended at least Retention
+	// before Now, before collecting. Retired objects are deleted once MinAge
+	// has passed, so MinAge must exceed the longest query.
+	Retention time.Duration
+	Window    time.Duration
+	Origin    int64
+	Retire    catalog.Retainer
+	Now       func() time.Time
 }
+
+// RetentionBoundary is the first window start that Cold retention keeps at
+// now: windows that end at or before it are retired. Like the archive-age
+// boundary it is a multiple of the window, which the coverage origin is too.
+func RetentionBoundary(now time.Time, retention, window time.Duration) int64 {
+	w := window.Milliseconds()
+	return ((now.UnixMilli() - retention.Milliseconds()) / w) * w
+}
+
+const defaultRetireBatch = 64
 
 // CollectResult counts one pass. Claimed includes keys claimed by an earlier
 // pass whose deletion did not finish.
 type CollectResult struct {
+	Retired int `json:"retired"`
 	Claimed int `json:"claimed"`
 	Deleted int `json:"deleted"`
 }
@@ -55,6 +74,13 @@ func (c *Collector) RunPass(ctx context.Context) (CollectResult, error) {
 	}
 	if batch < 1 || batch > catalog.MaxClaimedObjects || batches < 1 {
 		return out, errors.New("invalid collector batch bounds")
+	}
+	if c.Retention > 0 {
+		retired, err := c.retire(ctx, batches)
+		out.Retired = retired
+		if err != nil {
+			return out, err
+		}
 	}
 	for range batches {
 		keys, err := c.Catalog.ClaimUnpublishedObjects(ctx, c.MinAge, batch)
@@ -85,4 +111,28 @@ func (c *Collector) RunPass(ctx context.Context) (CollectResult, error) {
 		}
 	}
 	return out, nil
+}
+
+// retire retires the windows below the retention boundary in bounded
+// transactions. Nothing is retired before the boundary passes the origin.
+func (c *Collector) retire(ctx context.Context, batches int) (int, error) {
+	if c.Retire == nil || c.Now == nil || c.Window <= 0 {
+		return 0, errors.New("Cold retention requires a catalog, a clock and the window")
+	}
+	before := RetentionBoundary(c.Now(), c.Retention, c.Window)
+	if before <= c.Origin {
+		return 0, nil
+	}
+	retired := 0
+	for range batches {
+		n, err := c.Retire.RetireWindows(ctx, before, defaultRetireBatch)
+		retired += n
+		if err != nil {
+			return retired, fmt.Errorf("retire windows before %d: %w", before, err)
+		}
+		if n < defaultRetireBatch {
+			break
+		}
+	}
+	return retired, nil
 }

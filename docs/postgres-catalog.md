@@ -52,7 +52,8 @@ Already uploaded objects from a losing attempt remain unreferenced until
 archive passes; its claims and every publication are ordered by row locks on the
 object ledger, so a claimed key can never be published by any process.
 
-Schema 2 introduces leases and schema 3 the object ledger. The schema upgrade
+Schema 2 introduces leases and schema 3 the object ledger and the Cold retention
+columns. The schema upgrade
 requires an already compatible VM pin; it does not convert v1.128.0 catalogs or
 packs to v1.155.0. Stop writers of the older schema before an explicit upgrade,
 which moves schema 1 or 2 to 3 in one transaction:
@@ -62,7 +63,8 @@ which moves schema 1 or 2 to 3 in one transaction:
 ```
 
 The upgrade preserves published metadata and identity, initializes an unowned
-lease when upgrading from schema 1, and adds an empty object ledger. Older binaries
+lease when upgrading from schema 1, adds an empty object ledger, and starts every
+stream at the coverage origin. Older binaries
 reject the new schema. Back up before upgrading; no automatic schema downgrade is
 provided. Objects of attempts that failed before the upgrade were never recorded
 and are not collected.
@@ -95,6 +97,10 @@ fresh keys. Zero packs represent a verified empty window. Same-publication repla
 succeeds after later commits, while changed content and key reuse across data/index
 roles fail. On an ambiguous commit response, reload coverage and the committed
 window before deciding whether to replay; do not blindly regenerate new object keys.
+
+Cold retention locks the catalog state row like publication, removes the oldest
+windows with their packs and key reservations, records their keys as retired, and
+advances each stream's start, all in one transaction.
 
 Read-only repeatable-read transactions provide a consistent status or query plan.
 Selection uses the existing window, pack, and descriptor-byte caps. Object I/O takes
