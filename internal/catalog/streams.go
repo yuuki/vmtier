@@ -41,12 +41,19 @@ func ContractCovers(stored, configured Contract) bool {
 //
 // AddStreams replaces the stored contract with next, which must cover it and
 // add at least one tenant or source. Every new tenant/source pair starts and
-// ends at origin, an aligned start no earlier than the coverage origin: the
-// archiver fills it from there, and the range below it is outside the query
-// guarantee for that stream. Existing streams, windows and the generation are
-// unchanged. The caller checks that Hot can still export origin's window.
+// ends at one origin: the end of the windows eligible for archiving now, by
+// the catalog's clock, and no earlier than the coverage origin. The archiver
+// fills each new stream from there, and the range below its origin is outside
+// the query guarantee for that stream. Existing streams, windows and the
+// generation are unchanged.
 type StreamAdder interface {
-	AddStreams(ctx context.Context, next Contract, origin int64) ([]StreamCoverage, error)
+	AddStreams(ctx context.Context, next Contract) ([]StreamCoverage, error)
+}
+
+// streamOrigin is the archive-age boundary at nowMS, which the gateway already
+// requires: a stream starting there is complete from the start.
+func streamOrigin(c Contract, nowMS int64) int64 {
+	return max((nowMS-c.AgeMS)/c.WindowMS*c.WindowMS, c.CoverageStart)
 }
 
 // newStreams validates a contract change and returns the streams it adds.

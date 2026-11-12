@@ -217,9 +217,18 @@ func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	if _, err = tx.ExecContext(ctx, `SET LOCAL synchronous_commit = on`); err != nil {
 		return err
 	}
+	// ALTER TABLE needs ACCESS EXCLUSIVE locks. Taking them first, in one
+	// order, serializes concurrent upgrades instead of letting two row locks
+	// deadlock on the table lock upgrade.
+	if _, err = tx.ExecContext(ctx, `LOCK TABLE `+p.table("catalog_state")+`, `+p.table("coverage")+` IN ACCESS EXCLUSIVE MODE`); err != nil {
+		return err
+	}
 	var version int
 	if err = tx.QueryRowContext(ctx, `SELECT schema_version FROM `+p.table("catalog_state")+` WHERE singleton=1 FOR UPDATE`).Scan(&version); err != nil {
 		return err
+	}
+	if version > PostgreSQLSchemaVersion {
+		return schemaVersionError(version, PostgreSQLSchemaVersion)
 	}
 	if version == PostgreSQLSchemaVersion {
 		if _, err = p.readStatus(ctx, tx, false); err != nil {

@@ -126,7 +126,7 @@ func TestPostgresCLIInitializationAndOnlineInspection(t *testing.T) {
 	if _, err := db.Fenced(lease).PublishWindow(ctx, 1, catalog.Publication{Tenant: "1:2", SourceID: "hot", Start: end, End: 2*end - start}); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := db.RetireWindows(ctx, end, 1); err != nil || n != 1 {
+	if n, err := db.RetireWindows(ctx, time.Duration(time.Now().UnixMilli()-end-c.ArchiveContract().WindowMS-c.ArchiveContract().WindowMS/2)*time.Millisecond, 1); err != nil || n != 1 {
 		t.Fatalf("retire: %d %v", n, err)
 	}
 	if err := run([]string{"verify", "-config", file}); err != nil {

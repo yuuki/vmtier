@@ -21,12 +21,16 @@ type ledgerFixture struct {
 	publish func(uint64, Publication) (uint64, error)
 	// age makes every recorded key at least d older on the catalog's clock.
 	age func(time.Duration)
+	// now reads the catalog's clock in Unix milliseconds.
+	now func() int64
 	// exec runs raw SQL against the catalog's tables.
 	exec func(string, ...any) error
 }
 
-func sqliteLedgerFixture(t *testing.T) ledgerFixture {
-	s := sqliteTestStore(t, contract())
+func sqliteLedgerFixture(t *testing.T) ledgerFixture { return sqliteLedgerFixtureFor(t, contract()) }
+
+func sqliteLedgerFixtureFor(t *testing.T, c Contract) ledgerFixture {
+	s := sqliteTestStore(t, c)
 	var mu sync.Mutex
 	offset := time.Duration(0)
 	s.now = func() time.Time {
@@ -42,6 +46,7 @@ func sqliteLedgerFixture(t *testing.T) ledgerFixture {
 			defer mu.Unlock()
 			offset += d
 		},
+		now: func() int64 { return s.now().UnixMilli() },
 		exec: func(query string, args ...any) error {
 			_, err := s.db.Exec(query, args...)
 			return err
@@ -50,7 +55,11 @@ func sqliteLedgerFixture(t *testing.T) ledgerFixture {
 }
 
 func postgresLedgerFixture(t *testing.T) ledgerFixture {
-	ctx, _, db, s := postgresTestStore(t, contract())
+	return postgresLedgerFixtureFor(t, contract())
+}
+
+func postgresLedgerFixtureFor(t *testing.T, c Contract) ledgerFixture {
+	ctx, _, db, s := postgresTestStore(t, c)
 	return ledgerFixture{
 		repo:    s,
 		publish: func(gen uint64, p Publication) (uint64, error) { return publishPostgresTest(ctx, s, gen, p) },
@@ -59,6 +68,13 @@ func postgresLedgerFixture(t *testing.T) ledgerFixture {
 			if _, err := db.ExecContext(ctx, `UPDATE pending_objects SET created_ms=created_ms-$1`, d.Milliseconds()); err != nil {
 				t.Fatal(err)
 			}
+		},
+		now: func() int64 {
+			var now int64
+			if err := db.QueryRowContext(ctx, `SELECT `+postgresNowMS).Scan(&now); err != nil {
+				t.Fatal(err)
+			}
+			return now
 		},
 		exec: func(query string, args ...any) error {
 			_, err := db.ExecContext(ctx, query, args...)
@@ -214,7 +230,7 @@ func testLedgerDamaged(t *testing.T, f ledgerFixture) {
 		t.Fatal(err)
 	}
 	// A damaged ledger that lists a published key must not direct a deletion.
-	if err := f.exec(`INSERT INTO pending_objects(object_key,created_ms,state) VALUES('` + p.Packs[0].DataKey + `',0,'pending')`); err != nil {
+	if err := f.exec(`INSERT INTO pending_objects(object_key,created_ms,state) VALUES('` + p.Packs[0].DataKey + `',0,'deleting')`); err != nil {
 		t.Fatal(err)
 	}
 	if keys, err := f.repo.ClaimUnpublishedObjects(ctx, time.Millisecond, 10); err == nil {
@@ -315,7 +331,7 @@ func TestPostgresUpgradeAddsObjectLedger(t *testing.T) {
 	if err := p.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `DROP TABLE pending_objects; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=2`); err != nil {
+	if _, err := db.ExecContext(ctx, `DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=2`); err != nil {
 		t.Fatal(err)
 	}
 	if old, err := OpenPostgres(ctx, dsn, "test"); err == nil {
@@ -384,11 +400,11 @@ func TestSQLiteUpgradeAddsObjectLedger(t *testing.T) {
 		old.Close()
 		t.Fatal("normal open silently upgraded schema 1")
 	}
-	if err := UpgradeSQLite(ctx, s.dir, "wrong-id"); err == nil {
+	if _, err := UpgradeSQLite(ctx, s.dir, "wrong-id"); err == nil {
 		t.Fatal("upgrade accepted wrong identity")
 	}
 	for i := 0; i < 2; i++ {
-		if err := UpgradeSQLite(ctx, s.dir, s.id); err != nil {
+		if _, err := UpgradeSQLite(ctx, s.dir, s.id); err != nil {
 			t.Fatalf("upgrade %d: %v", i, err)
 		}
 	}
@@ -405,13 +421,13 @@ func TestSQLiteUpgradeAddsObjectLedger(t *testing.T) {
 		held.Close()
 		t.Fatal("second owner opened the catalog")
 	}
-	if err := UpgradeSQLite(ctx, s.dir, s.id); err == nil {
+	if _, err := UpgradeSQLite(ctx, s.dir, s.id); err == nil {
 		t.Fatal("upgrade ran while the catalog was owned")
 	}
 }
 
 // sqliteDowngrade turns a schema 2 catalog into the schema 1 shape.
-const sqliteDowngrade = `DROP TABLE pending_objects; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`
+const sqliteDowngrade = `DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`
 
 // downgradeSQLite closes s and turns its file into the schema 1 shape.
 func downgradeSQLite(t *testing.T, s *SQLite) {

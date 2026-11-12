@@ -85,7 +85,14 @@ func openConfiguredRepository(ctx context.Context, c *config.Config) (catalog.Re
 
 func validateConfiguredRepository(ctx context.Context, c *config.Config, db catalog.Repository) error {
 	status, err := db.Status(ctx)
-	if err == nil && !catalog.ContractCovers(status.Contract, c.ArchiveContract()) {
+	// A SQLite catalog has one owner, so its configuration must list every
+	// stream; a PostgreSQL replica may still run the configuration from before
+	// streams were added (ADR 0008).
+	covered := catalog.EqualContract(status.Contract, c.ArchiveContract())
+	if c.Catalog.Type == "postgres" {
+		covered = catalog.ContractCovers(status.Contract, c.ArchiveContract())
+	}
+	if err == nil && !covered {
 		err = errors.New("catalog contract differs from service configuration")
 	}
 	if err == nil {
@@ -190,8 +197,7 @@ func archiveWorkers(c *config.Config, blobs objectstore.BlobStore, stats *servic
 		if gcInterval == 0 {
 			return worker
 		}
-		collector := &archive.Collector{Store: deleter, Catalog: repo, MinAge: gcMinAge,
-			Retention: c.ColdRetentionPeriod(), Window: cfg.Window, Origin: cfg.CoverageStart, Retire: repo, Now: time.Now}
+		collector := &archive.Collector{Store: deleter, Catalog: repo, MinAge: gcMinAge, Retention: c.ColdRetentionPeriod(), Retire: repo}
 		return &collectingWorker{archiver: worker, collector: collector, interval: gcInterval, stats: &stats.orphanGC}
 	}, nil
 }

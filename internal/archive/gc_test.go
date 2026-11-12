@@ -2,6 +2,7 @@ package archive
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/yuuki/vmtier/internal/catalog"
 	"github.com/yuuki/vmtier/internal/objectstore"
 )
@@ -162,15 +164,14 @@ func TestCollectorClaimBeforePublicationFailsTheAttempt(t *testing.T) {
 	}
 }
 
-// A deletion failure keeps the remaining keys claimed for the next pass.
-func TestCollectorResumesAfterDeleteFailure(t *testing.T) {
+// failedAttempt leaves the six objects of one three-pack attempt as orphans.
+func failedAttempt(t *testing.T) (*Archiver, string) {
+	t.Helper()
 	server, _ := newSQLiteSource(t, "multipack")
 	cfg := baseConfig(server.URL)
 	cfg.PackLimits.MaxBlocks = 1
 	a, catalogPath := newSQLiteArchiver(t, cfg)
 	blobDir := filepath.Join(filepath.Dir(catalogPath), "blobs")
-	ctx := context.Background()
-	// Fail after all six objects were uploaded: the attempt leaves six orphans.
 	cfg.Hook = func(stage string) error {
 		if stage == "verified" {
 			return errors.New("injected failure before publication")
@@ -178,24 +179,32 @@ func TestCollectorResumesAfterDeleteFailure(t *testing.T) {
 		return nil
 	}
 	a.Config = cfg
-	if _, err := a.RunPass(ctx, testNow); err == nil {
+	if _, err := a.RunPass(context.Background(), testNow); err == nil {
 		t.Fatal("failed attempt succeeded")
 	}
 	if objects := storedObjects(t, blobDir); len(objects) != 6 {
 		t.Fatalf("orphans: %v", objects)
 	}
 	time.Sleep(5 * time.Millisecond)
-	failing := &failingDeleter{Deleter: a.Store.(objectstore.Deleter), failAt: 3}
+	return a, blobDir
+}
+
+// A deletion failure neither stops the rest of the batch nor blocks later
+// passes: the key is deferred behind the other claimed keys.
+func TestCollectorDefersKeysThatFailToDelete(t *testing.T) {
+	a, blobDir := failedAttempt(t)
+	ctx := context.Background()
+	failing := &failingDeleter{Deleter: a.Store.(objectstore.Deleter), fail: map[int]bool{3: true}}
 	c := &Collector{Store: failing, Catalog: a.Catalog, MinAge: time.Millisecond, Batch: 4}
 	result, err := c.RunPass(ctx)
-	if err == nil || result.Claimed != 4 || result.Deleted != 2 {
+	if err == nil || result.Deleted != 5 {
 		t.Fatalf("failed deletion: %+v %v", result, err)
 	}
-	if counts, err := a.Catalog.UnpublishedObjects(ctx); err != nil || counts != (catalog.UnpublishedObjectCounts{Pending: 2, Deleting: 2}) {
+	if counts, err := a.Catalog.UnpublishedObjects(ctx); err != nil || counts != (catalog.UnpublishedObjectCounts{Deleting: 1}) {
 		t.Fatalf("ledger after failed deletion: %+v %v", counts, err)
 	}
 	result = collectAll(t, a.Store, a.Catalog)
-	if result.Claimed != 4 || result.Deleted != 4 {
+	if result.Deleted != 1 {
 		t.Fatalf("resumed collection: %+v", result)
 	}
 	if objects := storedObjects(t, blobDir); len(objects) != 0 {
@@ -203,17 +212,81 @@ func TestCollectorResumesAfterDeleteFailure(t *testing.T) {
 	}
 }
 
+// A key that can never be deleted does not starve the others: deferred keys
+// go behind the rest, and a batch where every deletion fails ends the pass.
+func TestCollectorIsNotWedgedByAnUndeletableKey(t *testing.T) {
+	a, blobDir := failedAttempt(t)
+	ctx := context.Background()
+	stuck := &stuckDeleter{Deleter: a.Store.(objectstore.Deleter)}
+	c := &Collector{Store: stuck, Catalog: a.Catalog, MinAge: time.Millisecond, Batch: 1, MaxBatches: 1}
+	// Each pass claims one key; the first key never deletes.
+	result, err := c.RunPass(ctx)
+	if err == nil || result.Deleted != 0 || stuck.key == "" {
+		t.Fatalf("first pass: %+v %v", result, err)
+	}
+	for i := 0; i < 10; i++ {
+		if _, err := c.RunPass(ctx); err != nil && !strings.Contains(err.Error(), stuck.key) {
+			t.Fatal(err)
+		}
+	}
+	objects := storedObjects(t, blobDir)
+	if len(objects) != 1 || objects[0] != stuck.key {
+		t.Fatalf("collection wedged behind %s: %v", stuck.key, objects)
+	}
+	if counts, err := a.Catalog.UnpublishedObjects(ctx); err != nil || counts != (catalog.UnpublishedObjectCounts{Deleting: 1}) {
+		t.Fatalf("ledger: %+v %v", counts, err)
+	}
+}
+
+// A pass that stops at its bounds with keys left reports More.
+func TestCollectorReportsBacklog(t *testing.T) {
+	a, _ := failedAttempt(t)
+	c := &Collector{Store: a.Store.(objectstore.Deleter), Catalog: a.Catalog, MinAge: time.Millisecond, Batch: 2, MaxBatches: 2}
+	result, err := c.RunPass(context.Background())
+	if err != nil || result.Deleted != 4 || !result.More {
+		t.Fatalf("bounded pass: %+v %v", result, err)
+	}
+	result, err = c.RunPass(context.Background())
+	if err != nil || result.Deleted != 2 || result.More {
+		t.Fatalf("final pass: %+v %v", result, err)
+	}
+}
+
 type failingDeleter struct {
 	objectstore.Deleter
-	calls, failAt int
+	calls int
+	fail  map[int]bool
 }
 
 func (d *failingDeleter) Delete(ctx context.Context, key string) error {
 	d.calls++
-	if d.calls == d.failAt {
+	if d.fail[d.calls] {
 		return errors.New("injected DELETE failure")
 	}
 	return d.Deleter.Delete(ctx, key)
+}
+
+// stuckDeleter never deletes the first key it is asked to delete.
+type stuckDeleter struct {
+	objectstore.Deleter
+	key string
+}
+
+func (d *stuckDeleter) Delete(ctx context.Context, key string) error {
+	if d.key == "" {
+		d.key = key
+	}
+	if key == d.key {
+		return errors.New("AccessDenied")
+	}
+	return d.Deleter.Delete(ctx, key)
+}
+
+// retentionEnding is the retention whose boundary, by the catalog's clock, is
+// end, with half a window of margin either way.
+func retentionEnding(end int64, window time.Duration) time.Duration {
+	w := window.Milliseconds()
+	return time.Duration(time.Now().UnixMilli()-end-w-w/2) * time.Millisecond
 }
 
 // Cold retention retires the windows below the boundary from the catalog and
@@ -231,11 +304,9 @@ func TestCollectorRetiresWindowsBelowColdRetention(t *testing.T) {
 		}
 	}
 	all := publishedObjects(t, a.Catalog, cfg, "7:3")
-	if RetentionBoundary(testNow, 2*time.Hour, cfg.Window) != cfg.CoverageStart+cfg.Window.Milliseconds() {
-		t.Fatal("fixture boundary is not the end of the first window")
-	}
+	first := cfg.CoverageStart + cfg.Window.Milliseconds()
 	collector := &Collector{Store: a.Store.(objectstore.Deleter), Catalog: a.Catalog, MinAge: time.Hour,
-		Retention: 2 * time.Hour, Window: cfg.Window, Origin: cfg.CoverageStart, Retire: a.Catalog, Now: func() time.Time { return testNow }}
+		Retention: retentionEnding(first, cfg.Window), Retire: a.Catalog}
 	result, err := collector.RunPass(ctx)
 	if err != nil || result.Retired != 1 {
 		t.Fatalf("retirement: %+v %v", result, err)
@@ -248,12 +319,23 @@ func TestCollectorRetiresWindowsBelowColdRetention(t *testing.T) {
 	if len(kept) == 0 || len(kept) >= len(all) {
 		t.Fatalf("retirement kept %d of %d objects", len(kept), len(all))
 	}
-	// The retired objects survive until they are old enough to be claimed.
+	// The retired objects survive until they are old enough to be claimed,
+	// whatever minimum age the collector asks for.
+	collector.MinAge = time.Millisecond
+	if result, err := collector.RunPass(ctx); err != nil || result.Deleted != 0 {
+		t.Fatalf("retired objects deleted early: %+v %v", result, err)
+	}
 	if objects := storedObjects(t, blobDir); len(objects) != len(all) {
 		t.Fatalf("retired objects deleted before the minimum age: %v", objects)
 	}
-	collector.MinAge = time.Millisecond
-	time.Sleep(5 * time.Millisecond)
+	db, err := sql.Open("sqlite3", "file:"+filepath.Join(catalogPath, catalog.SQLiteFile)+"?mode=rw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE pending_objects SET created_ms=created_ms-?`, catalog.MinRetiredObjectAge.Milliseconds()); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
 	result, err = collector.RunPass(ctx)
 	if err != nil || result.Retired != 0 || result.Deleted != len(all)-len(kept) {
 		t.Fatalf("collection of retired objects: %+v %v", result, err)
@@ -271,7 +353,7 @@ func TestCollectorRetiresWindowsBelowColdRetention(t *testing.T) {
 	}
 	// Nothing is retired while the boundary has not passed the origin.
 	early := *collector
-	early.Now = func() time.Time { return time.UnixMilli(cfg.CoverageStart).Add(2 * time.Hour) }
+	early.Retention = retentionEnding(cfg.CoverageStart, cfg.Window)
 	if result, err := early.RunPass(ctx); err != nil || result.Retired != 0 {
 		t.Fatalf("retired before the boundary passed the origin: %+v %v", result, err)
 	}
@@ -279,25 +361,34 @@ func TestCollectorRetiresWindowsBelowColdRetention(t *testing.T) {
 
 // After streams are added, an archiver still configured without them keeps
 // archiving the streams it knows, and one configured with them archives the
-// new streams from their origin.
+// new streams from their origin, the archive-age boundary when they were added.
 func TestArchiverWithAddedStreams(t *testing.T) {
 	server, source := newSQLiteSource(t, "")
+	now := time.Now()
 	cfg := baseConfig(server.URL)
+	w := cfg.Window.Milliseconds()
+	cfg.CoverageStart = (now.Add(-cfg.Age).UnixMilli()/w - 2) * w
+	cfg.StartMS, cfg.EndMS = cfg.CoverageStart, cfg.CoverageStart+w
 	a, _ := newSQLiteArchiver(t, cfg)
 	ctx := context.Background()
 	grown := cfg
 	grown.Tenants = []string{"7:3", "8:1"}
-	origin := cfg.CoverageStart + cfg.Window.Milliseconds()
-	added, err := a.Catalog.(catalog.StreamAdder).AddStreams(ctx, archiveContract(grown), origin)
+	added, err := a.Catalog.(catalog.StreamAdder).AddStreams(ctx, archiveContract(grown))
 	if err != nil || len(added) != 1 || added[0].Tenant != "8:1" {
 		t.Fatalf("add streams: %+v %v", added, err)
 	}
-	if result, err := a.RunPass(ctx, testNow); err != nil || result.CommittedWindows != 1 || source.exportCount("8:1") != 0 {
+	origin := added[0].Start
+	if origin != (now.Add(-cfg.Age).UnixMilli()/w)*w {
+		t.Fatalf("origin %d is not the archive-age boundary", origin)
+	}
+	if result, err := a.RunPass(ctx, now); err != nil || result.CommittedWindows != 1 || source.exportCount("8:1") != 0 {
 		t.Fatalf("earlier configuration: %+v %v exports=%d", result, err, source.exportCount("8:1"))
 	}
+	// One window later, the new stream has one window to archive.
+	later := now.Add(cfg.Window)
 	current := &Archiver{Store: a.Store, Catalog: a.Catalog, Config: grown}
-	for i := 0; i < 3; i++ {
-		if _, err := current.RunPass(ctx, testNow); err != nil {
+	for i := 0; i < 4; i++ {
+		if _, err := current.RunPass(ctx, later); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -305,7 +396,7 @@ func TestArchiverWithAddedStreams(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	end := testNow.Add(-cfg.Age).UnixMilli()
+	end := (later.Add(-cfg.Age).UnixMilli() / w) * w
 	for _, stream := range state.Coverage {
 		if stream.End != end {
 			t.Fatalf("stream did not catch up: %+v", stream)

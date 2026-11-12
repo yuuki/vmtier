@@ -85,6 +85,7 @@ CREATE TABLE pending_objects (
  state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting'))
 ) WITHOUT ROWID;
 CREATE INDEX pending_objects_age ON pending_objects (state, created_ms);
+CREATE INDEX windows_start ON windows (start_ms);
 `
 
 // sqliteRetentionUpgrade adds the retention columns of schema 2 to a schema 1
@@ -339,7 +340,7 @@ func readSQLiteStatusVersion(ctx context.Context, q sqliteQueryer, expectedID st
 		return out, fmt.Errorf("read initialized SQLite catalog: %w", err)
 	}
 	if stored != version {
-		return out, fmt.Errorf("unsupported catalog schema %d; explicit offline catalog-upgrade or migration required", stored)
+		return out, schemaVersionError(stored, version)
 	}
 	err := q.QueryRowContext(ctx, `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json,`+retiredColumn+` FROM catalog_state WHERE singleton=1 AND length(contract_json)<=1048576 AND length(blob_json)<=16384`).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb, &retired)
 	if err != nil {

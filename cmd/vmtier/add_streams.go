@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,12 +21,11 @@ import (
 func runAddStreams(args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	file := fs.String("config", "", "configuration listing the existing and the new tenants and sources")
-	start := fs.Int64("start", 0, "first window start of the new streams in epoch milliseconds (default: the next window to become eligible)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || *file == "" || *start < 0 {
-		return errors.New("catalog-add-streams requires -config FILE and an optional nonnegative -start")
+	if fs.NArg() != 0 || *file == "" {
+		return errors.New("catalog-add-streams requires -config FILE")
 	}
 	c, err := config.Read(*file)
 	if err != nil {
@@ -42,7 +40,7 @@ func runAddStreams(args []string) error {
 		return err
 	}
 	defer db.Close()
-	added, err := addStreams(ctx, c, db, *start, time.Now())
+	added, err := addStreams(ctx, c, db)
 	if err != nil {
 		return err
 	}
@@ -87,10 +85,9 @@ func openCatalogForStreams(ctx context.Context, c *config.Config) (streamCatalog
 }
 
 // addStreams checks the configuration against the stored catalog and adds its
-// new streams at origin, by default the next window to become eligible. An
-// earlier origin makes the archiver catch up from Hot, so its first window
-// must not have expired from Hot retention or its safety margin.
-func addStreams(ctx context.Context, c *config.Config, db streamCatalog, origin int64, now time.Time) ([]catalog.StreamCoverage, error) {
+// new streams. The catalog starts them at the archive-age boundary of its own
+// clock, which the gateway already requires, so they need no catch-up.
+func addStreams(ctx context.Context, c *config.Config, db streamCatalog) ([]catalog.StreamCoverage, error) {
 	status, err := db.Status(ctx)
 	if err != nil {
 		return nil, err
@@ -106,13 +103,5 @@ func addStreams(ctx context.Context, c *config.Config, db streamCatalog, origin 
 	if !catalog.ContractCovers(next, status.Contract) {
 		return nil, errors.New("configuration must keep the timing contract and every tenant and source of the catalog")
 	}
-	cfg := c.Archive(0, 0)
-	w := cfg.Window.Milliseconds()
-	if origin == 0 {
-		origin = max((now.Add(-cfg.Age).UnixMilli()/w)*w, status.Contract.CoverageStart)
-	}
-	if origin <= now.Add(-cfg.Retention+cfg.SafetyMargin).UnixMilli() {
-		return nil, fmt.Errorf("stream origin %d is no longer exportable from Hot within its retention and safety margin", origin)
-	}
-	return db.AddStreams(ctx, next, origin)
+	return db.AddStreams(ctx, next)
 }

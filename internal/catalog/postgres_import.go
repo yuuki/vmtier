@@ -124,6 +124,12 @@ type importedWindows struct {
 // copySQLiteLedger copies the object ledger of the SQLite snapshot with its
 // states and ages, after the windows, so that published keys are known.
 func (p *Postgres) copySQLiteLedger(ctx context.Context, tx, snapshot *sql.Tx, state Status) (uint64, error) {
+	// The stopped SQLite writer cannot publish its pending keys any more, so
+	// they join the new catalog's incarnation and remain collectable.
+	incarnation, err := p.incarnation(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
 	rows, err := snapshot.QueryContext(ctx, `SELECT object_key,created_ms,state FROM pending_objects ORDER BY object_key`)
 	if err != nil {
 		return 0, err
@@ -146,7 +152,7 @@ func (p *Postgres) copySQLiteLedger(ctx context.Context, tx, snapshot *sql.Tx, s
 		if published {
 			return 0, errors.New("SQLite import source object ledger records a published object key")
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+` (object_key,created_ms,state) VALUES($1,$2,$3)`, key, created, recordState); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+` (object_key,created_ms,state,incarnation) VALUES($1,$2,$3,$4)`, key, created, recordState, incarnation); err != nil {
 			return 0, err
 		}
 		count++

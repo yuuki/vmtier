@@ -182,7 +182,7 @@ func TestPostgresUpgradeAddsFencingExplicitly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reconstruct the stage-1 schema shape while preserving a committed window.
-	if _, err := db.ExecContext(ctx, `DROP TABLE archive_lease, pending_objects; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`); err != nil {
+	if _, err := db.ExecContext(ctx, `DROP TABLE archive_lease, pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`); err != nil {
 		t.Fatal(err)
 	}
 	if old, err := OpenPostgres(ctx, dsn, "test"); err == nil {

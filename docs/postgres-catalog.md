@@ -77,11 +77,17 @@ native backups and WAL/PITR, test restoration, and fence the old authority befor
 cutover. A backup alone cannot recover expired Hot history or missing S3 objects.
 
 `catalog-add-streams -config FILE` adds tenants or sources online. A process still
-configured without them keeps serving and archiving the streams it knows, because
-the stored contract covers its configuration; roll every replica to the new
-configuration promptly, since only a replica configured with a new stream archives
-it and readiness considers every stream. See
-[adding tenants or sources](serve.md#add-tenants-or-sources).
+configured without them keeps serving, archiving and reporting readiness for the
+streams it knows, because the stored contract covers its configuration. Roll every
+replica to the new configuration promptly: only a replica configured with a new
+stream archives it, so the new stream falls behind until such a replica holds the
+archiver lease. See [adding tenants or sources](serve.md#add-tenants-or-sources).
+
+Pending object keys record the database incarnation they were written in, so a
+catalog restored with point-in-time recovery or from a dump never collects the
+objects of attempts that the original may still publish; see
+[garbage collection](serve.md#garbage-collection). Concurrent `catalog-upgrade`
+runs, for example one per replica, wait for each other.
 
 To move an existing stopped SQLite service without rewriting objects, use
 [`catalog-import-postgres`](postgres-migration.md). It creates a fresh destination

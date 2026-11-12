@@ -30,7 +30,8 @@ interleaving of two archivers over a few windows while:
 | `ledger`, the recording in `StartAttempt` | `RecordPendingObjects` in [`internal/catalog/postgres_pending.go`](../internal/catalog/postgres_pending.go), called by `uploadPack` before its PUT |
 | `Publish` | `publishWindow`, `consumePending`, `writePublication`, `reserveObjectKey` in [`internal/catalog/postgres.go`](../internal/catalog/postgres.go) |
 | `Retire`, `origin`, `retired` | `RetireWindows` in [`internal/catalog/postgres_pending.go`](../internal/catalog/postgres_pending.go), driven by `Collector.retire` in [`internal/archive/gc.go`](../internal/archive/gc.go) |
-| `Claim`, `DeleteClaimed` | `ClaimUnpublishedObjects`, `ForgetDeletedObjects` in [`internal/catalog/postgres_pending.go`](../internal/catalog/postgres_pending.go); `Collector.RunPass` in [`internal/archive/gc.go`](../internal/archive/gc.go) |
+| `gc`, `GcClaim`, `GcDelete`, `GcForget`, `GcAbandon` | `Collector.RunPass` in [`internal/archive/gc.go`](../internal/archive/gc.go): `ClaimUnpublishedObjects`, then `Delete` from the collector's memory, then `ForgetDeletedObjects`; a failed deletion (`DeferClaimedObjects`) or a crash abandons the key, which stays claimed. Ledger calls in [`internal/catalog/postgres_pending.go`](../internal/catalog/postgres_pending.go) |
+| `strays` | Uploads that land after their key stopped being pending: acknowledged late orphans |
 | `LeaseValid` | `validateLease`, with `clock_timestamp()` as `dbNow` |
 
 A window is a pair `<<stream, index>>` and its verified content is the same
@@ -47,6 +48,7 @@ their keys are. Each window has one pack.
 | `GenerationCounts` | One catalog generation per publication, retired or not. |
 | `ReferencedObjectsVerified` | Every key in the catalog names an object holding exactly the verified window. Orphans are allowed; garbage collection never deletes a referenced object. |
 | `PublishedKeysUnrecorded` | A published key has no ledger record, so garbage collection can never claim it. |
+| `StoredObjectsAccounted` | Every stored object is published, recorded in the ledger, or a late orphan: retirement and garbage collection leave nothing else behind. |
 | `MonotoneFencing` | No publication commits after one made with a newer fencing token. |
 | `TokensUnique` | A fencing token is handed to one owner only. |
 | `WindowsAppendOnly` | Published windows are never changed, and leave only by retirement, which moves the stream's start past them and never back. |
@@ -62,11 +64,13 @@ the model does not pass vacuously.
 |---|---|---|
 | `VmtierPublication.cfg` | pass | The protocol as implemented, two streams of one window. Attempts record their keys and publication consumes them; garbage collection is off. |
 | `VmtierPublication_TwoWindows.cfg` | pass | The same with one stream of two windows, whose oldest window may be retired at any time. |
-| `VmtierPublication_Collect.cfg` | pass | The protocol with garbage collection and Cold retention acting at any time, within smaller attempt, clock and lost-reply bounds. |
-| `VmtierPublication_NoPendingCheck.cfg` | `ReferencedObjectsVerified` violated | Without the pending check in `publishWindow`, a key that garbage collection claimed is published and its object deleted. |
+| `VmtierPublication_Collect.cfg` | pass | The protocol with garbage collection and Cold retention acting at any time on two streams, within smaller attempt, clock and lost-reply bounds. |
+| `VmtierPublication_RetainCollect.cfg` | pass | The same on one stream of two windows, so that retirement and an attempt for the next window interleave. |
+| `VmtierPublication_NoPendingCheck.cfg` | `ReferencedObjectsVerified` violated | A publication that consumes the record without checking that it is still pending publishes a key that garbage collection claimed; the collector then deletes its object. |
+| `VmtierPublication_RetireUnrecorded.cfg` | `StoredObjectsAccounted` violated | Retirement that does not record the retired key leaves the object behind for good. |
 | `VmtierPublication_NoFencingCatalog.cfg` | pass | Without the lease check in `publishWindow`, the catalog still stays consistent. |
 | `VmtierPublication_NoFencing.cfg` | `MonotoneFencing` violated | Without the lease check, a stale holder publishes after its successor. |
-| `VmtierPublication_ReusedKeys.cfg` | `ReferencedObjectsVerified` violated | Keys derived from the window, without the ledger (whose refusal to record a published key would also stop this): a retry overwrites a published object. |
+| `VmtierPublication_ReusedKeys.cfg` | `ReferencedObjectsVerified` violated | Keys derived from the window, without the ledger: a retry overwrites a published object. |
 | `VmtierPublication_NoReadBack.cfg` | `ReferencedObjectsVerified` violated | Without the read-back comparison, a wrong upload is published. |
 
 Two consequences for the design:
@@ -93,6 +97,14 @@ Two consequences for the design:
   stays readable while its windows are published. A plan selected before a
   retirement relies on the minimum age of garbage collection exceeding the
   gateway's request cap, a timing assumption the model does not include.
+- Copies of the catalog. The model has one database; a restored or copied
+  PostgreSQL catalog is kept from collecting the original's pending keys by
+  the database incarnation recorded with each key (ADR 0006), which the model
+  does not include.
+- Key freshness. Attempt keys are fresh by construction (`FreshKeys`); the code
+  relies on 128-bit random nonces. With reused keys, a key forgotten by
+  garbage collection could be recorded again by another attempt, and the
+  pending check would not tell the attempts apart.
 - Liveness. Faults are unbounded within their budgets, so progress is not
   checked.
 
@@ -113,8 +125,8 @@ and `archive.RetentionBoundary`.
 | `export_complete` | With `validateTime` checked at the export's start and before publication, every sample ingress accepts for the window was accepted before the export, and Hot retained it throughout: the window is complete. |
 | `query_complete` | A query the gateway accepts misses no accepted sample: each lies below the coverage end (Cold) or is younger than `R` (Hot). |
 
-| `retentionBoundary_le` | A Cold retention pass that runs (its boundary passed the origin) never retires a window younger than `cold_retention`. |
-| `retention_complete` | With retirement, an accepted query still misses no accepted sample younger than `cold_retention` and at or after the stream's origin (the coverage origin, or a later one for a stream added with `catalog-add-streams`): each lies in Cold's retained range or in Hot. |
+| `retentionBoundary_le` | A Cold retention pass that runs (its boundary passed the origin) never retires a window younger than `cold_retention` plus one window. |
+| `retention_complete` | With retirement, an accepted query still misses no accepted sample younger than `cold_retention` and at or after the stream's origin (the coverage origin, or a later one for a stream added with `catalog-add-streams`), provided the catalog's clock at the retirement was at most one window ahead of the gateway's: each lies in Cold's retained range or in Hot. An `example` shows that a larger skew loses data. |
 
 An `example` shows that `query_complete` needs `R > H + s + w`: with
 `R = H + w`, the gateway accepts a query that Hot can no longer answer.

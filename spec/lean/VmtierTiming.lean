@@ -127,18 +127,21 @@ theorem query_complete (c : Contract) (cov lo hi now t : Int)
   generalize requiredEnd c now = req at *
   omega
 
-/-- `archive.RetentionBoundary(now, C, w)`: `(now - C) / w * w` with Go's
-truncating division. Cold retention (`Collector.retire`) retires the windows
-that end at or before it, and runs only once it exceeds the coverage origin;
-a retirement then moves the stream's start to at most this boundary. -/
+/-- `catalog.RetentionBoundary(now, C, w)`: `(now - C) / w * w - w` with Go's
+truncating division, on the catalog's clock. `RetireWindows` retires the
+windows that end at or before it, and runs only once it exceeds the coverage
+origin; a retirement then moves the stream's start to at most this boundary.
+The window subtracted at the end is a margin for clock skew, see
+`retention_complete`. -/
 def retentionBoundary (C w now : Int) : Int :=
-  Int.tdiv (now - C) w * w
+  Int.tdiv (now - C) w * w - w
 
 /-- A retirement that runs (its boundary exceeds a nonnegative origin) never
-retires a window younger than `C` at the time it runs. -/
+retires a window that is younger than `C` plus one window at the time it
+runs. -/
 theorem retentionBoundary_le (C w now origin : Int) (hw : 0 < w)
     (horigin : 0 ≤ origin) (hpast : origin < retentionBoundary C w now) :
-    retentionBoundary C w now ≤ now - C := by
+    retentionBoundary C w now ≤ now - C - w := by
   unfold retentionBoundary at *
   by_cases hx : 0 ≤ now - C
   · have hdecomp := Int.tdiv_mul_add_tmod (now - C) w
@@ -158,14 +161,17 @@ theorem retentionBoundary_le (C w now origin : Int) (hw : 0 < w)
 /-- Cold retention never takes a sample a query still needs, for any
 retention `C`. A stream starts at its origin (the coverage origin, or a later
 one for a stream added with `catalog-add-streams`), or, after a retirement at
-`r ≤ now`, at most at that retirement's boundary. Then every accepted sample
-at or after the origin and younger than `C` that an accepted query asks for
-lies in Cold's retained range `[start, cov)` or is younger than `R`. Samples
-older than `C`, like those before the origin, are outside the guarantee. -/
+catalog time `r`, at most at that retirement's boundary. The gateway checks
+coverage with its own clock `now`; the catalog's clock at the retirement may
+run ahead of it by at most one window (`r ≤ now + w`), the margin that
+`retentionBoundary` subtracts. Then every accepted sample at or after the
+origin and younger than `C` that an accepted query asks for lies in Cold's
+retained range `[start, cov)` or is younger than `R`. Samples older than `C`,
+like those before the origin, are outside the guarantee. -/
 theorem retention_complete (c : Contract) (C origin start r cov lo hi now t : Int)
     (horigin : 0 ≤ origin)
     (hstart : start = origin ∨
-      (origin < retentionBoundary C c.w r ∧ start ≤ retentionBoundary C c.w r ∧ r ≤ now))
+      (origin < retentionBoundary C c.w r ∧ start ≤ retentionBoundary C c.w r ∧ r ≤ now + c.w))
     (hacc : gatewayAccepts c cov lo hi now)
     (ht : lo ≤ t ∧ t ≤ hi) (hold : origin ≤ t) (hyoung : now - C < t) :
     (start ≤ t ∧ t < cov) ∨ now - c.R < t := by
@@ -174,6 +180,18 @@ theorem retention_complete (c : Contract) (C origin start r cov lo hi now t : In
   · omega
   · have := retentionBoundary_le C c.w r origin c.window_pos horigin hpast
     omega
+
+/-- The skew bound is needed: with `R = 100`, `C = 200` and `w = 10`, a
+retirement on a catalog clock `r = 1050`, more than a window ahead of the
+gateway's `now = 1000`, moves the start to `840`. A sample at `810` is younger
+than `C` at the gateway, yet it is neither in Cold's retained range nor
+younger than `R`. -/
+example :
+    let C := 200; let w := 10; let R := 100; let now := 1000; let r := 1050
+    let start : Int := Int.tdiv (r - C) w * w - w
+    let t := 810
+    ¬ (r ≤ now + w) ∧ now - C < t ∧ ¬ (start ≤ t) ∧ ¬ (now - R < t) := by
+  decide
 
 /-- The headroom condition is needed: with `R = H + w` (so `R > H + s + w`
 fails), a query at `now = 25` with coverage ending at the required end

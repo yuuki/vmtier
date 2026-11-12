@@ -127,15 +127,14 @@ start `serve` with the new configuration:
 .bin/vmtier catalog-add-streams -config serve.json
 ```
 
-Each new tenant/source pair starts and ends at one origin, by default the next
-window to become eligible, so it is complete from the start. `-start MS` sets an
-earlier aligned origin for the archiver to catch up from Hot; it is refused when
-that window has already left Hot retention and its safety margin. The range below
-a stream's origin is outside the query guarantee for that stream. A tenant's
-coverage is the minimum over its sources, so a new source with an earlier origin
-holds back its tenant's required coverage until it catches up. The command prints
-the added streams and the new status. Removing tenants or sources, or changing a
-source's URL, is not supported. See [ADR 0008](adr/0008-adding-streams.md).
+Each new tenant/source pair starts and ends at one origin that the catalog chooses:
+the archive-age boundary of its clock, which the gateway already requires, so the
+stream is complete from the start and needs no catch-up. History before the origin
+is not archived for the new stream and is outside its query guarantee. The command
+prints the added streams and the new status. A SQLite `serve` must then run with the
+new configuration: it refuses a configuration that lacks any of the catalog's
+streams. Removing tenants or sources, or changing a source's URL, is not supported.
+See [ADR 0008](adr/0008-adding-streams.md).
 
 ## Connect stock vmselect
 
@@ -193,29 +192,50 @@ timed out, or was interrupted stay pending. With `service.orphan_gc_interval` se
 the service claims pending keys older than `service.orphan_gc_min_age` in one
 catalog transaction, deletes their objects with ordinary `DeleteObject` requests,
 and then removes the records. A pass runs between archive passes, at most once per
-interval, and handles at most 4,096 keys; the next pass continues.
+interval, and handles at most 4,096 keys; when keys are left, the next pass follows
+the next archive pass instead of the interval. A key whose deletion fails stays
+claimed and is retried later, behind the keys recorded before its last attempt, so
+it does not block the others; the pass counts as failed.
 
 A claimed key can never be published: the publication and the claim are ordered
 by the catalog, so an attempt whose keys were claimed fails and retries with fresh
 keys. Safety therefore depends on neither clocks nor object listings. The minimum
 age only keeps garbage collection from discarding attempts that are still running.
-Only keys this catalog recorded are deleted: published objects, objects of another
-catalog sharing the bucket (for example the catalog kept for rollback after a
-restore), and orphans created before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1)
-are never touched. Deletion needs `DeleteObject` permission on the prefix and
-counts against the shared S3 budget. See
+Only keys this catalog recorded are deleted: never a published object, never an
+orphan created before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1).
+Another catalog sharing the bucket, such as the one kept for rollback after a
+restore, loses nothing to garbage collection, but [Cold retention](#cold-retention)
+deletes the objects of retired windows that both catalogs reference.
+
+A PostgreSQL catalog restored from an online backup, dumped into another schema
+or database, or promoted onto a new timeline holds the pending keys of attempts
+that the original may still publish. Each pending key records the database
+incarnation it was written in (system identifier, WAL timeline, database and
+schema), and garbage collection only claims keys of its own incarnation; the
+others are counted as `foreign` and never collected. A byte-for-byte copy of the
+data directory started on the same timeline keeps the incarnation: do not let such
+a copy collect against the original's bucket while the original may still publish.
+
+Deletion needs `DeleteObject` permission on the prefix and counts against the
+shared S3 budget. On a versioned bucket it only adds delete markers; storage is
+reclaimed by a lifecycle rule that expires noncurrent versions. See
 [ADR 0006](adr/0006-orphan-garbage-collection.md) for the design.
 
 ## Cold retention
 
 With `cold_retention` set, each garbage collection pass first retires the windows
-that end at or before `floor((now - cold_retention) / window) * window`, oldest
-first. One catalog transaction removes up to 256 windows, records their object keys
-in the ledger as retired, and advances the stream's start (`start_ms` in
-`catalog-inspect`) past them. Garbage collection deletes the retired objects once
-they reach `service.orphan_gc_min_age`; a query that selected a window before its
-retirement finishes long before that. Nothing is retired until the boundary passes
-`coverage_start_ms`, and retirement never passes a stream's coverage end.
+that end at or before `floor((now - cold_retention) / window) * window - window` on
+the catalog's clock (the database clock for PostgreSQL), oldest start first across
+streams. The extra window tolerates gateways whose clocks lag the catalog's by up to
+a window. One catalog transaction removes up to 64 windows, and a pass runs up to 16
+of them before collecting; a backlog continues after the next archive pass. Each
+transaction records the windows' object keys in the ledger as retired and advances
+the streams' starts (`start_ms` in `catalog-inspect`) past them. Garbage collection
+deletes the retired objects once they reach `service.orphan_gc_min_age` and at least
+10 minutes, which the catalog enforces for every process; a query that selected a
+window before its retirement finishes long before that. Nothing is retired until the
+boundary passes `coverage_start_ms`, and retirement never passes a stream's coverage
+end.
 
 The range below a stream's start is outside the query guarantee, like the range
 before `coverage_start_ms`: Cold returns nothing there and queries return whatever
@@ -223,8 +243,9 @@ Hot still holds, as VictoriaMetrics does beyond its own retention. A stream's st
 never moves back. Lengthening `cold_retention` pauses retirement until the boundary
 passes the start again; data already retired is gone. Restoring a catalog backup
 older than a retirement does not bring that data back: queries over those windows
-fail on the missing objects until the first collection pass retires them again. See
-[ADR 0007](adr/0007-cold-retention.md) for the design.
+fail on the missing objects until the first collection pass retires them again.
+Retirement deletes objects that a catalog kept for rollback may still reference;
+see [ADR 0007](adr/0007-cold-retention.md) for the design and its consequences.
 
 The time contract is unchanged: `H > L >= 0` and
 `R > H + safety_margin + window`. H, L, window, coverage start, tenants, sources,
@@ -338,7 +359,7 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_orphan_gc_passes_total`, `vmtier_orphan_gc_failed_passes_total` | Garbage collection passes of this process and passes that ended with an error |
 | `vmtier_orphan_gc_claimed_objects_total`, `vmtier_orphan_gc_deleted_objects_total` | Keys claimed (including retried claims) and objects deleted |
 | `vmtier_orphan_gc_last_success_timestamp_seconds` | Last pass without an error; zero before one |
-| `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts), `retired` (windows removed by Cold retention) and `deleting` (claimed, deletion unfinished); omitted when the catalog cannot be read |
+| `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts), `retired` (windows removed by Cold retention), `deleting` (claimed, deletion unfinished) and, for PostgreSQL, `foreign` (pending keys of another database incarnation, never collected); omitted when the catalog cannot be read |
 | `vmtier_cold_retired_windows_total` | Windows this process retired |
 | `vmtier_catalog_retired_windows`, `vmtier_stream_coverage_start_ms{tenant,source}` | Windows retired over the catalog's lifetime, and each stream's retained start |
 

@@ -77,6 +77,28 @@ func TestCollectingWorkerRunsAtMostOncePerInterval(t *testing.T) {
 	}
 }
 
+// A pass that reports a backlog is followed by another after the next archive
+// pass instead of waiting for the interval.
+func TestCollectingWorkerDrainsBacklog(t *testing.T) {
+	ctx := context.Background()
+	collector := &testCollector{result: archive.CollectResult{Deleted: 4096, More: true}}
+	var stats orphanGCStats
+	worker := &collectingWorker{archiver: &testPassRunner{}, collector: collector, interval: time.Hour, stats: &stats}
+	for i := 0; i < 3; i++ {
+		_, _ = worker.RunPass(ctx, time.Now())
+	}
+	if collector.calls.Load() != 3 {
+		t.Fatalf("backlog waited for the interval: %d passes", collector.calls.Load())
+	}
+	collector.result.More = false
+	for i := 0; i < 3; i++ {
+		_, _ = worker.RunPass(ctx, time.Now())
+	}
+	if collector.calls.Load() != 4 {
+		t.Fatalf("collection without a backlog ignored the interval: %d passes", collector.calls.Load())
+	}
+}
+
 func TestSQLiteCLIUpgradeAddsObjectLedger(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
@@ -91,7 +113,7 @@ func TestSQLiteCLIUpgradeAddsObjectLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`DROP TABLE pending_objects; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`); err != nil {
+	if _, err := db.Exec(`DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -202,7 +224,7 @@ func TestServiceWorkerCollectsUnpublishedObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	retaining := newWorker(db).(*collectingWorker).collector.(*archive.Collector)
-	if retaining.Retention != 720*time.Hour || retaining.Retire == nil || retaining.Origin != c.CoverageStart || retaining.Window != time.Hour {
+	if retaining.Retention != 720*time.Hour || retaining.Retire == nil {
 		t.Fatalf("Cold retention not wired: %+v", retaining)
 	}
 	c.ColdRetention = ""

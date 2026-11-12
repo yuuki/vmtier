@@ -126,17 +126,14 @@ func (f *maintenanceFlags) define(fs *flag.FlagSet, operation string) error {
 	return nil
 }
 
-// upgradeSQLite upgrades a stopped catalog in place and prints its status.
+// upgradeSQLite upgrades a stopped catalog in place and prints the status it
+// read under the same directory lock.
 func upgradeSQLite(ctx context.Context, dir, id string) error {
-	if err := catalog.UpgradeSQLite(ctx, dir, id); err != nil {
-		return err
-	}
-	s, err := catalog.OpenSQLite(ctx, dir, id)
+	status, err := catalog.UpgradeSQLite(ctx, dir, id)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
-	return printCatalogStatus(ctx, s)
+	return json.NewEncoder(os.Stdout).Encode(status)
 }
 
 func restoreSQLite(ctx context.Context, backup, dest, id string) error {

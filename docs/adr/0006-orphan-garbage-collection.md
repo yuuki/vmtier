@@ -32,10 +32,11 @@ catalog cannot be rebuilt from an object listing.
 
 ## Decision
 
-- Add an object ledger to the catalog (`pending_objects`: key, creation time,
-  state `pending` or `deleting`). An attempt records each pack's two keys as
-  pending in a short transaction before their PUT. Recording refuses a key that
-  is published or already recorded.
+- Add an object ledger to the catalog (`pending_objects`: key, time, state
+  `pending`, `retired` ([ADR 0007](0007-cold-retention.md)) or `deleting`, and on
+  PostgreSQL the database incarnation). An attempt records each pack's two keys
+  as pending in a short transaction before their PUT. Recording refuses a key
+  that is published or already recorded.
 - The publication transaction consumes the pending record of every key it
   references and fails with `ErrUnrecordedObject` when one is missing or claimed.
   A replay of a committed window with the same digest still succeeds without
@@ -44,13 +45,19 @@ catalog cannot be rebuilt from an object listing.
 - Garbage collection claims pending keys older than a minimum age by moving them
   to `deleting` in one transaction, deletes their objects with ordinary
   `DeleteObject` requests (a missing object counts as deleted), then forgets the
-  records. Claimed keys that were not forgotten are returned first by the next
-  claim, so an interrupted pass resumes.
+  records. A claim returns claimed keys that were not forgotten together with
+  the newly claimed ones, oldest first, ordering a claimed key by its last claim:
+  an interrupted pass resumes, and a key whose deletion fails is deferred behind
+  the keys recorded before its last attempt, so it cannot starve them. A pass
+  that stops at its bounds with keys left is followed by another after the next
+  archive pass.
 - A claim and a publication of the same key are serialized by the catalog: one
   SQLite connection, or a PostgreSQL row lock (`FOR UPDATE SKIP LOCKED` on the
   claim side). A claimed key can never be published and a published key can
   never be claimed. Safety depends on neither clocks, leases nor object
-  listings; the minimum age (`service.orphan_gc_min_age`, default 24 hours, at
+  listings, but on attempt keys being unique: every pack gets a random 128-bit
+  nonce, so a key forgotten by garbage collection is never recorded again. The
+  minimum age (`service.orphan_gc_min_age`, default 24 hours, at
   least `service.archive_timeout`) only keeps garbage collection from discarding
   attempts that are still running. A claim also refuses a record whose key is
   published or outside the configured tenants, so a damaged ledger cannot direct
@@ -61,12 +68,24 @@ catalog cannot be rebuilt from an object listing.
   including SDK retries, uses the process's shared S3 budget.
 - `catalog-backup`/`catalog-restore` and the SQLite-to-PostgreSQL import keep the
   ledger. These run with the writer stopped, so a pending key in them belongs to
-  an attempt that can no longer publish in either catalog. A restore of a schema
-  1 backup upgrades the staging copy after its checksum was verified.
-- `spec/VmtierPublication.tla` models the ledger and lets garbage collection
-  claim, delete and forget at any time. `VmtierPublication_NoPendingCheck.cfg`
-  shows that without the pending check a claimed key is published and its object
-  deleted.
+  an attempt that can no longer publish in either catalog; the import records
+  them in the new catalog's incarnation. A restore of a schema 1 backup upgrades
+  the staging copy after its checksum was verified.
+- A PostgreSQL catalog is backed up with the database's own tools, online. A
+  copy restored from such a backup (point-in-time recovery, a dump restored
+  into another schema or database, a promoted standby) shares the bucket and
+  holds the pending keys of attempts that were in flight in the original,
+  which may still publish them. Each pending record therefore carries the
+  database incarnation it was written in: the cluster's system identifier, the
+  current WAL timeline, and the database and schema OIDs. A claim considers
+  only pending keys of the current incarnation; the others are reported as
+  `foreign` and never collected.
+- `spec/VmtierPublication.tla` models the ledger and a collector that claims a
+  key and deletes its object in separate steps, from memory, with failures and
+  crashes in between. `VmtierPublication_NoPendingCheck.cfg` shows that a
+  publication that does not check the record's state publishes a claimed key
+  whose object is then deleted; `StoredObjectsAccounted` checks that nothing but
+  acknowledged late orphans is left behind.
 
 ## Alternatives
 
@@ -92,4 +111,17 @@ addition to PUT and GET; deployments that do not enable it need nothing new.
 Orphans created before the upgrade were never recorded and are never collected.
 An upload that is still in flight when its object is deleted can store it again;
 that object stays an orphan, unpublishable because its key is no longer pending.
-Published windows remain append-only and are never deleted.
+Garbage collection never deletes a published object; published windows leave
+only by Cold retention ([ADR 0007](0007-cold-retention.md)).
+
+The incarnation needs `pg_control_system()` and `pg_walfile_name()`, which
+PostgreSQL grants to every role by default; recording and claiming fail with a
+clear error where a provider revokes them. A failover or point-in-time recovery
+starts a new timeline, so the pending keys of attempts that failed shortly
+before it stay as foreign orphans. A byte-for-byte copy of the data directory
+started as a separate server on the same timeline (for example from a volume
+snapshot) keeps the incarnation: such a copy must not run garbage collection
+against the original's bucket while the original may still publish.
+
+On a versioned bucket, `DeleteObject` only adds a delete marker; storage is
+reclaimed only by a lifecycle rule that expires noncurrent versions.

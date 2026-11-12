@@ -29,20 +29,28 @@ Deleting published data raises questions that orphan collection did not:
 - `cold_retention` (whole milliseconds, greater than `hot_retention`) enables
   retention. It requires garbage collection, which deletes the objects, with
   `service.orphan_gc_min_age` of at least 10 minutes.
-- At the boundary `floor((now - cold_retention) / window) * window`, the
-  collector retires every window that ends at or before it, oldest first,
-  before collecting. Nothing is retired until the boundary passes the coverage
-  origin.
-- `RetireWindows` removes, in one catalog transaction, at most 256 windows with
-  their packs (and PostgreSQL key reservations), records their object keys in
-  the ledger as `retired`, advances each stream's `start_ms` past them, and
-  counts them in `retired_windows`. Coverage end and generation are unchanged:
+- Before collecting, the collector asks the catalog to retire every window that
+  ends at or before `floor((now - cold_retention) / window) * window - window`,
+  where `now` is the catalog's clock: the database clock for PostgreSQL, so that
+  every replica retires against one clock. The window subtracted at the end is a
+  margin for gateways whose clocks lag the catalog's. Nothing is retired until
+  the boundary passes the coverage origin.
+- `RetireWindows` removes, in one catalog transaction, the oldest windows across
+  streams (oldest start first, found through an index on `windows.start_ms`),
+  at most 64 per transaction and 16 transactions per pass, with their packs (and
+  PostgreSQL key reservations). It records their object keys in the ledger as
+  `retired`, advances each stream's `start_ms` past them, and counts them in
+  `retired_windows`. A pass that stops at that bound is followed by another
+  after the next archive pass, so a backlog drains instead of waiting for the
+  garbage collection interval. Coverage end and generation are unchanged:
   the generation keeps counting publications, so it equals the windows still
   present plus the retired ones. PostgreSQL takes the catalog state row lock
   first, like publication and lease changes; retirement needs no lease.
 - Garbage collection claims retired keys like pending ones, once they reach the
-  minimum age. A query holding a plan selected before the retirement reads for
-  at most the gateway's 30-second request cap, far below that age. Publication
+  minimum age and at least `MinRetiredObjectAge` (10 minutes), which the catalog
+  enforces whatever age a process asks for: replicas may run different
+  configurations. A query holding a plan selected before the retirement reads
+  for at most the gateway's 30-second request cap, far below that age. Publication
   never consumes a retired key, and recording refuses one, so a retired window
   cannot reappear.
 - Each stream's start is part of the catalog state, not computed from a
@@ -62,11 +70,13 @@ Deleting published data raises questions that orphan collection did not:
   restored service's first collection pass retires those windows again, because
   the boundary depends only on the clock and the configuration.
 - `spec/VmtierPublication.tla` lets retirement remove a stream's oldest window
-  at any time and checks coverage, generation and the published objects with
-  it; readers and the minimum age remain outside the model. `spec/lean` proves
-  that the boundary of a retirement that runs is never younger than
-  `cold_retention`, and that an accepted query misses no accepted sample younger
-  than `cold_retention`: it lies in Cold's retained range or in Hot.
+  at any time and checks coverage, generation, the published objects and that
+  every retired object stays recorded for deletion; readers and the minimum age
+  remain outside the model. `spec/lean` proves that the boundary of a
+  retirement that runs is never younger than `cold_retention` plus a window,
+  and that an accepted query misses no accepted sample younger than
+  `cold_retention` as long as the catalog's clock is at most one window ahead
+  of the gateway's: each lies in Cold's retained range or in Hot.
 
 ## Alternatives
 
@@ -80,7 +90,17 @@ Deleting published data raises questions that orphan collection did not:
 
 ## Consequences
 
-Storage of published data is bounded by `cold_retention` plus the minimum age.
+Storage of published data is bounded by `cold_retention` plus one window and
+the minimum age, as long as retirement and deletion keep up; their throughput
+is bounded per pass, and passes repeat while a backlog remains. On a versioned
+bucket, deletion only adds delete markers, and storage is reclaimed by a
+lifecycle rule that expires noncurrent versions.
+
+Retirement deletes objects, not just references of one catalog. A catalog
+restored from a backup or imported from another one shares object keys with
+its source; when either retires a window, the other loses that window's
+objects too. Rolling back to the source catalog is safe only while it, too,
+has retired everything older than the retention.
 Retention needs `DeleteObject` permission, like garbage collection. Data older
 than `cold_retention` is gone for good: restoring an older catalog backup does
 not bring it back, and its queries fail until retirement catches up. Windows

@@ -23,6 +23,15 @@ const (
 	deletingState = "deleting"
 )
 
+// schemaVersionError explains a catalog of another schema: an older one needs
+// catalog-upgrade, a newer one a newer release.
+func schemaVersionError(stored, supported int) error {
+	if stored > supported {
+		return fmt.Errorf("catalog schema %d is newer than schema %d of this release; use a release that supports it", stored, supported)
+	}
+	return fmt.Errorf("unsupported catalog schema %d; explicit catalog-upgrade to schema %d or migration required", stored, supported)
+}
+
 // validLedgerState reports whether a stored ledger state is known. Retired keys
 // belonged to windows that Cold retention removed from the catalog.
 func validLedgerState(state string) bool {
@@ -37,7 +46,16 @@ const (
 	// MinPendingObjectAge is the smallest age at which a pending key can be
 	// claimed; the service requires at least its archive attempt timeout.
 	MinPendingObjectAge = time.Millisecond
+	// MinRetiredObjectAge is the smallest age at which a retired key can be
+	// claimed, whatever age the caller asks for: a query that selected the
+	// window before its retirement reads for at most the gateway's 30-second
+	// request cap. The catalog enforces it because retired keys are shared by
+	// every process, whatever its own configuration.
+	MinRetiredObjectAge = 10 * time.Minute
 )
+
+// retiredAge is the age a retired key must reach before a claim.
+func retiredAge(minAge time.Duration) time.Duration { return max(minAge, MinRetiredObjectAge) }
 
 // ErrUnrecordedObject reports a publication that references a key which this
 // catalog did not record as a pending upload, or which garbage collection has
@@ -53,11 +71,18 @@ type ObjectLedger interface {
 	// It never performs object I/O and fails if a key is known already.
 	RecordPendingObjects(ctx context.Context, tenant string, keys []string) error
 	// ClaimUnpublishedObjects returns at most limit keys whose objects may be
-	// deleted: keys claimed earlier but not yet forgotten, then pending and
-	// retired keys recorded at least minAge ago, which it claims. A claimed key
-	// can no longer be published. Ages use the catalog's clock; for a retired
-	// key, minAge is how long a query holding an older plan may still read it.
+	// deleted, oldest first: keys claimed earlier but not yet forgotten, by
+	// their last claim or deferral, pending keys recorded at least minAge ago
+	// and retired keys recorded at least max(minAge, MinRetiredObjectAge) ago,
+	// by their record time. It claims the unclaimed ones; a claimed key can no
+	// longer be published. Ages use the catalog's clock. A PostgreSQL catalog
+	// claims only the pending keys recorded in its current database
+	// incarnation (see ADR 0006).
 	ClaimUnpublishedObjects(ctx context.Context, minAge time.Duration, limit int) ([]string, error)
+	// DeferClaimedObjects moves claimed keys whose deletion failed behind the
+	// other claimed keys, so that one key that cannot be deleted does not block
+	// the rest. Keys that are not claimed are left unchanged.
+	DeferClaimedObjects(ctx context.Context, keys []string) error
 	// ForgetDeletedObjects removes claimed keys whose objects were deleted.
 	// Keys that are not claimed are left unchanged.
 	ForgetDeletedObjects(ctx context.Context, keys []string) error
@@ -73,6 +98,9 @@ type UnpublishedObjectCounts struct {
 	Pending  int64 `json:"pending"`
 	Retired  int64 `json:"retired"`
 	Deleting int64 `json:"deleting"`
+	// Foreign counts pending keys recorded in another PostgreSQL database
+	// incarnation, before a restore, copy or failover. They are never claimed.
+	Foreign int64 `json:"foreign"`
 }
 
 // validatePendingKeys requires distinct object keys of one configured tenant.

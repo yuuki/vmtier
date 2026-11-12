@@ -62,13 +62,14 @@ CONSTANTS
     CheckPending,     \* TRUE as in publishWindow: consume a pending record
     Collect,          \* TRUE when garbage collection runs
     Retain,           \* TRUE when Cold retention retires windows
+    RecordRetired,    \* TRUE as in RetireWindows: record a retired key
     NoOwner,          \* model value: the lease row has no owner
     Absent,           \* model value: no object under a key
     Corrupt           \* model value: an object with wrong bytes
 
 ASSUME NumWindows \in Nat \ {0} /\ MaxAttempts \in Nat /\ MaxTokens \in Nat
 ASSUME TTL \in Nat \ {0} /\ MaxTime \in Nat /\ MaxLostReplies \in Nat
-ASSUME {FreshKeys, ReadBack, FencePublication, Ledger, CheckPending, Collect, Retain} \subseteq BOOLEAN
+ASSUME {FreshKeys, ReadBack, FencePublication, Ledger, CheckPending, Collect, Retain, RecordRetired} \subseteq BOOLEAN
 ASSUME Retain => Ledger
 ASSUME (CheckPending \/ Collect) => Ledger
 
@@ -106,11 +107,16 @@ VARIABLES
     granted,      \* history: <<token, owner>> of every acquisition
     ledger,       \* pending_objects: state of each key
     origin,       \* coverage.start_ms of each stream, as a window index
-    retired       \* catalog_state.retired_windows
+    retired,      \* catalog_state.retired_windows
+    gc,           \* the collector: the key it claimed and how far it got
+    strays        \* history: keys stored while not pending (late orphans)
 
 vars == <<dbNow, lease, gen, coverage, windows, objects, nextAttempt,
           lostReplies, mode, held, localGen, localCov, stage, granted, ledger,
-          origin, retired>>
+          origin, retired, gc, strays>>
+
+gcvars == <<gc, strays>>
+GcPhases == {"idle", "claimed", "deleted"}
 
 retention == <<origin, retired>>
 catalog == <<lease, gen, coverage, windows, ledger, retention>>
@@ -146,6 +152,8 @@ TypeOK ==
     /\ ledger \in [Keys -> LedgerStates]
     /\ origin \in [Streams -> 0..NumWindows]
     /\ retired \in 0..Cardinality(Wins)
+    /\ gc \in [key : Keys \cup {NoKey}, phase : GcPhases]
+    /\ strays \subseteq Keys
 
 \* Database reply outcomes: whether the reply to the archiver is lost.
 Replies == IF lostReplies < MaxLostReplies THEN BOOLEAN ELSE {FALSE}
@@ -181,13 +189,15 @@ Init ==
     /\ ledger = [k \in Keys |-> "none"]
     /\ origin = [s \in Streams |-> 0]
     /\ retired = 0
+    /\ gc = [key |-> NoKey, phase |-> "idle"]
+    /\ strays = {}
 
 \* The database clock moves on. Nothing tells an archiver that its lease
 \* expired: it finds out only when a renewal or publication is refused.
 Tick ==
     /\ dbNow < MaxTime
     /\ dbNow' = dbNow + 1
-    /\ UNCHANGED <<catalog, objects, nextAttempt, lostReplies, local, granted>>
+    /\ UNCHANGED <<catalog, objects, nextAttempt, lostReplies, local, granted, gcvars>>
 
 \* AcquireLease: take an unowned or expired lease with the next fencing token,
 \* or return the live lease of the same owner without extending it (a retry
@@ -207,7 +217,7 @@ Acquire(p) ==
            /\ held' = [held EXCEPT ![p] = IF lost THEN 0 ELSE next.token]
            /\ CountLost(lost)
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt,
-                   localGen, localCov, stage, ledger, retention>>
+                   localGen, localCov, stage, ledger, retention, gcvars>>
 
 \* RenewLease extends only a live acquisition. Any error, including a lost
 \* reply to a renewal that did commit, makes runArchiveLeadership cancel and
@@ -220,7 +230,7 @@ Renew(p) ==
         /\ mode' = IF ok /\ ~lost THEN mode ELSE [mode EXCEPT ![p] = "draining"]
         /\ CountLost(lost)
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt, held,
-                   localGen, localCov, stage, granted, ledger, retention>>
+                   localGen, localCov, stage, granted, ledger, retention, gcvars>>
 
 \* The context of the leadership ends for another reason (shutdown, a renewal
 \* timeout): the archive work is cancelled and drained.
@@ -228,7 +238,7 @@ StepDown(p) ==
     /\ mode[p] = "leader"
     /\ mode' = [mode EXCEPT ![p] = "draining"]
     /\ UNCHANGED <<dbNow, catalog, objects, nextAttempt, lostReplies, held,
-                   localGen, localCov, stage, granted>>
+                   localGen, localCov, stage, granted, gcvars>>
 
 \* ReleaseLease after the worker drained. The fencing counter is kept. The
 \* transaction may fail or time out; the lease then expires on its own.
@@ -244,7 +254,7 @@ Release(p) ==
     /\ held' = [held EXCEPT ![p] = 0]
     /\ UNCHANGED <<dbNow, gen, coverage, windows, objects, nextAttempt,
                    lostReplies, localGen, localCov, stage, granted, ledger,
-                   retention>>
+                   retention, gcvars>>
 
 \* RunPass starts with Status: one consistent read of the catalog.
 LoadStatus(p) ==
@@ -253,7 +263,7 @@ LoadStatus(p) ==
     /\ localGen' = [localGen EXCEPT ![p] = gen]
     /\ localCov' = [localCov EXCEPT ![p] = coverage]
     /\ UNCHANGED <<dbNow, catalog, objects, nextAttempt, lostReplies, mode,
-                   held, stage, granted>>
+                   held, stage, granted, gcvars>>
 
 \* publishStream: the next window of a stream after the coverage the archiver
 \* last read. An archiver keeps going with its stale view after a failure in
@@ -274,10 +284,12 @@ StartAttempt(p, s) ==
                 [stream |-> s, idx |-> i, key |-> k, phase |-> "staged"]]
     /\ nextAttempt' = nextAttempt + 1
     /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, objects, lostReplies,
-                   mode, held, localGen, localCov, granted, retention>>
+                   mode, held, localGen, localCov, granted, retention, gcvars>>
 
 \* blobs.Put of the verified export. It may store wrong bytes. An upload
-\* already in flight can finish while the archiver drains.
+\* already in flight can finish while the archiver drains, also after
+\* garbage collection claimed or deleted its key: that object is an
+\* acknowledged orphan (strays), which nothing can publish.
 Put(p) ==
     LET st == stage[p] IN
     /\ mode[p] \in {"leader", "draining"}
@@ -285,8 +297,9 @@ Put(p) ==
     /\ \E v \in {<<st.stream, st.idx>>, Corrupt} :
         objects' = [objects EXCEPT ![st.key] = v]
     /\ stage' = [stage EXCEPT ![p].phase = IF ReadBack THEN "uploaded" ELSE "verified"]
+    /\ strays' = IF Ledger /\ ledger[st.key] # "pending" THEN strays \cup {st.key} ELSE strays
     /\ UNCHANGED <<dbNow, catalog, nextAttempt, lostReplies, mode, held,
-                   localGen, localCov, granted>>
+                   localGen, localCov, granted, gc>>
 
 \* blobs.Get and bytes.Equal: only an exact copy can be published.
 VerifyUpload(p) ==
@@ -298,14 +311,14 @@ VerifyUpload(p) ==
             THEN [st EXCEPT !.phase = "verified"]
             ELSE NoStage]
     /\ UNCHANGED <<dbNow, catalog, objects, nextAttempt, lostReplies, mode,
-                   held, localGen, localCov, granted>>
+                   held, localGen, localCov, granted, gcvars>>
 
 \* An attempt fails or times out at any point. Its objects stay as orphans.
 Abandon(p) ==
     /\ ~Idle(p)
     /\ stage' = [stage EXCEPT ![p] = NoStage]
     /\ UNCHANGED <<dbNow, catalog, objects, nextAttempt, lostReplies, mode,
-                   held, localGen, localCov, granted>>
+                   held, localGen, localCov, granted, gcvars>>
 
 \* publishWindow: one transaction under the catalog_state row lock.
 \*  1. validate the lease (owner, token, expiry by database time);
@@ -340,7 +353,7 @@ Publish(p) ==
         /\ coverage' = IF commit THEN [coverage EXCEPT ![st.stream] = st.idx + 1]
                        ELSE coverage
         /\ gen' = IF commit THEN gen + 1 ELSE gen
-        /\ ledger' = IF commit /\ CheckPending
+        /\ ledger' = IF commit /\ Ledger
                      THEN [ledger EXCEPT ![st.key] = "none"] ELSE ledger
         /\ CountLost(lost)
         /\ IF lost
@@ -356,32 +369,52 @@ Publish(p) ==
                 /\ mode' = IF leaseOK THEN mode
                            ELSE [mode EXCEPT ![p] = "draining"]
                 /\ UNCHANGED <<localGen, localCov>>
-    /\ UNCHANGED <<dbNow, lease, objects, nextAttempt, held, granted, retention>>
+    /\ UNCHANGED <<dbNow, lease, objects, nextAttempt, held, granted, retention, gcvars>>
 
-\* ClaimUnpublishedObjects: a pending key whose key is not published becomes
-\* deleting, in one transaction. Its row lock orders it with a publication
-\* that consumes the same record. The minimum age only spares running
-\* attempts (liveness), so the model lets a claim happen at any time.
-Claim(k) ==
+\* Collector.RunPass, one claimed key at a time. ClaimUnpublishedObjects
+\* moves a pending or retired key that is not published to deleting, in one
+\* transaction whose row lock orders it with a publication consuming the same
+\* record, or hands back a key claimed earlier (after a failed deletion or a
+\* crashed collector). The minimum age only spares running attempts and
+\* readers (a timing assumption), so the model lets a claim happen at any
+\* time. The collector then deletes the object without reading the ledger
+\* again, any time later, and forgets the record; between the steps every
+\* other action can run.
+GcClaim(k) ==
     /\ Collect
-    /\ ledger[k] \in {"pending", "retired"}
-    /\ \A x \in windows : x.key # k
-    /\ ledger' = [ledger EXCEPT ![k] = "deleting"]
+    /\ gc.phase = "idle"
+    /\ \/ /\ ledger[k] \in {"pending", "retired"}
+          /\ \A x \in windows : x.key # k
+          /\ ledger' = [ledger EXCEPT ![k] = "deleting"]
+       \/ /\ ledger[k] = "deleting"
+          /\ UNCHANGED ledger
+    /\ gc' = [key |-> k, phase |-> "claimed"]
     /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, objects, nextAttempt,
-                   lostReplies, local, granted, retention>>
+                   lostReplies, local, granted, retention, strays>>
 
-\* Collector.RunPass deletes the object of a claimed key, then forgets the
-\* record (ForgetDeletedObjects). A failure in between only repeats the
-\* deletion in the next pass, so the model takes both as one step. An upload
-\* still in flight can store the object again afterwards (Put), leaving an
-\* orphan whose key can no longer be published: it has no pending record.
-DeleteClaimed(k) ==
-    /\ Collect
-    /\ ledger[k] = "deleting"
-    /\ objects' = [objects EXCEPT ![k] = Absent]
-    /\ ledger' = [ledger EXCEPT ![k] = "none"]
-    /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, nextAttempt,
-                   lostReplies, local, granted, retention>>
+\* Store.Delete of the claimed key, from the collector's memory.
+GcDelete ==
+    /\ gc.phase = "claimed"
+    /\ objects' = [objects EXCEPT ![gc.key] = Absent]
+    /\ gc' = [gc EXCEPT !.phase = "deleted"]
+    /\ UNCHANGED <<dbNow, catalog, nextAttempt, lostReplies, local, granted, strays>>
+
+\* ForgetDeletedObjects: only a record that is still deleting is removed.
+GcForget ==
+    /\ gc.phase = "deleted"
+    /\ ledger' = IF ledger[gc.key] = "deleting"
+                 THEN [ledger EXCEPT ![gc.key] = "none"] ELSE ledger
+    /\ gc' = [key |-> NoKey, phase |-> "idle"]
+    /\ UNCHANGED <<dbNow, lease, gen, coverage, windows, objects, nextAttempt,
+                   lostReplies, local, granted, retention, strays>>
+
+\* A failed deletion (the key is deferred) or a crashed collector: the record
+\* stays deleting, to be claimed again.
+GcAbandon ==
+    /\ gc.phase # "idle"
+    /\ gc' = [key |-> NoKey, phase |-> "idle"]
+    /\ UNCHANGED <<dbNow, catalog, objects, nextAttempt, lostReplies, local,
+                   granted, strays>>
 
 \* RetireWindows: one transaction removes the oldest window of a stream,
 \* records its key as retired, and advances the stream's start. The clock
@@ -395,15 +428,17 @@ Retire(s) ==
         /\ x.stream = s
         /\ x.idx = origin[s]
         /\ windows' = windows \ {x}
-        /\ ledger' = [ledger EXCEPT ![x.key] = "retired"]
+        /\ ledger' = IF RecordRetired THEN [ledger EXCEPT ![x.key] = "retired"]
+                     ELSE ledger
     /\ origin' = [origin EXCEPT ![s] = origin[s] + 1]
     /\ retired' = retired + 1
     /\ UNCHANGED <<dbNow, lease, gen, coverage, objects, nextAttempt,
-                   lostReplies, local, granted>>
+                   lostReplies, local, granted, gcvars>>
 
 Next ==
     \/ Tick
-    \/ \E k \in Keys : Claim(k) \/ DeleteClaimed(k)
+    \/ \E k \in Keys : GcClaim(k)
+    \/ GcDelete \/ GcForget \/ GcAbandon
     \/ \E s \in Streams : Retire(s)
     \/ \E p \in Archivers :
         \/ Acquire(p) \/ Renew(p) \/ StepDown(p) \/ Release(p)
@@ -452,6 +487,18 @@ TokensUnique ==
 \* it, so it never deletes a published object.
 PublishedKeysUnrecorded ==
     \A x \in windows : ledger[x.key] = "none"
+
+\* Every stored object is published, recorded in the ledger (so garbage
+\* collection can delete it), or a late orphan of an upload that landed
+\* after its key stopped being pending. Retirement and garbage collection
+\* leave nothing else behind.
+StoredObjectsAccounted ==
+    Ledger =>
+        \A k \in Keys :
+            objects[k] # Absent =>
+                \/ \E x \in windows : x.key = k
+                \/ ledger[k] # "none"
+                \/ k \in strays
 
 \* Published windows are append-only and immutable; a window leaves only by
 \* retirement, which moves its stream's start past it and never back.

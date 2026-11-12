@@ -34,10 +34,8 @@ func TestSQLiteCLIAddStreams(t *testing.T) {
 	writeCLIConfig(t, grownFile, grown)
 	for _, args := range [][]string{
 		{"catalog-add-streams"},
-		{"catalog-add-streams", "-config", grownFile, "-start", "-1"},
-		{"catalog-add-streams", "-config", file},
-		// The coverage origin of 1970 expired from Hot long ago.
 		{"catalog-add-streams", "-config", grownFile, "-start", "3600000"},
+		{"catalog-add-streams", "-config", file},
 	} {
 		if err := run(args); err == nil {
 			t.Fatalf("accepted %v", args)
@@ -76,13 +74,14 @@ func TestSQLiteCLIAddStreams(t *testing.T) {
 			t.Fatalf("existing stream changed: %+v", stream)
 		}
 	}
-	// Both the earlier and the new configuration open the catalog.
-	for _, cfg := range []config.Config{c, grown} {
-		if err := validateConfiguredRepository(ctx, &cfg, db); err != nil {
-			t.Fatalf("configuration %v refused: %v", cfg.Tenants, err)
-		}
+	// A SQLite catalog has one owner: only the configuration listing every
+	// stream opens it, so no stream is left unarchived by mistake.
+	if err := validateConfiguredRepository(ctx, &grown, db); err != nil {
+		t.Fatalf("new configuration refused: %v", err)
 	}
-	if err := validateConfiguredRepository(ctx, &shrunk, db); err != nil {
-		t.Fatalf("subset configuration refused: %v", err)
+	for _, cfg := range []config.Config{c, shrunk} {
+		if err := validateConfiguredRepository(ctx, &cfg, db); err == nil {
+			t.Fatalf("configuration %v without every stream accepted", cfg.Tenants)
+		}
 	}
 }

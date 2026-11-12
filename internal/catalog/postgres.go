@@ -24,6 +24,8 @@ type Postgres struct {
 	db     *sql.DB
 	id     string
 	schema string // quoted identifier, fixed when the repository is opened
+	// schemaName is the unquoted schema, for catalog functions.
+	schemaName string
 }
 
 var _ Repository = (*Postgres)(nil)
@@ -84,9 +86,11 @@ const postgresPendingSchema = `
 CREATE TABLE %[1]s.pending_objects (
  object_key TEXT PRIMARY KEY CHECK (octet_length(object_key) BETWEEN 1 AND 1024),
  created_ms BIGINT NOT NULL CHECK (created_ms >= 0),
- state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting'))
+ state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting')),
+ incarnation TEXT NOT NULL DEFAULT '' CHECK (octet_length(incarnation) <= 256)
 );
 CREATE INDEX pending_objects_age ON %[1]s.pending_objects (state, created_ms);
+CREATE INDEX windows_start ON %[1]s.windows (start_ms);
 `
 
 // postgresRetentionUpgrade adds the retention columns of schema 3 to an older
@@ -204,7 +208,7 @@ func connectPostgres(ctx context.Context, dsn, id string) (_ *Postgres, err erro
 	if !schema.Valid || schema.String == "" {
 		return nil, errors.New("PostgreSQL catalog requires an existing schema in search_path")
 	}
-	return &Postgres{db: db, id: id, schema: pq.QuoteIdentifier(schema.String)}, nil
+	return &Postgres{db: db, id: id, schema: pq.QuoteIdentifier(schema.String), schemaName: schema.String}, nil
 }
 
 // table only accepts fixed names from this file; the schema is quoted once and
@@ -248,7 +252,7 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
 	}
 	if stored != version {
-		return out, fmt.Errorf("unsupported catalog schema %d; explicit catalog-upgrade or migration required", stored)
+		return out, schemaVersionError(stored, version)
 	}
 	query := `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json,` + retiredColumn + ` FROM ` + p.table("catalog_state") + ` WHERE singleton=1 AND octet_length(contract_json)<=1048576 AND octet_length(blob_json)<=16384`
 	if lock {

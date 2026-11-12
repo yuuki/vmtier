@@ -20,6 +20,10 @@ import (
 )
 
 const backupMetadataFile = "metadata.json"
+
+// backupMetadataVersion 2 adds the retention fields of Status. Version 1
+// backups, of schema 1 catalogs, remain readable.
+const backupMetadataVersion = 2
 const maxBackupMetadataBytes = 4 << 20
 
 type sqliteBackupMetadata struct {
@@ -152,7 +156,7 @@ func (s *SQLite) Backup(ctx context.Context, outDir string) error {
 	if err != nil {
 		return err
 	}
-	meta := sqliteBackupMetadata{Version: 1, DatabaseBytes: size, DatabaseSHA256: checksum, Status: status}
+	meta := sqliteBackupMetadata{Version: backupMetadataVersion, DatabaseBytes: size, DatabaseSHA256: checksum, Status: status}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
@@ -189,7 +193,7 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 	if expected.SchemaVersion == 1 {
 		// A backup taken before the object ledger existed is upgraded in the
 		// staging copy after its checksum was verified; the backup is unchanged.
-		if err := UpgradeSQLite(ctx, stage, expected.ID); err != nil {
+		if _, err := UpgradeSQLite(ctx, stage, expected.ID); err != nil {
 			return nil, fmt.Errorf("upgrade schema 1 backup: %w", err)
 		}
 		expected.SchemaVersion = SQLiteSchemaVersion
@@ -470,7 +474,7 @@ func readBackupMetadata(path string) (sqliteBackupMetadata, error) {
 	if d.Decode(&extra) != io.EOF {
 		return meta, errors.New("trailing or oversized backup metadata")
 	}
-	if meta.Version != 1 || meta.DatabaseBytes <= 0 || !validHash(meta.DatabaseSHA256) || !validID(meta.Status.ID) {
+	if (meta.Version != 1 && meta.Version != backupMetadataVersion) || (meta.Version == 1) != (meta.Status.SchemaVersion == 1) || meta.DatabaseBytes <= 0 || !validHash(meta.DatabaseSHA256) || !validID(meta.Status.ID) {
 		return meta, errors.New("invalid SQLite backup metadata")
 	}
 	return meta, nil

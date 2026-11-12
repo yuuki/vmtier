@@ -55,6 +55,10 @@ func (w *collectingWorker) RunPass(ctx context.Context, now time.Time) (*archive
 	}
 	collected, gcErr := w.collector.RunPass(ctx)
 	w.next = time.Now().Add(w.interval)
+	if collected.More && gcErr == nil {
+		// A backlog remains: collect again after the next archive pass.
+		w.next = time.Now()
+	}
 	w.stats.passes.Add(1)
 	w.stats.retired.Add(uint64(collected.Retired))
 	w.stats.claimed.Add(uint64(collected.Claimed))
