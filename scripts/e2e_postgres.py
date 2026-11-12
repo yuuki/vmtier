@@ -338,7 +338,8 @@ def run(work, args):
         assert before['windows'] == 3
         assert_fixture_layout(before['window_layout'], before['packs'], start, boundary,
                               horizon['window_ms'], tenants[:1], empty_tenant, bool(args.pack_max_blocks))
-        compare([{'tenant': tenant, 'source_id': 'hot', 'end_ms': boundary if i == 0 else start}
+        # No Cold retention is configured, so every stream starts at the coverage origin.
+        compare([{'tenant': tenant, 'source_id': 'hot', 'start_ms': start, 'end_ms': boundary if i == 0 else start}
                  for i, tenant in enumerate(tenants)], before['coverage'], 'partial stream coverage')
         began = time.monotonic()
         services[active].kill()
@@ -361,7 +362,7 @@ def run(work, args):
         assert stable['windows'] == 6
         report['pack_layout'] = assert_fixture_layout(stable['window_layout'], stable['packs'], start, boundary,
                                                       horizon['window_ms'], tenants, empty_tenant, bool(args.pack_max_blocks))
-        compare([{'tenant': tenant, 'source_id': 'hot', 'end_ms': boundary} for tenant in tenants],
+        compare([{'tenant': tenant, 'source_id': 'hot', 'start_ms': start, 'end_ms': boundary} for tenant in tenants],
                 stable['coverage'], 'complete stream coverage')
 
         # Separate HAProxy processes give one logical Cold node to vmselect.
