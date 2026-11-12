@@ -236,20 +236,15 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 	}
 	var generation, retired int64
 	var cb, bb []byte
-	// Schemas before 3 have no retention columns: nothing is retired and every
-	// stream starts at the coverage origin.
-	retiredColumn, startColumn := "retired_windows", "start_ms"
+	// Schemas before 3 have no retention columns: nothing is retired.
+	retiredColumn := "retired_windows"
 	if version < 3 {
-		retiredColumn, startColumn = "0", "-1"
+		retiredColumn = "0"
 	}
 	// Check the version first: another schema may lack the columns read below.
 	var stored int
 	if err := tx.QueryRowContext(ctx, `SELECT schema_version FROM `+p.table("catalog_state")+` WHERE singleton=1`).Scan(&stored); err != nil {
-		var pgErr *pq.Error
-		if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
-			return out, ErrNotInitialized
-		}
-		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
+		return out, postgresStateError(err)
 	}
 	if stored != version {
 		return out, schemaVersionError(stored, version)
@@ -260,11 +255,7 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 	}
 	err := tx.QueryRowContext(ctx, query).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb, &retired)
 	if err != nil {
-		var pgErr *pq.Error
-		if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
-			return out, ErrNotInitialized
-		}
-		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
+		return out, postgresStateError(err)
 	}
 	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
 		return out, fmt.Errorf("unsupported catalog schema %d or VM version %s; explicit catalog-upgrade or migration required", out.SchemaVersion, out.VMVersion)
@@ -286,37 +277,61 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 	if err != nil || normalized != out.Blob {
 		return out, errors.New("invalid stored blob locator")
 	}
-	expected := make(map[string]bool, len(out.Contract.Tenants)*len(out.Contract.Sources))
-	for _, tenant := range out.Contract.Tenants {
-		for _, source := range out.Contract.Sources {
+	out.Coverage, err = p.readCoverage(ctx, tx, out.Contract, version)
+	return out, err
+}
+
+// postgresStateError reports a missing catalog state row or table as
+// ErrNotInitialized.
+func postgresStateError(err error) error {
+	var pgErr *pq.Error
+	if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
+		return ErrNotInitialized
+	}
+	return fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
+}
+
+// readCoverage reads the coverage of every stream of the contract, refusing a
+// missing, unexpected or invalid row.
+func (p *Postgres) readCoverage(ctx context.Context, tx *sql.Tx, contract Contract, version int) ([]StreamCoverage, error) {
+	// Schemas before 3 have no start column: every stream starts at the
+	// coverage origin.
+	startColumn := "start_ms"
+	if version < 3 {
+		startColumn = "-1"
+	}
+	expected := make(map[string]bool, len(contract.Tenants)*len(contract.Sources))
+	for _, tenant := range contract.Tenants {
+		for _, source := range contract.Sources {
 			expected[tenant+"\x00"+source.ID] = true
 		}
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT tenant,source_id,end_ms,`+startColumn+` FROM `+p.table("coverage")+` ORDER BY tenant,source_id LIMIT $1`, len(expected)+1)
 	if err != nil {
-		return out, err
+		return nil, err
 	}
 	defer rows.Close()
+	var out []StreamCoverage
 	for rows.Next() {
 		var c StreamCoverage
 		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End, &c.Start); err != nil {
-			return out, err
+			return nil, err
 		}
 		if version < 3 {
-			c.Start = out.Contract.CoverageStart
+			c.Start = contract.CoverageStart
 		}
 		key := c.Tenant + "\x00" + c.SourceID
-		if !expected[key] || !validStreamCoverage(out.Contract, c) {
-			return out, errors.New("invalid stream coverage")
+		if !expected[key] || !validStreamCoverage(contract, c) {
+			return nil, errors.New("invalid stream coverage")
 		}
 		delete(expected, key)
-		out.Coverage = append(out.Coverage, c)
+		out = append(out, c)
 	}
 	if err = rows.Err(); err != nil {
-		return out, err
+		return nil, err
 	}
 	if len(expected) != 0 {
-		return out, errors.New("missing configured stream coverage")
+		return nil, errors.New("missing configured stream coverage")
 	}
 	return out, nil
 }

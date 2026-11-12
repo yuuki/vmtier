@@ -56,8 +56,48 @@ const (
 // deletion fails ends the pass, since the store is then failing as a whole.
 func (c *Collector) RunPass(ctx context.Context) (CollectResult, error) {
 	var out CollectResult
+	batch, batches, err := c.bounds()
+	if err != nil {
+		return out, err
+	}
+	if c.Retention > 0 {
+		retired, more, err := c.retire(ctx, batches)
+		out.Retired, out.More = retired, more
+		if err != nil {
+			return out, err
+		}
+	}
+	pass := deletePass{failedBefore: map[string]bool{}}
+	for i := range batches {
+		keys, err := c.Catalog.ClaimUnpublishedObjects(ctx, c.MinAge, batch)
+		if err != nil {
+			return out, pass.fail("claim unpublished objects", err)
+		}
+		out.Claimed += len(keys)
+		deleted, failed := c.deleteClaimed(ctx, keys, &pass)
+		// Forget what was deleted, so that the next pass retries only the
+		// rest; a failed forget only repeats deletions.
+		if err := c.Catalog.ForgetDeletedObjects(ctx, deleted); err != nil {
+			return out, pass.fail("forget deleted objects", err)
+		}
+		out.Deleted += len(deleted)
+		if err := c.Catalog.DeferClaimedObjects(ctx, failed); err != nil {
+			return out, pass.fail("defer undeleted objects", err)
+		}
+		if ctx.Err() != nil || len(keys) < batch || (len(deleted) == 0 && len(failed) > 0) {
+			return out, errors.Join(pass.failures...)
+		}
+		if i == batches-1 {
+			out.More = true
+		}
+	}
+	return out, errors.Join(pass.failures...)
+}
+
+// bounds returns the keys of one claim and the claims of one pass.
+func (c *Collector) bounds() (int, int, error) {
 	if c.Store == nil || c.Catalog == nil {
-		return out, errors.New("collector requires a catalog and a blob store that can delete")
+		return 0, 0, errors.New("collector requires a catalog and a blob store that can delete")
 	}
 	batch, batches := c.Batch, c.MaxBatches
 	if batch == 0 {
@@ -67,64 +107,51 @@ func (c *Collector) RunPass(ctx context.Context) (CollectResult, error) {
 		batches = defaultCollectMaxBatches
 	}
 	if batch < 1 || batch > catalog.MaxClaimedObjects || batches < 1 {
-		return out, errors.New("invalid collector batch bounds")
+		return 0, 0, errors.New("invalid collector batch bounds")
 	}
-	if c.Retention > 0 {
-		retired, more, err := c.retire(ctx, batches)
-		out.Retired, out.More = retired, more
-		if err != nil {
-			return out, err
+	return batch, batches, nil
+}
+
+// maxReportedDeleteFailures bounds the errors one pass reports.
+const maxReportedDeleteFailures = 8
+
+// deletePass holds what one pass learned across its batches: the errors to
+// report and the keys whose deletion already failed.
+type deletePass struct {
+	failures     []error
+	failedBefore map[string]bool
+}
+
+// fail joins a catalog error that ends the pass to the errors seen before it.
+func (p *deletePass) fail(step string, err error) error {
+	return errors.Join(append(p.failures, fmt.Errorf("%s: %w", step, err))...)
+}
+
+// deleteClaimed deletes the objects of claimed keys and returns the keys it
+// deleted and those that failed. It stops early when ctx ends; the keys it did
+// not reach stay claimed for the next pass.
+func (c *Collector) deleteClaimed(ctx context.Context, keys []string, p *deletePass) (deleted, failed []string) {
+	deleted = make([]string, 0, len(keys))
+	for _, key := range keys {
+		if err := ctx.Err(); err != nil {
+			p.failures = append(p.failures, err)
+			break
 		}
+		// A key that failed earlier in this pass waits for the next one.
+		if p.failedBefore[key] {
+			failed = append(failed, key)
+			continue
+		}
+		if err := c.Store.Delete(ctx, key); err != nil {
+			failed, p.failedBefore[key] = append(failed, key), true
+			if len(p.failures) < maxReportedDeleteFailures {
+				p.failures = append(p.failures, fmt.Errorf("delete unpublished object %s: %w", key, err))
+			}
+			continue
+		}
+		deleted = append(deleted, key)
 	}
-	var failures []error
-	failedBefore := map[string]bool{}
-	for i := range batches {
-		keys, err := c.Catalog.ClaimUnpublishedObjects(ctx, c.MinAge, batch)
-		if err != nil {
-			return out, errors.Join(append(failures, fmt.Errorf("claim unpublished objects: %w", err))...)
-		}
-		out.Claimed += len(keys)
-		deleted := make([]string, 0, len(keys))
-		var failed []string
-		for _, key := range keys {
-			if err := ctx.Err(); err != nil {
-				failures = append(failures, err)
-				break
-			}
-			// A key that failed earlier in this pass waits for the next one.
-			if failedBefore[key] {
-				failed = append(failed, key)
-				continue
-			}
-			if err := c.Store.Delete(ctx, key); err != nil {
-				failed, failedBefore[key] = append(failed, key), true
-				if len(failures) < 8 {
-					failures = append(failures, fmt.Errorf("delete unpublished object %s: %w", key, err))
-				}
-				continue
-			}
-			deleted = append(deleted, key)
-		}
-		// Forget what was deleted, so that the next pass retries only the
-		// rest; a failed forget only repeats deletions.
-		if err := c.Catalog.ForgetDeletedObjects(ctx, deleted); err != nil {
-			return out, errors.Join(append(failures, fmt.Errorf("forget deleted objects: %w", err))...)
-		}
-		out.Deleted += len(deleted)
-		if err := c.Catalog.DeferClaimedObjects(ctx, failed); err != nil {
-			return out, errors.Join(append(failures, fmt.Errorf("defer undeleted objects: %w", err))...)
-		}
-		if ctx.Err() != nil || (len(deleted) == 0 && len(failed) > 0) {
-			return out, errors.Join(failures...)
-		}
-		if len(keys) < batch {
-			return out, errors.Join(failures...)
-		}
-		if i == batches-1 {
-			out.More = true
-		}
-	}
-	return out, errors.Join(failures...)
+	return deleted, failed
 }
 
 // retire retires windows below the retention boundary in bounded

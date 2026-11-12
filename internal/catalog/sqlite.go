@@ -468,24 +468,8 @@ func (s *SQLite) publish(ctx context.Context, expected uint64, p Publication, co
 	}
 	for _, ref := range p.Packs {
 		for _, key := range []string{ref.DataKey, ref.IndexKey} {
-			var used bool
-			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM packs WHERE data_key=? OR index_key=?)`, key, key).Scan(&used); err != nil {
+			if err = useSQLiteObjectKey(ctx, tx, key, consumePending); err != nil {
 				return 0, err
-			}
-			if used {
-				return 0, fmt.Errorf("%w: published object key cannot be reused", ErrInvalidPublication)
-			}
-			if !consumePending {
-				continue
-			}
-			result, err := tx.ExecContext(ctx, `DELETE FROM pending_objects WHERE object_key=? AND state=?`, key, pendingState)
-			if err != nil {
-				return 0, err
-			}
-			if n, err := result.RowsAffected(); err != nil {
-				return 0, err
-			} else if n != 1 {
-				return 0, fmt.Errorf("%w: %w", ErrInvalidPublication, ErrUnrecordedObject)
 			}
 		}
 	}
@@ -513,6 +497,31 @@ func (s *SQLite) publish(ctx context.Context, expected uint64, p Publication, co
 		return 0, err
 	}
 	return next, nil
+}
+
+// useSQLiteObjectKey refuses a key that a published pack references and, with
+// consumePending, consumes its pending record, which must exist unclaimed.
+func useSQLiteObjectKey(ctx context.Context, tx *sql.Tx, key string, consumePending bool) error {
+	var used bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM packs WHERE data_key=? OR index_key=?)`, key, key).Scan(&used); err != nil {
+		return err
+	}
+	if used {
+		return fmt.Errorf("%w: published object key cannot be reused", ErrInvalidPublication)
+	}
+	if !consumePending {
+		return nil
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM pending_objects WHERE object_key=? AND state=?`, key, pendingState)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return fmt.Errorf("%w: %w", ErrInvalidPublication, ErrUnrecordedObject)
+	}
+	return nil
 }
 
 func (s *SQLite) Select(ctx context.Context, sel Selection) (QueryPlan, error) {
