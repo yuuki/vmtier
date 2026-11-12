@@ -118,6 +118,7 @@ func TestPostgresHAFaultQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, s, first)
 	if generation, err := s.Fenced(lease).PublishWindow(ctx, 0, first); err != nil || generation != 1 {
 		t.Fatalf("initial synchronous publication: generation=%d err=%v", generation, err)
 	}
@@ -168,6 +169,7 @@ func TestPostgresHAFaultQualification(t *testing.T) {
 		t.Fatalf("lease token did not advance: old=%d new=%d", stale.Token, successor.Token)
 	}
 	third := sqlitePublication("1:2", "a", 300, 1)
+	recordPublication(t, s, third)
 	if _, err := s.Fenced(stale).PublishWindow(ctx, 2, third); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("stale writer was not fenced: %v", err)
 	}

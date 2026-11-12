@@ -63,8 +63,8 @@ func runCatalogMaintenance(args []string) error {
 		}
 		return runPostgresCatalogCommand(args[0], f.configuration, *id, f.tenant, f.start, f.end, f.maxWindows, f.maxPacks)
 	}
-	if *backend != "sqlite" || args[0] == "catalog-upgrade" {
-		return errors.New("catalog-upgrade requires -backend postgres; SQLite has no schema upgrade")
+	if *backend != "sqlite" {
+		return errors.New("catalog maintenance backend must be sqlite or postgres")
 	}
 	if fs.NArg() != 0 || *path == "" || *id == "" {
 		return errors.New("catalog maintenance requires -path and -id, with no positional arguments")
@@ -72,6 +72,8 @@ func runCatalogMaintenance(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	switch args[0] {
+	case "catalog-upgrade":
+		return upgradeSQLite(ctx, *path, *id)
 	case "catalog-import":
 		if f.from == "" || f.configuration == "" {
 			return errors.New("catalog-import requires -from and -config")
@@ -88,7 +90,7 @@ func runCatalogMaintenance(args []string) error {
 		}
 		return backupSQLite(ctx, *path, *id, f.out)
 	}
-	// define accepts no other operation, and SQLite has no catalog-upgrade.
+	// define accepts no other operation.
 	return inspectSQLite(ctx, *path, *id, f)
 }
 
@@ -111,7 +113,7 @@ func (f *maintenanceFlags) define(fs *flag.FlagSet, operation string) error {
 	case "catalog-restore":
 		fs.StringVar(&f.backup, "backup", "", "backup directory")
 	case "catalog-upgrade":
-		// PostgreSQL only, with no flags of its own.
+		// No flags of its own.
 	case "catalog-inspect":
 		fs.StringVar(&f.tenant, "tenant", "", "optional tenant for a bounded query plan")
 		fs.Int64Var(&f.start, "start", 0, "inclusive epoch milliseconds (requires -tenant and -end)")
@@ -122,6 +124,16 @@ func (f *maintenanceFlags) define(fs *flag.FlagSet, operation string) error {
 		return errors.New("unsupported catalog maintenance operation")
 	}
 	return nil
+}
+
+// upgradeSQLite upgrades a stopped catalog in place and prints the status it
+// read under the same directory lock.
+func upgradeSQLite(ctx context.Context, dir, id string) error {
+	status, err := catalog.UpgradeSQLite(ctx, dir, id)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(status)
 }
 
 func restoreSQLite(ctx context.Context, backup, dest, id string) error {

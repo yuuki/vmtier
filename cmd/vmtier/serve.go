@@ -85,7 +85,14 @@ func openConfiguredRepository(ctx context.Context, c *config.Config) (catalog.Re
 
 func validateConfiguredRepository(ctx context.Context, c *config.Config, db catalog.Repository) error {
 	status, err := db.Status(ctx)
-	if err == nil && !catalog.EqualContract(status.Contract, c.ArchiveContract()) {
+	// A SQLite catalog has one owner, so its configuration must list every
+	// stream; a PostgreSQL replica may still run the configuration from before
+	// streams were added (ADR 0008).
+	covered := catalog.EqualContract(status.Contract, c.ArchiveContract())
+	if c.Catalog.Type == "postgres" {
+		covered = catalog.ContractCovers(status.Contract, c.ArchiveContract())
+	}
+	if err == nil && !covered {
 		err = errors.New("catalog contract differs from service configuration")
 	}
 	if err == nil {
@@ -145,10 +152,9 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}()
 	webDone := make(chan error, 1)
 	go func() { webDone <- web.Serve(ln) }()
-	newArchiver := func(repo catalog.Repository) archivePassRunner {
-		cfg := c.Archive(0, 0)
-		cfg.Memory = &stats.archiveMemory
-		return &archive.Archiver{Store: blobs, Catalog: repo, Config: cfg, RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
+	newArchiver, err := archiveWorkers(c, blobs, &stats)
+	if err != nil {
+		return err
 	}
 	archiveDone := make(chan struct{})
 	go func() {
@@ -174,6 +180,28 @@ func runServe(parent context.Context, c *config.Config, rpcAddr, httpAddr string
 	}
 }
 
+// archiveWorkers returns the constructor of the archive worker that one
+// repository view runs: the archiver, followed by garbage collection when it
+// is enabled. PostgreSQL builds a worker for each lease acquisition.
+func archiveWorkers(c *config.Config, blobs objectstore.BlobStore, stats *serviceStats) (func(catalog.Repository) archivePassRunner, error) {
+	gcInterval, gcMinAge := c.OrphanGC()
+	deleter, canDelete := blobs.(objectstore.Deleter)
+	if gcInterval > 0 && !canDelete {
+		return nil, errors.New("service.orphan_gc_interval requires a blob store that can delete objects")
+	}
+	stats.orphanGC.enabled.Store(gcInterval > 0)
+	return func(repo catalog.Repository) archivePassRunner {
+		cfg := c.Archive(0, 0)
+		cfg.Memory = &stats.archiveMemory
+		worker := &archive.Archiver{Store: blobs, Catalog: repo, Config: cfg, RetryInterval: c.ArchiveInterval(), WindowTimeout: c.ArchiveTimeout(), OnWindowFailure: stats.windowFailures.record}
+		if gcInterval == 0 {
+			return worker
+		}
+		collector := &archive.Collector{Store: deleter, Catalog: repo, MinAge: gcMinAge, Retention: c.ColdRetentionPeriod(), Retire: repo}
+		return &collectingWorker{archiver: worker, collector: collector, interval: gcInterval, stats: &stats.orphanGC}
+	}, nil
+}
+
 type serviceBackend struct {
 	ctx    context.Context
 	reader *cold.Reader
@@ -190,6 +218,7 @@ func (b serviceBackend) Search(ctx context.Context, q *storage.SearchQuery) ([]s
 type serviceStats struct {
 	windowFailures                            windowFailureMetrics
 	archiveMemory                             archive.MemoryStats
+	orphanGC                                  orphanGCStats
 	passes, failures, windows, samples, bytes atomic.Uint64
 	lastCommit                                atomic.Int64
 	leader                                    atomic.Bool
@@ -250,7 +279,7 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 		fmt.Fprintf(w, "vmtier_archive_leader %d\n", leader)
 		if ioStats, ok := blobs.(interface{ Stats() objectstore.Snapshot }); ok {
 			s := ioStats.Stats()
-			fmt.Fprintf(w, "vmtier_object_get_requests_total %d\nvmtier_object_range_requests_total %d\nvmtier_object_download_bytes_total %d\nvmtier_object_put_requests_total %d\n", s.Gets, s.RangeGets, s.DownloadedBytes, s.Puts)
+			fmt.Fprintf(w, "vmtier_object_get_requests_total %d\nvmtier_object_range_requests_total %d\nvmtier_object_download_bytes_total %d\nvmtier_object_put_requests_total %d\nvmtier_object_delete_requests_total %d\n", s.Gets, s.RangeGets, s.DownloadedBytes, s.Puts, s.Deletes)
 		}
 		if budget, ok := blobs.(interface {
 			BudgetStats() objectstore.BudgetSnapshot
@@ -275,6 +304,10 @@ func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs obj
 					lag = 0
 				}
 				fmt.Fprintf(w, "vmtier_stream_coverage_end_ms{tenant=%q,source=%q} %d\nvmtier_stream_archive_lag_seconds{tenant=%q,source=%q} %.3f\nvmtier_stream_retention_headroom_seconds{tenant=%q,source=%q} %.3f\n", stream.Tenant, stream.SourceID, stream.End, stream.Tenant, stream.SourceID, lag, stream.Tenant, stream.SourceID, float64(stream.End+c.Retention().Milliseconds()-time.Now().UnixMilli())/1000)
+			}
+			fmt.Fprintf(w, "vmtier_catalog_retired_windows %d\n", state.RetiredWindows)
+			for _, stream := range state.Coverage {
+				fmt.Fprintf(w, "vmtier_stream_coverage_start_ms{tenant=%q,source=%q} %d\n", stream.Tenant, stream.SourceID, stream.Start)
 			}
 			for tenant, end := range coverage {
 				lag := float64(reader.RequiredEnd(time.Now())-end) / 1000

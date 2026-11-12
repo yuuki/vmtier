@@ -46,19 +46,28 @@ cancels archive work on renewal failure. Shutdown drains that work before releas
 ownership. Expiration is checked against database time. A monotonically increasing
 token is checked under the same transaction lock used for publication, so an old
 owner cannot publish after takeover. Raw unfenced PostgreSQL publication is rejected.
-Already uploaded objects from a losing attempt can remain unreferenced; no GC runs.
+Already uploaded objects from a losing attempt remain unreferenced until
+[garbage collection](serve.md#garbage-collection) deletes them. When
+`service.orphan_gc_interval` is set, only the lease holder collects, between its
+archive passes; its claims and every publication are ordered by row locks on the
+object ledger, so a claimed key can never be published by any process.
 
-Schema 2 introduces leases. The schema upgrade requires an already compatible
-VM pin; it does not convert v1.128.0 catalogs or packs to v1.155.0. Stop schema-1
-writers before an explicit upgrade:
+Schema 2 introduces leases and schema 3 the object ledger and the Cold retention
+columns. The schema upgrade
+requires an already compatible VM pin; it does not convert v1.128.0 catalogs or
+packs to v1.155.0. Stop writers of the older schema before an explicit upgrade,
+which moves schema 1 or 2 to 3 in one transaction:
 
 ```sh
 .bin/vmtier catalog-upgrade -backend postgres -config postgres.json
 ```
 
-The upgrade preserves published metadata and identity, and initializes an unowned
-lease. Older binaries reject the new schema. Back up before upgrading; no automatic
-schema downgrade is provided.
+The upgrade preserves published metadata and identity, initializes an unowned
+lease when upgrading from schema 1, adds an empty object ledger, and starts every
+stream at the coverage origin. Older binaries
+reject the new schema. Back up before upgrading; no automatic schema downgrade is
+provided. Objects of attempts that failed before the upgrade were never recorded
+and are not collected.
 
 PostgreSQL inspection and payload verification can run online. Verification checks
 a bounded prefix of the initially observed coverage and shares the operator's S3
@@ -66,6 +75,19 @@ request budget allocation; later publications are checked by a subsequent run.
 SQLite `catalog-backup`/`catalog-restore` do not back up PostgreSQL. Use PostgreSQL
 native backups and WAL/PITR, test restoration, and fence the old authority before
 cutover. A backup alone cannot recover expired Hot history or missing S3 objects.
+
+`catalog-add-streams -config FILE` adds tenants or sources online. A process still
+configured without them keeps serving, archiving and reporting readiness for the
+streams it knows, because the stored contract covers its configuration. Roll every
+replica to the new configuration promptly: only a replica configured with a new
+stream archives it, so the new stream falls behind until such a replica holds the
+archiver lease. See [adding tenants or sources](serve.md#add-tenants-or-sources).
+
+Pending object keys record the database incarnation they were written in, so a
+catalog restored with point-in-time recovery or from a dump never collects the
+objects of attempts that the original may still publish; see
+[garbage collection](serve.md#garbage-collection). Concurrent `catalog-upgrade`
+runs, for example one per replica, wait for each other.
 
 To move an existing stopped SQLite service without rewriting objects, use
 [`catalog-import-postgres`](postgres-migration.md). It creates a fresh destination
@@ -81,16 +103,22 @@ selected schema is pinned for subsequent SQL. Schema DDL is needed for initializ
 normal runtime access should be limited to the catalog tables and sequences.
 
 Publication locks the catalog state row, validates generation and stream continuity,
-and commits the window, ordered pack references, object keys, coverage, and generation
-atomically. Zero packs represent a verified empty window. Same-publication replay
+consumes the pending ledger record of every referenced key, and commits the window,
+ordered pack references, object keys, coverage, and generation atomically. A key
+that garbage collection claimed fails the publication; the archiver retries with
+fresh keys. Zero packs represent a verified empty window. Same-publication replay
 succeeds after later commits, while changed content and key reuse across data/index
 roles fail. On an ambiguous commit response, reload coverage and the committed
 window before deciding whether to replay; do not blindly regenerate new object keys.
 
+Cold retention locks the catalog state row like publication, removes the oldest
+windows with their packs and key reservations, records their keys as retired, and
+advances each stream's start, all in one transaction.
+
 Read-only repeatable-read transactions provide a consistent status or query plan.
 Selection uses the existing window, pack, and descriptor-byte caps. Object I/O takes
-place after the transaction ends. Published objects remain immutable and GC is not
-implemented. Database failure is an error, even if object data is cached.
+place after the transaction ends. Published objects remain immutable and are never
+deleted. Database failure is an error, even if object data is cached.
 
 Blocked PostgreSQL transport reads/writes have a five-second idle timeout,
 including the driver's separate cancellation connection. A timed-out socket is

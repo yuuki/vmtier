@@ -27,7 +27,7 @@ measurement and release-qualification work. See
 
 | Area | Current implementation |
 | --- | --- |
-| Catalog | SQLite schema 1 or PostgreSQL schema 2; shared repository operations, bounded indexed selection, independent stream coverage; backend-specific migration/maintenance |
+| Catalog | SQLite schema 2 or PostgreSQL schema 3; shared repository operations, bounded indexed selection, independent stream coverage, object ledger for garbage collection; backend-specific migration/maintenance |
 | Service | SQLite directory ownership or PostgreSQL fenced archiver lease; age-based scheduler, read RPC, failure metrics, per-process admission; PostgreSQL static aggregate S3 allocation |
 | Archive | Shared service pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
 | Reader | Repository selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |
@@ -163,8 +163,9 @@ The SQLite writer, catalog, and reader support multiple packs without changing
 `w`. [Pack rotation](archive-packs.md) preserves one logical window; it cannot
 bypass the whole-window native-input, physical-sample, pack-count, or time bounds.
 The retained JSON v2 writer continues to enforce a single-pack bound.
-Increasing archive age or allowed lateness in place remains rejected. Adding tenants,
-resharding sources, or changing the fixed contract needs an explicit future migration.
+Increasing archive age or allowed lateness in place remains rejected. Tenants and
+sources can be added with an explicit command ([ADR 0008](adr/0008-adding-streams.md));
+resharding sources or changing the rest of the fixed contract needs a future migration.
 Cache budgets, S3 limits, and timeouts can change through a controlled restart.
 
 Ingress must enforce `L` across retries, queues, imports, and direct writes. The
@@ -230,6 +231,9 @@ A query reads identity, contract, coverage, and candidate references in one shor
 read transaction. Enforce candidate/plan limits during selection, then release the
 transaction before S3 I/O. Referenced objects are immutable and are not deleted in
 this release, so long-lived transactions and generation leases are unnecessary.
+Garbage collection deletes only objects that no window ever referenced
+([ADR 0006](adr/0006-orphan-garbage-collection.md)) or that Cold retention retired
+long enough ago that no query still reads them ([ADR 0007](adr/0007-cold-retention.md)).
 Catalog failure remains a query error, including with a warm object cache.
 
 ## Archive pipeline and bounded verification
@@ -375,7 +379,8 @@ closed. See [service configuration and metrics](serve.md) for operational detail
 Reduce request pressure through coalescing and caching before adding parallelism.
 Keep normal PUT, Content-MD5, application SHA-256, and TLS verification. Conditional
 PUT, ETag CAS, LIST-based discovery, multipart upload, and object locks are not
-required. No lifecycle rule may delete referenced objects.
+required. Opt-in garbage collection adds ordinary DeleteObject for keys the catalog
+recorded and claimed. No lifecycle rule may delete referenced objects.
 
 ## Operations and recovery
 
@@ -515,11 +520,16 @@ recent-only Hot reconstruction. These checks remain unexecuted today.
   election controllers and endpoint redundancy remain deployment responsibilities.
 - Disk-backed sample verification, arbitrary high cardinality, and unbounded queries.
 - New postings/binary indexes, compaction, downsampling, and another storage format.
-- Automatic backfill, deletion/tombstones, Cold TTL, and orphan garbage collection.
-- Dynamic tenant/source topology and transparent cross-version VM upgrades.
+- Automatic backfill and deletion/tombstones. Garbage collection of failed
+  attempts' objects ([ADR 0006](adr/0006-orphan-garbage-collection.md)) and Cold
+  retention ([ADR 0007](adr/0007-cold-retention.md)) are implemented through the
+  catalog's object ledger; compaction (#45), downsampling (#46) and multipart
+  upload (#47) are tracked separately.
+- Removing tenants or sources, resharding, and transparent cross-version VM upgrades.
 - Kubernetes operators, a web UI, and another public query language/API.
 
-Without GC, storage grows, including failed-attempt objects. Expose usage and keep
-lifecycle deletion disabled. If bounded Cold retention or legal deletion is required,
+Without Cold retention, storage grows with archived data. Garbage collection removes
+recorded failed-attempt objects only when enabled. Expose usage and keep lifecycle
+deletion disabled. If deletion of selected series or legal deletion is required,
 this release is unsuitable until that feature is designed. This support boundary
 is preferable to incomplete deletion semantics under a general production claim.

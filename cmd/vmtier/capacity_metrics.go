@@ -90,11 +90,16 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 	}
 	if stats != nil {
 		stats.windowFailures.write(w)
+		stats.orphanGC.write(w)
 		memory := stats.archiveMemory.Snapshot()
 		fmt.Fprintf(w, "vmtier_archive_verifier_bytes %d\nvmtier_archive_verifier_peak_bytes %d\nvmtier_archive_pack_bytes %d\nvmtier_archive_pack_peak_bytes %d\n", memory.VerifierBytes, memory.VerifierPeakBytes, memory.PackBytes, memory.PackPeakBytes)
 	}
 	if reader.Repository == nil {
 		return
+	}
+	// Omit unknown gauges rather than presenting false zeroes.
+	if unpublished, err := reader.Repository.UnpublishedObjects(ctx); err == nil {
+		fmt.Fprintf(w, "vmtier_catalog_unpublished_objects{state=\"pending\"} %d\nvmtier_catalog_unpublished_objects{state=\"retired\"} %d\nvmtier_catalog_unpublished_objects{state=\"deleting\"} %d\nvmtier_catalog_unpublished_objects{state=\"foreign\"} %d\n", unpublished.Pending, unpublished.Retired, unpublished.Deleting, unpublished.Foreign)
 	}
 	// Local file capacity is a SQLite capability, not a requirement on the
 	// backend-neutral publication repository. Other backends omit these gauges.

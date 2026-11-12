@@ -16,15 +16,21 @@ packs, and compares samples with an independent raw JSON response. Objects are
 uploaded under immutable keys and verified by read-back before one catalog
 transaction publishes the window and advances its stream coverage. Verified empty
 windows publish no pack references. Interrupted attempts do not advance coverage;
-uncommitted objects may remain as orphans because GC is not implemented.
+their uncommitted objects remain as orphans. Every key is recorded in the catalog's
+object ledger before its upload, and publication consumes those records, so opt-in
+garbage collection deletes exactly the objects of attempts that never published
+([ADR 0006](adr/0006-orphan-garbage-collection.md)). Opt-in Cold retention removes
+the oldest windows from the catalog, advancing each stream's retained start, and
+hands their keys to garbage collection ([ADR 0007](adr/0007-cold-retention.md)).
 
 The catalog is the authority. It binds the timing contract, tenants, sources,
 identity, and blob locator. It cannot be rebuilt from an object listing. SQLite
 uses a lifetime directory lock. PostgreSQL serializes publication with a catalog
 row lock and checks a DB-time lease and monotonically increasing fencing token.
 Both implement the same domain repository; object I/O stays outside transactions.
-[`spec/VmtierPublication.tla`](../spec/README.md) models the lease, upload and
-publication transaction in TLA+; `make test-tla` checks it with TLC.
+[`spec/VmtierPublication.tla`](../spec/README.md) models the lease, upload,
+publication transaction and garbage collection in TLA+; `make test-tla` checks it
+with TLC.
 
 ## Query path
 
@@ -48,7 +54,7 @@ fail queries rather than returning successful partial data.
 | --- | --- |
 | [`cmd/vmtier`](../cmd/vmtier) | CLI dispatch, service lifecycle/scheduler, health/metrics, offline commands |
 | [`internal/config`](../internal/config) | Strict JSON decoding, policy validation, effective limits, client construction |
-| [`internal/archive`](../internal/archive) | Export, independent oracle verification, packing/publication pipeline, preflight |
+| [`internal/archive`](../internal/archive) | Export, independent oracle verification, packing/publication pipeline, preflight, garbage collection |
 | [`internal/catalog`](../internal/catalog) | SQLite/PostgreSQL repositories, leases, migration/maintenance, and retained JSON v2 local/HTTP authority |
 | [`internal/pack`](../internal/pack) | Native pack/index format, validation, rotation, codec version pins |
 | [`internal/cold`](../internal/cold) | Coverage checks, selection, cache, range reads, query work accounting |

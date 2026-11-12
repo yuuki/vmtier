@@ -33,6 +33,22 @@ func sqlitePublication(tenant, source string, start int64, packs int) Publicatio
 	return p
 }
 
+// recordPublication records the keys of a publication as an archive attempt
+// does before its uploads, so that the publication may reference them.
+func recordPublication(t testing.TB, ledger ObjectLedger, p Publication) {
+	t.Helper()
+	var keys []string
+	for _, ref := range p.Packs {
+		keys = append(keys, ref.DataKey, ref.IndexKey)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	if err := ledger.RecordPendingObjects(context.Background(), p.Tenant, keys); err != nil {
+		t.Fatal("record pending objects:", err)
+	}
+}
+
 func sqliteStatus(t *testing.T, s *SQLite) SQLiteStatus {
 	t.Helper()
 	out, err := s.Status(context.Background())
@@ -53,6 +69,7 @@ func TestSQLitePublicationAndRestart(t *testing.T) {
 		t.Fatalf("unexpected initial state: %+v", initial)
 	}
 	first := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, s, first)
 	if g, err := s.PublishWindow(ctx, 0, first); err != nil || g != 1 {
 		t.Fatalf("publish: generation=%d err=%v", g, err)
 	}
@@ -109,6 +126,7 @@ func TestSQLitePublicationFailureIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, s, p)
 	if _, err := s.PublishWindow(ctx, 0, p); err == nil {
 		t.Fatal("injected transaction failure succeeded")
 	}
@@ -121,6 +139,9 @@ func TestSQLitePublicationFailureIsAtomic(t *testing.T) {
 		if err := s.db.QueryRow("SELECT count(*) FROM " + table).Scan(&n); err != nil || n != 0 {
 			t.Fatalf("partial rows persisted in %s: n=%d err=%v", table, n, err)
 		}
+	}
+	if counts, err := s.UnpublishedObjects(ctx); err != nil || counts.Pending != 4 {
+		t.Fatalf("failed publication consumed pending records: %+v %v", counts, err)
 	}
 	if _, err := s.db.Exec(`DROP TRIGGER fail_second_pack`); err != nil {
 		t.Fatal(err)
@@ -164,8 +185,18 @@ func TestSQLiteRejectsInvalidTransitions(t *testing.T) {
 	if _, err := s.PublishWindow(ctx, 1, p); !errors.Is(err, ErrConflict) {
 		t.Fatalf("wrong generation accepted: %v", err)
 	}
+	if _, err := s.PublishWindow(ctx, 0, p); !errors.Is(err, ErrInvalidPublication) || !errors.Is(err, ErrUnrecordedObject) {
+		t.Fatalf("unrecorded object key accepted: %v", err)
+	}
+	recordPublication(t, s, p)
 	if _, err := s.PublishWindow(ctx, 0, p); err != nil {
 		t.Fatal(err)
+	}
+	if counts, err := s.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{}) {
+		t.Fatalf("publication left pending records: %+v %v", counts, err)
+	}
+	if err := s.RecordPendingObjects(ctx, "1:2", []string{p.Packs[0].DataKey}); !errors.Is(err, ErrInvalidPublication) {
+		t.Fatalf("published key recorded as pending: %v", err)
 	}
 	next := sqlitePublication("1:2", "a", 200, 1)
 	next.Packs[0].IndexKey = p.Packs[0].DataKey
@@ -210,7 +241,9 @@ func TestSQLiteSelectionLimitsAndSnapshots(t *testing.T) {
 	s := sqliteTestStore(t, contract())
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
-		if _, err := s.PublishWindow(ctx, uint64(i), sqlitePublication("1:2", "a", 100+int64(i)*100, 2)); err != nil {
+		p := sqlitePublication("1:2", "a", 100+int64(i)*100, 2)
+		recordPublication(t, s, p)
+		if _, err := s.PublishWindow(ctx, uint64(i), p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -272,7 +305,7 @@ func TestSQLiteExplicitInitializationAndOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = reopened.db.Exec(`UPDATE catalog_state SET schema_version=2`); err != nil {
+	if _, err = reopened.db.Exec(`UPDATE catalog_state SET schema_version=schema_version+1`); err != nil {
 		t.Fatal(err)
 	}
 	if err = reopened.Close(); err != nil {
@@ -343,6 +376,7 @@ func TestSQLiteBeyondMVPEntryLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := sqlitePublication("1:2", "a", end, 1)
+	recordPublication(t, s, p)
 	if g, err := s.PublishWindow(ctx, MaxEntries, p); err != nil || g != MaxEntries+1 {
 		t.Fatalf("publication above old ceiling: generation=%d err=%v", g, err)
 	}
@@ -371,6 +405,7 @@ func TestSQLiteBlobLocatorAndLegacyEmptyPack(t *testing.T) {
 	p := sqlitePublication("1:2", "a", 100, 1)
 	p.Packs[0].DataBytes = 0
 	p.Packs[0].DataSHA256 = pack.Sum(nil)
+	recordPublication(t, s, p)
 	if _, err := s.PublishWindow(context.Background(), 0, p); err != nil {
 		t.Fatalf("legacy empty data pack rejected: %v", err)
 	}

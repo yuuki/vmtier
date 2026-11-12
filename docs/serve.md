@@ -14,7 +14,8 @@ It remains under development: the [first-release design](design.md) tracks workl
 provider, retention, ingress, recovery, and release qualification. The
 [stage 2 validation](serve-validation.md) is historical evidence for its recorded
 revision; new implementation and focused tests do not replace that provenance.
-GC remains unimplemented. This SQLite deployment has no automatic failover;
+Garbage collection of failed attempts' objects and [Cold retention](#cold-retention)
+are opt-in; compaction remains unimplemented. This SQLite deployment has no automatic failover;
 [PostgreSQL HA](ha-deployment.md) is the separate multi-instance option.
 
 ## Configuration and startup
@@ -98,19 +99,42 @@ settings in its [configuration guide](postgres-catalog.md#configuration-and-life
 | `query_memory_bytes` | Shared query work reservations; omitted or zero uses 256 MiB. Must cover one effective `max_query_bytes` reservation, at most 8 GiB. See [query work admission](#query-work-admission). |
 | `max_pack_blocks` | Optional per-pack block limit, 1–100,000; omitted or zero uses 100,000. Changes packing, not window capacity or the immutable contract. See [archive packing](archive-packs.md). |
 | `service.archive_interval`, `service.archive_timeout` | Default `30s` and `2m`; each accepts 10 ms through 24 hours. See [scheduling](#scheduling-and-publication). |
+| `cold_retention` | Optional; omitted keeps Cold data forever. Whole milliseconds greater than `hot_retention`, up to `876000h`. Requires `service.orphan_gc_interval` and a `service.orphan_gc_min_age` of at least `10m`. See [Cold retention](#cold-retention). |
+| `service.orphan_gc_interval`, `service.orphan_gc_min_age` | Garbage collection of failed attempts' objects; omitted interval disables it. The interval accepts 10 ms through 24 hours; the minimum age defaults to `24h`, accepts up to `720h`, and must be at least `archive_timeout`. See [garbage collection](#garbage-collection). |
 | `store.requests_per_second`, `store.max_concurrent_requests`, `store.max_queued_requests` | Shared S3 limits; see [shared S3 budget](#shared-s3-budget). |
 
 Initialization pins the coverage start, window, archive age, lateness, tenant set,
 source IDs/URL fingerprints, 1 ms deduplication, and normalized blob location.
-Changing pinned values requires rebuilding under a new catalog and object prefix;
-backend import commands preserve the archive contract and object location.
-Restarting with different values fails. Shard topology behind a source URL must
-also stay fixed, although the gateway cannot detect a topology change.
+Tenants and sources can be [added](#add-tenants-or-sources); changing any other
+pinned value requires rebuilding under a new catalog and object prefix. Backend
+import commands preserve the archive contract and object location. Restarting
+with a configuration the catalog does not cover fails. Shard topology behind a
+source URL must also stay fixed, although the gateway cannot detect a topology
+change.
 
 Cache/query budgets, `max_pack_blocks`, scheduling intervals, and S3 limits can
 change on restart. `hot_retention` and `safety_margin` are validated runtime
 settings rather than persisted contract fields; changes must still reflect the
 real Hot policy and leave enough time to archive and recover.
+
+## Add tenants or sources
+
+Stop `serve`, add the new tenants or sources to the configuration, keeping every
+existing tenant and source unchanged, then add their streams to the catalog and
+start `serve` with the new configuration:
+
+```sh
+.bin/vmtier catalog-add-streams -config serve.json
+```
+
+Each new tenant/source pair starts and ends at one origin that the catalog chooses:
+the archive-age boundary of its clock, which the gateway already requires, so the
+stream is complete from the start and needs no catch-up. History before the origin
+is not archived for the new stream and is outside its query guarantee. The command
+prints the added streams and the new status. A SQLite `serve` must then run with the
+new configuration: it refuses a configuration that lacks any of the catalog's
+streams. Removing tenants or sources, or changing a source's URL, is not supported.
+See [ADR 0008](adr/0008-adding-streams.md).
 
 ## Connect stock vmselect
 
@@ -156,7 +180,72 @@ tenant/source/window. An empty verified window publishes zero pack references.
 Nonempty windows rotate into bounded packs between complete native records, while
 retaining one logical window. See [archive packing](archive-packs.md) for limits,
 cross-pack verification, and the `max_pack_blocks` setting. Restart resumes from
-committed coverage; uploaded but uncommitted objects can remain as orphans.
+committed coverage; uploaded but uncommitted objects remain as orphans until
+[garbage collection](#garbage-collection) deletes them.
+
+## Garbage collection
+
+Before each pack upload, the archiver records the pack's two object keys as
+pending in the catalog's object ledger. Publication consumes those records in the
+same transaction that makes the window visible. Keys of an attempt that failed,
+timed out, or was interrupted stay pending. With `service.orphan_gc_interval` set,
+the service claims pending keys older than `service.orphan_gc_min_age` in one
+catalog transaction, deletes their objects with ordinary `DeleteObject` requests,
+and then removes the records. A pass runs between archive passes, at most once per
+interval, and handles at most 4,096 keys; when keys are left, the next pass follows
+the next archive pass instead of the interval. A key whose deletion fails stays
+claimed and is retried later, behind the keys recorded before its last attempt, so
+it does not block the others; the pass counts as failed.
+
+A claimed key can never be published: the publication and the claim are ordered
+by the catalog, so an attempt whose keys were claimed fails and retries with fresh
+keys. Safety therefore depends on neither clocks nor object listings. The minimum
+age only keeps garbage collection from discarding attempts that are still running.
+Only keys this catalog recorded are deleted: never a published object, never an
+orphan created before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1).
+Another catalog sharing the bucket, such as the one kept for rollback after a
+restore, loses nothing to garbage collection, but [Cold retention](#cold-retention)
+deletes the objects of retired windows that both catalogs reference.
+
+A PostgreSQL catalog restored from an online backup, dumped into another schema
+or database, or promoted onto a new timeline holds the pending keys of attempts
+that the original may still publish. Each pending key records the database
+incarnation it was written in (system identifier, WAL timeline, database and
+schema), and garbage collection only claims keys of its own incarnation; the
+others are counted as `foreign` and never collected. A byte-for-byte copy of the
+data directory started on the same timeline keeps the incarnation: do not let such
+a copy collect against the original's bucket while the original may still publish.
+
+Deletion needs `DeleteObject` permission on the prefix and counts against the
+shared S3 budget. On a versioned bucket it only adds delete markers; storage is
+reclaimed by a lifecycle rule that expires noncurrent versions. See
+[ADR 0006](adr/0006-orphan-garbage-collection.md) for the design.
+
+## Cold retention
+
+With `cold_retention` set, each garbage collection pass first retires the windows
+that end at or before `floor((now - cold_retention) / window) * window - window` on
+the catalog's clock (the database clock for PostgreSQL), oldest start first across
+streams. The extra window tolerates gateways whose clocks lag the catalog's by up to
+a window. One catalog transaction removes up to 64 windows, and a pass runs up to 16
+of them before collecting; a backlog continues after the next archive pass. Each
+transaction records the windows' object keys in the ledger as retired and advances
+the streams' starts (`start_ms` in `catalog-inspect`) past them. Garbage collection
+deletes the retired objects once they reach `service.orphan_gc_min_age` and at least
+10 minutes, which the catalog enforces for every process; a query that selected a
+window before its retirement finishes long before that. Nothing is retired until the
+boundary passes `coverage_start_ms`, and retirement never passes a stream's coverage
+end.
+
+The range below a stream's start is outside the query guarantee, like the range
+before `coverage_start_ms`: Cold returns nothing there and queries return whatever
+Hot still holds, as VictoriaMetrics does beyond its own retention. A stream's start
+never moves back. Lengthening `cold_retention` pauses retirement until the boundary
+passes the start again; data already retired is gone. Restoring a catalog backup
+older than a retirement does not bring that data back: queries over those windows
+fail on the missing objects until the first collection pass retires them again.
+Retirement deletes objects that a catalog kept for rollback may still reference;
+see [ADR 0007](adr/0007-cold-retention.md) for the design and its consequences.
 
 The time contract is unchanged: `H > L >= 0` and
 `R > H + safety_margin + window`. H, L, window, coverage start, tenants, sources,
@@ -266,6 +355,13 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_s3_rejected_requests_total`, `vmtier_s3_canceled_requests_total` | Queue refusals and canceled waits |
 | `vmtier_s3_in_flight_requests`, `vmtier_s3_queued_requests` | Current budget occupancy |
 | `vmtier_build_info{version,commit,go_version,vm_version}` | Constant 1; identifies the running build, as `vmtier version` does |
+| `vmtier_orphan_gc_enabled` | 1 when `service.orphan_gc_interval` is set |
+| `vmtier_orphan_gc_passes_total`, `vmtier_orphan_gc_failed_passes_total` | Garbage collection passes of this process and passes that ended with an error |
+| `vmtier_orphan_gc_claimed_objects_total`, `vmtier_orphan_gc_deleted_objects_total` | Keys claimed (including retried claims) and objects deleted |
+| `vmtier_orphan_gc_last_success_timestamp_seconds` | Last pass without an error; zero before one |
+| `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts), `retired` (windows removed by Cold retention), `deleting` (claimed, deletion unfinished) and, for PostgreSQL, `foreign` (pending keys of another database incarnation, never collected); omitted when the catalog cannot be read |
+| `vmtier_cold_retired_windows_total` | Windows this process retired |
+| `vmtier_catalog_retired_windows`, `vmtier_stream_coverage_start_ms{tenant,source}` | Windows retired over the catalog's lifetime, and each stream's retained start |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
 RPC endpoints on a trusted network with suitable access controls/TLS termination.

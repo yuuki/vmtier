@@ -67,25 +67,29 @@ func verifyRepository(ctx context.Context, c *config.Config, db catalog.Reposito
 	}
 	// Include source windows ahead of the minimum tenant coverage. Each plan
 	// remains bounded to one logical time window during the scrub.
-	ends := make(map[string]int64)
+	// Cold retention removed the windows below each stream's start.
+	starts, ends := make(map[string]int64), make(map[string]int64)
 	for _, stream := range state.Coverage {
 		if stream.End > ends[stream.Tenant] {
 			ends[stream.Tenant] = stream.End
 		}
+		if start, ok := starts[stream.Tenant]; !ok || stream.Start < start {
+			starts[stream.Tenant] = stream.Start
+		}
 	}
 	for _, tenant := range state.Contract.Tenants {
-		if err := verifyTenantWindows(ctx, db, blobs, state, tenant, ends[tenant]); err != nil {
+		if err := verifyTenantWindows(ctx, db, blobs, state, tenant, starts[tenant], ends[tenant]); err != nil {
 			return err
 		}
 	}
 	return json.NewEncoder(os.Stdout).Encode(state)
 }
 
-// verifyTenantWindows verifies the packs of a tenant's windows from the
-// coverage start up to coverageEnd, selecting one window at a time. Windows
-// published after the state snapshot are skipped.
-func verifyTenantWindows(ctx context.Context, db catalog.Repository, blobs objectstore.BlobStore, state catalog.Status, tenant string, coverageEnd int64) error {
-	for start := state.Contract.CoverageStart; start < coverageEnd; {
+// verifyTenantWindows verifies the packs of a tenant's windows from its
+// earliest retained start up to coverageEnd, selecting one window at a time.
+// Windows published after the state snapshot are skipped.
+func verifyTenantWindows(ctx context.Context, db catalog.Repository, blobs objectstore.BlobStore, state catalog.Status, tenant string, retainedStart, coverageEnd int64) error {
+	for start := max(retainedStart, state.Contract.CoverageStart); start < coverageEnd; {
 		end := start + state.Contract.WindowMS
 		if end <= start {
 			return errors.New("verification interval overflows")

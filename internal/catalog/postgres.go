@@ -14,7 +14,7 @@ import (
 	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
-const PostgreSQLSchemaVersion = 2
+const PostgreSQLSchemaVersion = 3
 
 // Postgres stores catalog metadata in an explicitly initialized PostgreSQL
 // schema. It permits independent clients; publication is serialized by a row
@@ -24,6 +24,8 @@ type Postgres struct {
 	db     *sql.DB
 	id     string
 	schema string // quoted identifier, fixed when the repository is opened
+	// schemaName is the unquoted schema, for catalog functions.
+	schemaName string
 }
 
 var _ Repository = (*Postgres)(nil)
@@ -36,12 +38,14 @@ CREATE TABLE %[1]s.catalog_state (
  vm_version TEXT NOT NULL,
  generation BIGINT NOT NULL CHECK (generation >= 0),
  contract_json TEXT NOT NULL CHECK (octet_length(contract_json) <= 1048576),
- blob_json TEXT NOT NULL CHECK (octet_length(blob_json) <= 16384)
+ blob_json TEXT NOT NULL CHECK (octet_length(blob_json) <= 16384),
+ retired_windows BIGINT NOT NULL DEFAULT 0 CHECK (retired_windows >= 0 AND retired_windows <= generation)
 );
 CREATE TABLE %[1]s.coverage (
  tenant TEXT NOT NULL,
  source_id TEXT NOT NULL,
  end_ms BIGINT NOT NULL CHECK (end_ms >= 0),
+ start_ms BIGINT NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
  PRIMARY KEY (tenant, source_id)
 );
 CREATE TABLE %[1]s.windows (
@@ -75,7 +79,26 @@ CREATE TABLE %[1]s.packs (
  FOREIGN KEY (data_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id),
  FOREIGN KEY (index_key, window_id) REFERENCES %[1]s.object_keys(object_key, window_id)
 );
-` + postgresLeaseSchema
+` + postgresLeaseSchema + postgresPendingSchema
+
+// postgresPendingSchema is the object ledger added by schema 3.
+const postgresPendingSchema = `
+CREATE TABLE %[1]s.pending_objects (
+ object_key TEXT PRIMARY KEY CHECK (octet_length(object_key) BETWEEN 1 AND 1024),
+ created_ms BIGINT NOT NULL CHECK (created_ms >= 0),
+ state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting')),
+ incarnation TEXT NOT NULL DEFAULT '' CHECK (octet_length(incarnation) <= 256)
+);
+CREATE INDEX pending_objects_age ON %[1]s.pending_objects (state, created_ms);
+CREATE INDEX windows_start ON %[1]s.windows (start_ms);
+`
+
+// postgresRetentionUpgrade adds the retention columns of schema 3 to an older
+// catalog: every stream starts at the coverage origin and nothing is retired.
+const postgresRetentionUpgrade = `
+ALTER TABLE %[1]s.catalog_state ADD COLUMN retired_windows BIGINT NOT NULL DEFAULT 0 CHECK (retired_windows >= 0 AND retired_windows <= generation);
+ALTER TABLE %[1]s.coverage ADD COLUMN start_ms BIGINT NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms);
+`
 
 // CreatePostgres initializes new tables and binds the immutable archive
 // contract in one transaction. Provision a dedicated database or schema first;
@@ -113,12 +136,12 @@ func CreatePostgres(ctx context.Context, dsn, id string, c Contract, blob BlobLo
 	}
 	cb, _ := json.Marshal(c)
 	bb, _ := json.Marshal(blob)
-	if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("catalog_state")+` VALUES(1,$1,$2,$3,0,$4,$5)`, PostgreSQLSchemaVersion, id, pack.VMVersion, string(cb), string(bb)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("catalog_state")+`(singleton,schema_version,catalog_id,vm_version,generation,contract_json,blob_json,retired_windows) VALUES(1,$1,$2,$3,0,$4,$5,0)`, PostgreSQLSchemaVersion, id, pack.VMVersion, string(cb), string(bb)); err != nil {
 		return nil, err
 	}
 	for _, tenant := range c.Tenants {
 		for _, source := range c.Sources {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+` VALUES($1,$2,$3)`, tenant, source.ID, c.CoverageStart); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+`(tenant,source_id,end_ms,start_ms) VALUES($1,$2,$3,$3)`, tenant, source.ID, c.CoverageStart); err != nil {
 				return nil, err
 			}
 		}
@@ -185,7 +208,7 @@ func connectPostgres(ctx context.Context, dsn, id string) (_ *Postgres, err erro
 	if !schema.Valid || schema.String == "" {
 		return nil, errors.New("PostgreSQL catalog requires an existing schema in search_path")
 	}
-	return &Postgres{db: db, id: id, schema: pq.QuoteIdentifier(schema.String)}, nil
+	return &Postgres{db: db, id: id, schema: pq.QuoteIdentifier(schema.String), schemaName: schema.String}, nil
 }
 
 // table only accepts fixed names from this file; the schema is quoted once and
@@ -211,27 +234,36 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 	if standby {
 		return out, errors.New("PostgreSQL catalog requires the primary; standby reads are not supported")
 	}
-	var generation int64
+	var generation, retired int64
 	var cb, bb []byte
-	query := `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json FROM ` + p.table("catalog_state") + ` WHERE singleton=1 AND octet_length(contract_json)<=1048576 AND octet_length(blob_json)<=16384`
+	// Schemas before 3 have no retention columns: nothing is retired.
+	retiredColumn := "retired_windows"
+	if version < 3 {
+		retiredColumn = "0"
+	}
+	// Check the version first: another schema may lack the columns read below.
+	var stored int
+	if err := tx.QueryRowContext(ctx, `SELECT schema_version FROM `+p.table("catalog_state")+` WHERE singleton=1`).Scan(&stored); err != nil {
+		return out, postgresStateError(err)
+	}
+	if stored != version {
+		return out, schemaVersionError(stored, version)
+	}
+	query := `SELECT schema_version,catalog_id,vm_version,generation,contract_json,blob_json,` + retiredColumn + ` FROM ` + p.table("catalog_state") + ` WHERE singleton=1 AND octet_length(contract_json)<=1048576 AND octet_length(blob_json)<=16384`
 	if lock {
 		query += ` FOR UPDATE`
 	}
-	err := tx.QueryRowContext(ctx, query).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb)
+	err := tx.QueryRowContext(ctx, query).Scan(&out.SchemaVersion, &out.ID, &out.VMVersion, &generation, &cb, &bb, &retired)
 	if err != nil {
-		var pgErr *pq.Error
-		if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
-			return out, ErrNotInitialized
-		}
-		return out, fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
+		return out, postgresStateError(err)
 	}
 	if out.SchemaVersion != version || out.VMVersion != pack.VMVersion {
-		return out, errors.New("unsupported catalog schema or VM version; explicit migration required")
+		return out, fmt.Errorf("unsupported catalog schema %d or VM version %s; explicit catalog-upgrade or migration required", out.SchemaVersion, out.VMVersion)
 	}
-	if out.ID != p.id || !validID(out.ID) || generation < 0 {
+	if out.ID != p.id || !validID(out.ID) || generation < 0 || retired < 0 || retired > generation {
 		return out, errors.New("invalid catalog identity or generation")
 	}
-	out.Generation = uint64(generation)
+	out.Generation, out.RetiredWindows = uint64(generation), uint64(retired)
 	if err = strictSQLiteJSON(cb, &out.Contract); err != nil {
 		return out, err
 	}
@@ -245,34 +277,61 @@ func (p *Postgres) readStatusVersion(ctx context.Context, tx *sql.Tx, lock bool,
 	if err != nil || normalized != out.Blob {
 		return out, errors.New("invalid stored blob locator")
 	}
-	expected := make(map[string]bool, len(out.Contract.Tenants)*len(out.Contract.Sources))
-	for _, tenant := range out.Contract.Tenants {
-		for _, source := range out.Contract.Sources {
+	out.Coverage, err = p.readCoverage(ctx, tx, out.Contract, version)
+	return out, err
+}
+
+// postgresStateError reports a missing catalog state row or table as
+// ErrNotInitialized.
+func postgresStateError(err error) error {
+	var pgErr *pq.Error
+	if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "42P01") {
+		return ErrNotInitialized
+	}
+	return fmt.Errorf("read initialized PostgreSQL catalog: %w", err)
+}
+
+// readCoverage reads the coverage of every stream of the contract, refusing a
+// missing, unexpected or invalid row.
+func (p *Postgres) readCoverage(ctx context.Context, tx *sql.Tx, contract Contract, version int) ([]StreamCoverage, error) {
+	// Schemas before 3 have no start column: every stream starts at the
+	// coverage origin.
+	startColumn := "start_ms"
+	if version < 3 {
+		startColumn = "-1"
+	}
+	expected := make(map[string]bool, len(contract.Tenants)*len(contract.Sources))
+	for _, tenant := range contract.Tenants {
+		for _, source := range contract.Sources {
 			expected[tenant+"\x00"+source.ID] = true
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT tenant,source_id,end_ms FROM `+p.table("coverage")+` ORDER BY tenant,source_id LIMIT $1`, len(expected)+1)
+	rows, err := tx.QueryContext(ctx, `SELECT tenant,source_id,end_ms,`+startColumn+` FROM `+p.table("coverage")+` ORDER BY tenant,source_id LIMIT $1`, len(expected)+1)
 	if err != nil {
-		return out, err
+		return nil, err
 	}
 	defer rows.Close()
+	var out []StreamCoverage
 	for rows.Next() {
 		var c StreamCoverage
-		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End); err != nil {
-			return out, err
+		if err = rows.Scan(&c.Tenant, &c.SourceID, &c.End, &c.Start); err != nil {
+			return nil, err
+		}
+		if version < 3 {
+			c.Start = contract.CoverageStart
 		}
 		key := c.Tenant + "\x00" + c.SourceID
-		if !expected[key] || c.End < out.Contract.CoverageStart || (c.End-out.Contract.CoverageStart)%out.Contract.WindowMS != 0 {
-			return out, errors.New("invalid stream coverage")
+		if !expected[key] || !validStreamCoverage(contract, c) {
+			return nil, errors.New("invalid stream coverage")
 		}
 		delete(expected, key)
-		out.Coverage = append(out.Coverage, c)
+		out = append(out, c)
 	}
 	if err = rows.Err(); err != nil {
-		return out, err
+		return nil, err
 	}
 	if len(expected) != 0 {
-		return out, errors.New("missing configured stream coverage")
+		return nil, errors.New("missing configured stream coverage")
 	}
 	return out, nil
 }
@@ -351,6 +410,9 @@ func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publicati
 	if end != publication.Start {
 		return 0, fmt.Errorf("%w: window must start at stream coverage end %d", ErrInvalidPublication, end)
 	}
+	if err = p.consumePending(ctx, tx, publication); err != nil {
+		return 0, err
+	}
 	next := state.Generation + 1
 	if err = p.writePublication(ctx, tx, publication, next, digest); err != nil {
 		return 0, err
@@ -365,6 +427,26 @@ func (p *Postgres) publishWindow(ctx context.Context, expected uint64, publicati
 		return 0, err
 	}
 	return next, nil
+}
+
+// consumePending deletes the pending record of every referenced key. A key
+// that garbage collection claimed is no longer pending: its row lock orders the
+// claim and this deletion, so exactly one of them succeeds.
+func (p *Postgres) consumePending(ctx context.Context, tx *sql.Tx, publication Publication) error {
+	for _, ref := range publication.Packs {
+		for _, key := range []string{ref.DataKey, ref.IndexKey} {
+			result, err := tx.ExecContext(ctx, `DELETE FROM `+p.table("pending_objects")+` WHERE object_key=$1 AND state=$2`, key, pendingState)
+			if err != nil {
+				return err
+			}
+			if n, err := result.RowsAffected(); err != nil {
+				return err
+			} else if n != 1 {
+				return fmt.Errorf("%w: %w", ErrInvalidPublication, ErrUnrecordedObject)
+			}
+		}
+	}
+	return nil
 }
 
 // writePublication inserts a new window with its object keys and packs, then

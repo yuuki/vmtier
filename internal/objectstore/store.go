@@ -20,30 +20,40 @@ var (
 
 const DefaultMaxObjectBytes int64 = 64 << 20
 
-// BlobStore deliberately has no compare-and-swap, ETag, list or delete API.
-// Put is an ordinary upload, not a conditional create. Callers must never use
-// it to overwrite published objects or mutable catalog state. Local catches
-// accidental key reuse; S3 does not promise to reject an existing key.
+// BlobStore deliberately has no compare-and-swap, ETag or list API, and no
+// delete either: deletion is the separate Deleter. Put is an ordinary upload,
+// not a conditional create. Callers must never use it to overwrite published
+// objects or mutable catalog state. Local catches accidental key reuse; S3
+// does not promise to reject an existing key.
 type BlobStore interface {
 	Get(context.Context, string) ([]byte, error)
 	GetRange(context.Context, string, int64, int64) ([]byte, error)
 	Put(context.Context, string, []byte) error
 }
 
+// Deleter removes one object with an ordinary, unconditional request. Only
+// garbage collection uses it, for keys that the catalog recorded as uploads of
+// attempts that never published and then claimed. A missing object counts as
+// deleted, so a repeated deletion succeeds.
+type Deleter interface {
+	Delete(context.Context, string) error
+}
+
 type Snapshot struct {
 	Gets            uint64 `json:"gets"`
 	RangeGets       uint64 `json:"range_gets"`
 	Puts            uint64 `json:"puts"`
+	Deletes         uint64 `json:"deletes"`
 	DownloadedBytes uint64 `json:"downloaded_bytes"`
 	UploadedBytes   uint64 `json:"uploaded_bytes"`
 }
 
 type counters struct {
-	gets, ranges, puts, downloaded, uploaded atomic.Uint64
+	gets, ranges, puts, deletes, downloaded, uploaded atomic.Uint64
 }
 
 func (c *counters) snapshot() Snapshot {
-	return Snapshot{c.gets.Load(), c.ranges.Load(), c.puts.Load(), c.downloaded.Load(), c.uploaded.Load()}
+	return Snapshot{Gets: c.gets.Load(), RangeGets: c.ranges.Load(), Puts: c.puts.Load(), Deletes: c.deletes.Load(), DownloadedBytes: c.downloaded.Load(), UploadedBytes: c.uploaded.Load()}
 }
 
 func validKey(key string) error {

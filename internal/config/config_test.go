@@ -57,6 +57,90 @@ func TestSQLiteServiceLimits(t *testing.T) {
 		t.Fatal("custom scheduling limits ignored")
 	}
 }
+func TestOrphanGCSettings(t *testing.T) {
+	c := good()
+	c.Catalog.Type = "sqlite"
+	c.Store = Store{Type: "s3", Bucket: "fixture"}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if interval, minAge := c.OrphanGC(); interval != 0 || minAge != 0 {
+		t.Fatalf("garbage collection enabled by default: %v %v", interval, minAge)
+	}
+	c.Service.OrphanGCInterval = "1h"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if interval, minAge := c.OrphanGC(); interval != time.Hour || minAge != DefaultOrphanGCMinAge {
+		t.Fatalf("defaults: %v %v", interval, minAge)
+	}
+	c.Service.OrphanGCMinAge = "720h"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if _, minAge := c.OrphanGC(); minAge != 720*time.Hour {
+		t.Fatalf("custom minimum age ignored: %v", minAge)
+	}
+	cases := map[string]func(*Config){
+		"legacy catalog":          func(c *Config) { c.Catalog.Type = "local" },
+		"age without interval":    func(c *Config) { c.Service.OrphanGCInterval = "" },
+		"busy loop":               func(c *Config) { c.Service.OrphanGCInterval = "1ms" },
+		"long interval":           func(c *Config) { c.Service.OrphanGCInterval = "25h" },
+		"submillisecond interval": func(c *Config) { c.Service.OrphanGCInterval = "1s1ns" },
+		"age below timeout":       func(c *Config) { c.Service.OrphanGCMinAge = "1m" },
+		"long age":                func(c *Config) { c.Service.OrphanGCMinAge = "721h" },
+		"invalid age":             func(c *Config) { c.Service.OrphanGCMinAge = "30d" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			bad := c
+			mutate(&bad)
+			if err := bad.Validate(); err == nil {
+				t.Fatal("invalid garbage collection configuration accepted")
+			}
+		})
+	}
+	c.Service = Service{ArchiveTimeout: "10ms", OrphanGCInterval: "10ms", OrphanGCMinAge: "10ms"}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestColdRetentionSettings(t *testing.T) {
+	c := good()
+	c.Catalog.Type = "sqlite"
+	c.Store = Store{Type: "s3", Bucket: "fixture"}
+	c.Service.OrphanGCInterval = "1h"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.ColdRetentionPeriod() != 0 {
+		t.Fatal("Cold retention enabled by default")
+	}
+	c.ColdRetention = "8760h"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.ColdRetentionPeriod() != 8760*time.Hour {
+		t.Fatalf("Cold retention ignored: %v", c.ColdRetentionPeriod())
+	}
+	cases := map[string]func(*Config){
+		"without collection": func(c *Config) { c.Service.OrphanGCInterval = "" },
+		"short gc age":       func(c *Config) { c.Service.OrphanGCMinAge = "5m" },
+		"not above hot":      func(c *Config) { c.ColdRetention = "24h" },
+		"invalid":            func(c *Config) { c.ColdRetention = "365d" },
+		"submillisecond":     func(c *Config) { c.ColdRetention = "8760h1ns" },
+		"legacy catalog":     func(c *Config) { c.Catalog.Type = "local" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			bad := c
+			mutate(&bad)
+			if err := bad.Validate(); err == nil {
+				t.Fatal("invalid Cold retention accepted")
+			}
+		})
+	}
+}
 func TestValidateNormalizesIdentity(t *testing.T) {
 	c := good()
 	if e := c.Validate(); e != nil {

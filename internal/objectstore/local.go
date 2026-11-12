@@ -206,6 +206,53 @@ func (s *Local) Put(ctx context.Context, key string, data []byte) error {
 	return s.syncDirs(key)
 }
 
+var _ Deleter = (*Local)(nil)
+
+// Delete removes one object under the writer lock and persists the removal.
+// A missing object counts as deleted. An attempt directory left empty is
+// removed too; directories that still hold objects are kept.
+func (s *Local) Delete(ctx context.Context, key string) error {
+	if err := validKey(key); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	s.stats.deletes.Add(1)
+	info, err := s.root.Lstat(key)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("refusing to delete a non-regular object")
+	}
+	if err := s.root.Remove(key); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	dir := path.Dir(key)
+	if dir != "." && s.root.Remove(dir) == nil {
+		dir = path.Dir(dir)
+	}
+	parent, err := s.root.Open(dir)
+	if err != nil {
+		return err
+	}
+	err = parent.Sync()
+	closeErr := parent.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
 func (s *Local) syncDirs(key string) error {
 	// Persist newly created parent directory entries as well as the object rename.
 	for name := path.Dir(key); ; name = path.Dir(name) {

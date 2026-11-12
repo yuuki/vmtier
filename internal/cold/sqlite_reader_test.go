@@ -72,6 +72,15 @@ func publishSQLite(t *testing.T, f *sqliteFixture, tenant, source string, start 
 	if err != nil {
 		t.Fatal(err)
 	}
+	var keys []string
+	for _, ref := range refs {
+		keys = append(keys, ref.DataKey, ref.IndexKey)
+	}
+	if len(keys) > 0 {
+		if err = f.db.RecordPendingObjects(ctx, tenant, keys); err != nil {
+			t.Fatal(err)
+		}
+	}
 	_, err = f.db.PublishWindow(ctx, s.Generation, catalog.Publication{Tenant: tenant, SourceID: source, Start: start, End: start + 100, Packs: refs})
 	if err != nil {
 		t.Fatal(err)
@@ -235,5 +244,27 @@ func TestSQLiteReaderValidatesPackDescriptorsAndBudgets(t *testing.T) {
 	cancel()
 	if _, err := f.reader.Search(canceled, query()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("lost cancellation: %v", err)
+	}
+}
+
+// Readiness considers the streams this process is configured for. A stream
+// added to the catalog for a later configuration does not make every gateway
+// unready while it lags; a gateway configured with it reports the lag.
+func TestReadinessConsidersConfiguredStreams(t *testing.T) {
+	// The required end is 200 now and stays below 1000 for the test.
+	age := time.Since(time.UnixMilli(250)).Truncate(time.Millisecond)
+	f := sqliteFixtureFor(t, age, "hot", "extra")
+	for _, tenant := range []string{"1:2", "2:1"} {
+		for start := int64(0); start < 1000; start += 100 {
+			publishSQLite(t, f, tenant, "hot", start)
+		}
+	}
+	if _, err := f.reader.Ready(ctx); err == nil || !strings.Contains(err.Error(), "archive coverage") {
+		t.Fatalf("lagging configured source reported ready: %v", err)
+	}
+	f.reader.Sources = []string{"hot"}
+	delete(f.reader.SourceFingerprints, "extra")
+	if coverage, err := f.reader.Ready(ctx); err != nil || coverage["1:2"] != 1000 {
+		t.Fatalf("unconfigured lagging source made the gateway unready: %v %v", coverage, err)
 	}
 }

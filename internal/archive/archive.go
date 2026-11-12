@@ -242,7 +242,8 @@ func (r *archiveRun) uploadStream(ctx context.Context, source Source, tenant pac
 	if err != nil {
 		return catalog.Entry{}, err
 	}
-	ref, err := uploadPack(ctx, r.blobs, r.cfg, idx, data)
+	// The JSON v2 catalog has no object ledger, so its orphans are not recorded.
+	ref, err := uploadPack(ctx, r.blobs, nil, r.cfg, idx, data)
 	if err != nil {
 		return catalog.Entry{}, err
 	}

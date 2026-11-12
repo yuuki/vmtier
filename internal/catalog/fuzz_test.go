@@ -91,6 +91,46 @@ func FuzzObjectKeyConfinement(f *testing.F) {
 	})
 }
 
+// FuzzLedgerKeys checks that the object ledger only accepts, and garbage
+// collection only claims, keys confined to a configured tenant's prefix: a
+// recorded key can never direct a deletion outside the archive namespace.
+func FuzzLedgerKeys(f *testing.F) {
+	for _, seed := range []struct{ tenant, a, b string }{
+		{"1:2", "tenants/1:2/attempts/00/aa.pack", "tenants/1:2/attempts/00/aa.json"},
+		{"1:2", "tenants/1:2/attempts/00/aa.pack", "tenants/1:2/attempts/00/aa.pack"},
+		{"1:2", "tenants/1:23/x", "tenants/1:2/../1:3/x"},
+		{"3:4", "tenants/3:4/x", "tenants/3:4/.x"},
+	} {
+		f.Add(seed.tenant, seed.a, seed.b)
+	}
+	c := contract()
+	c.Tenants = append(c.Tenants, "3:4")
+	f.Fuzz(func(t *testing.T, tenant, a, b string) {
+		if validatePendingKeys(c, tenant, []string{a, b}) == nil {
+			if a == b || (tenant != "1:2" && tenant != "3:4") {
+				t.Fatalf("recorded %q, %q for tenant %q", a, b, tenant)
+			}
+			for _, key := range []string{a, b} {
+				if !validObjectKey(key, "tenants/"+tenant+"/") || checkClaimedKey(c, key) != nil {
+					t.Fatalf("recorded key %q escapes tenant %q", key, tenant)
+				}
+			}
+		}
+		for _, key := range []string{a, b} {
+			if checkClaimedKey(c, key) == nil && !validObjectKey(key, "tenants/1:2/") && !validObjectKey(key, "tenants/3:4/") {
+				t.Fatalf("claimed key %q is outside the configured tenants", key)
+			}
+		}
+		if keys, err := validateForget([]string{a, b}); err == nil {
+			for _, key := range keys {
+				if !filepath.IsLocal(key) || !strings.HasPrefix(key, "tenants/") {
+					t.Fatalf("forgot key %q outside the archive namespace", key)
+				}
+			}
+		}
+	})
+}
+
 // FuzzNormalizeBlobLocator checks that normalization is idempotent. Services
 // compare the normalized configured locator with the one pinned at catalog
 // creation, so a second normalization must not change it.

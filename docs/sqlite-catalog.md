@@ -31,6 +31,8 @@ work is tracked in the [first-release design](design.md).
 | Scrub every referenced index and payload | `verify -config FILE` | Required |
 | Migrate a stopped local JSON v2 catalog | `catalog-import` | Required to validate indexes |
 | Create or restore a consistent backup | `catalog-backup`, `catalog-restore` | None |
+| Upgrade schema 1 state of an earlier release | [`catalog-upgrade`](#upgrade-schema-1) | None |
+| Add tenants or sources | [`catalog-add-streams -config FILE`](serve.md#add-tenants-or-sources) | None |
 | Migrate stopped SQLite state to PostgreSQL | [`catalog-import-postgres`](postgres-migration.md) | None; metadata-only import |
 
 These commands require an offline SQLite directory. For a live SQLite service,
@@ -180,9 +182,14 @@ contract, coverage, and checksum. Copy the complete backup to another failure
 domain. A copy of a live database's main file may omit WAL contents.
 
 Restore checks database length/checksum, schema, metadata, contiguous coverage,
-publication digests, and pack references. A new ID and nonexistent destination are
-required. Existing state is never overwritten. Restore does not contact S3, scrub
-payloads, discover orphans, or recover commits missing from an older backup.
+publication digests, pack references, and the object ledger. A new ID and
+nonexistent destination are required. Existing state is never overwritten. Restore
+does not contact S3, scrub payloads, discover orphans, or recover commits missing
+from an older backup. The restored ledger keeps the pending keys of attempts that
+failed before the backup; [garbage collection](serve.md#garbage-collection) of the
+restored catalog may delete them, which is safe because a stopped writer never
+resumes an attempt. A backup of schema 1 is upgraded in the staging copy after its
+checksum was verified; the backup itself is unchanged.
 The [offline recovery suite](recovery-validation.md) exercises a real stock VM
 cutover, older-backup catch-up, and process crashes using local disposable objects.
 It does not establish recovery from a physical disk or object-store disaster.
@@ -196,14 +203,44 @@ does not restore missing object bytes or expired Hot history.
 
 Operational recovery still requires backup age plus restore/catch-up time to fit Hot
 headroom. A backup cannot restore expired source history. Unsupported schema versions
-are rejected; no schema upgrade exists yet.
+are rejected.
+
+## Upgrade schema 1
+
+Schema 2 adds the object ledger used by [garbage collection](serve.md#garbage-collection)
+and the stream starts and retired-window count used by [Cold retention](serve.md#cold-retention).
+`serve` and the offline commands, `catalog-backup` included, refuse a schema 1
+directory until it is upgraded explicitly. Stop the service and take a backup with
+the release that wrote the catalog (`old-vmtier` below) before installing this one,
+then upgrade in place:
+
+```sh
+old-vmtier catalog-backup -path .state/catalog-sqlite -id sakura-serve-001 \
+  -out .state/backups/before-schema-2
+.bin/vmtier catalog-upgrade -path .state/catalog-sqlite -id sakura-serve-001
+```
+
+The upgrade takes the directory lock, adds the ledger table and changes the schema
+version in one transaction, and prints the status. Repeating it only verifies the
+state. Publication metadata is unchanged. Objects left by attempts that failed
+before the upgrade were never recorded and are not collected. A release that
+predates schema 2 refuses the upgraded directory; to roll back, restore the schema 1
+backup under a new ID with that release. This release also restores a schema 1
+backup, upgrading the restored copy.
 
 ## Repository behavior
 
 - Explicit initialization, pinned catalog identity, and an exclusive state-directory
   lock. Missing, corrupt, wrong-ID, and unsupported-schema state are rejected.
-- SQLite schema 1 with WAL, FULL synchronization, foreign keys, and one connection
+- SQLite schema 2 with WAL, FULL synchronization, foreign keys, and one connection
   for short metadata transactions. S3 operations stay outside transactions.
+- An object ledger: keys are recorded before upload, publication consumes their
+  records, and garbage collection claims and forgets the records of attempts that
+  never published. A claimed key can no longer be published.
+- Cold retention: a stream's windows are contiguous from its `start_ms`, which
+  begins at the coverage origin and only advances when the oldest windows are
+  retired; `retired_windows` counts them, so the generation equals the remaining
+  windows plus the retired ones.
 - Immutable archive contract and blob locator: an absolute local path or S3
   endpoint/region/bucket/prefix, without credentials.
 - Atomic publication per tenant/source/window, with multiple packs or an explicit
@@ -211,12 +248,12 @@ are rejected; no schema upgrade exists yet.
 - Expected-generation checks and idempotent replay, including after later commits.
   Different content for a committed window and reuse of published keys are rejected.
 - Indexed, bounded tenant/time selection. The returned references outlive the short
-  transaction because objects are immutable and GC is not implemented.
+  transaction because published objects are immutable and never deleted.
 - Offline v2 import, consistent backup, and restore to a fresh directory and new ID.
 
 The repository deliberately does not implement the old whole-manifest `catalog.Store`
-interface. Its operations are `CreateSQLite`, `OpenSQLite`, `Status`, `PublishWindow`,
-`Select`, `ImportV2`, `Backup`, and `RestoreSQLite`. Publication assumes the caller
+interface. Its operations are `CreateSQLite`, `OpenSQLite`, `UpgradeSQLite`, `Status`,
+`PublishWindow`, `Select`, the object ledger, `ImportV2`, `Backup`, and `RestoreSQLite`. Publication assumes the caller
 has verified source completeness and uploaded objects. The catalog does not contact
 VM or independently prove that an empty publication represents an empty source.
 

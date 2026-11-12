@@ -20,6 +20,10 @@ import (
 )
 
 const backupMetadataFile = "metadata.json"
+
+// backupMetadataVersion 2 adds the retention fields of Status. Version 1
+// backups, of schema 1 catalogs, remain readable.
+const backupMetadataVersion = 2
 const maxBackupMetadataBytes = 4 << 20
 
 type sqliteBackupMetadata struct {
@@ -105,7 +109,8 @@ func ImportV2(ctx context.Context, dir, newID string, manifest *Manifest, blob B
 		pub := Publication{Tenant: e.Tenant, SourceID: e.SourceID, Start: e.Start, End: e.End,
 			Packs: []PackRef{{DataKey: e.DataKey, IndexKey: e.IndexKey, DataSHA256: idx.SHA256,
 				IndexSHA256: e.IndexSHA256, DataBytes: idx.Size, IndexBytes: int64(len(data))}}}
-		generation, err = s.PublishWindow(ctx, generation, pub)
+		// Imported objects are referenced by the source catalog, never pending.
+		generation, err = s.publish(ctx, generation, pub, false)
 		if err != nil {
 			return nil, fmt.Errorf("import window: %w", err)
 		}
@@ -151,7 +156,7 @@ func (s *SQLite) Backup(ctx context.Context, outDir string) error {
 	if err != nil {
 		return err
 	}
-	meta := sqliteBackupMetadata{Version: 1, DatabaseBytes: size, DatabaseSHA256: checksum, Status: status}
+	meta := sqliteBackupMetadata{Version: backupMetadataVersion, DatabaseBytes: size, DatabaseSHA256: checksum, Status: status}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
@@ -184,6 +189,19 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 	if err := copyDatabaseImage(ctx, filepath.Join(backupDir, SQLiteFile), filepath.Join(stage, SQLiteFile), meta); err != nil {
 		return nil, err
 	}
+	expected := meta.Status
+	if expected.SchemaVersion == 1 {
+		// A backup taken before the object ledger existed is upgraded in the
+		// staging copy after its checksum was verified; the backup is unchanged.
+		if _, err := UpgradeSQLite(ctx, stage, expected.ID); err != nil {
+			return nil, fmt.Errorf("upgrade schema 1 backup: %w", err)
+		}
+		expected.SchemaVersion = SQLiteSchemaVersion
+		expected.Coverage = append([]StreamCoverage(nil), expected.Coverage...)
+		for i := range expected.Coverage {
+			expected.Coverage[i].Start = expected.Contract.CoverageStart
+		}
+	}
 	s, err := OpenSQLite(ctx, stage, meta.Status.ID)
 	if err != nil {
 		return nil, err
@@ -193,7 +211,7 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 	if err != nil {
 		return nil, err
 	}
-	if !reflect.DeepEqual(status, meta.Status) {
+	if !reflect.DeepEqual(status, expected) {
 		return nil, errors.New("backup metadata disagrees with database state")
 	}
 	if err := validateRestoredReferences(ctx, s, status); err != nil {
@@ -226,7 +244,39 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 	if err := checkRestoredWindows(ctx, tx, status); err != nil {
 		return err
 	}
+	if err := checkRestoredLedger(ctx, tx, status); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// checkRestoredLedger requires every recorded object key to be a valid,
+// unpublished key of a configured tenant, so that garbage collection of the
+// restored catalog can never delete a published object.
+func checkRestoredLedger(ctx context.Context, tx *sql.Tx, status SQLiteStatus) error {
+	rows, err := tx.QueryContext(ctx, `SELECT object_key, created_ms, state FROM pending_objects ORDER BY object_key`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key, state string
+		var created int64
+		if err := rows.Scan(&key, &created, &state); err != nil {
+			return err
+		}
+		if !validLedgerState(state) || created < 0 || checkClaimedKey(status.Contract, key) != nil {
+			return errors.New("backup contains an invalid object ledger record")
+		}
+		var published bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM packs WHERE data_key=? OR index_key=?)`, key, key).Scan(&published); err != nil {
+			return err
+		}
+		if published {
+			return errors.New("backup object ledger records a published object key")
+		}
+	}
+	return rows.Err()
 }
 
 func checkRestoredForeignKeys(ctx context.Context, tx *sql.Tx) error {
@@ -247,7 +297,7 @@ func checkRestoredForeignKeys(ctx context.Context, tx *sql.Tx) error {
 }
 
 // checkRestoredCoverage requires each stream's windows to form exactly the
-// contiguous prefix of the coverage it records.
+// contiguous range [start,end) of the coverage it records.
 func checkRestoredCoverage(ctx context.Context, tx *sql.Tx, status SQLiteStatus) error {
 	for _, stream := range status.Coverage {
 		var count int64
@@ -256,8 +306,8 @@ func checkRestoredCoverage(ctx context.Context, tx *sql.Tx, status SQLiteStatus)
 		if err != nil {
 			return err
 		}
-		want := (stream.End - status.Contract.CoverageStart) / status.Contract.WindowMS
-		if count != want || (count > 0 && (!first.Valid || !last.Valid || first.Int64 != status.Contract.CoverageStart || last.Int64 != stream.End)) {
+		want := (stream.End - stream.Start) / status.Contract.WindowMS
+		if count != want || (count > 0 && (!first.Valid || !last.Valid || first.Int64 != stream.Start || last.Int64 != stream.End)) {
 			return errors.New("backup coverage is not a contiguous prefix of its windows")
 		}
 	}
@@ -282,7 +332,7 @@ func checkRestoredWindows(ctx context.Context, tx *sql.Tx, status SQLiteStatus) 
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	if count != status.Generation {
+	if count+status.RetiredWindows != status.Generation {
 		return errors.New("backup generation disagrees with published window count")
 	}
 	return nil
@@ -424,7 +474,7 @@ func readBackupMetadata(path string) (sqliteBackupMetadata, error) {
 	if d.Decode(&extra) != io.EOF {
 		return meta, errors.New("trailing or oversized backup metadata")
 	}
-	if meta.Version != 1 || meta.DatabaseBytes <= 0 || !validHash(meta.DatabaseSHA256) || !validID(meta.Status.ID) {
+	if (meta.Version != 1 && meta.Version != backupMetadataVersion) || (meta.Version == 1) != (meta.Status.SchemaVersion == 1) || meta.DatabaseBytes <= 0 || !validHash(meta.DatabaseSHA256) || !validID(meta.Status.ID) {
 		return meta, errors.New("invalid SQLite backup metadata")
 	}
 	return meta, nil

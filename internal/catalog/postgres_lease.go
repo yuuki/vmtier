@@ -197,10 +197,12 @@ func (p *fencedPostgres) PublishWindow(ctx context.Context, expected uint64, pub
 
 func (p *fencedPostgres) Close() error { return nil }
 
-// UpgradePostgres explicitly upgrades schema 1 to schema 2. Stop legacy writers
-// first. The state lock waits for an in-flight publication, then atomically adds
-// ownership metadata and changes the version so legacy writers reject new work.
-// Repeating a completed upgrade verifies the current state without changing it.
+// UpgradePostgres explicitly upgrades schema 1 or 2 to schema 3. Stop legacy
+// writers first. The state lock waits for an in-flight publication, then
+// atomically adds ownership metadata (schema 2), the object ledger and the
+// retention columns (schema 3) and changes the version so legacy writers
+// reject new work. Repeating a
+// completed upgrade verifies the current state without changing it.
 func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	p, err := connectPostgres(ctx, dsn, id)
 	if err != nil {
@@ -215,9 +217,18 @@ func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	if _, err = tx.ExecContext(ctx, `SET LOCAL synchronous_commit = on`); err != nil {
 		return err
 	}
+	// ALTER TABLE needs ACCESS EXCLUSIVE locks. Taking them first, in one
+	// order, serializes concurrent upgrades instead of letting two row locks
+	// deadlock on the table lock upgrade.
+	if _, err = tx.ExecContext(ctx, `LOCK TABLE `+p.table("catalog_state")+`, `+p.table("coverage")+` IN ACCESS EXCLUSIVE MODE`); err != nil {
+		return err
+	}
 	var version int
 	if err = tx.QueryRowContext(ctx, `SELECT schema_version FROM `+p.table("catalog_state")+` WHERE singleton=1 FOR UPDATE`).Scan(&version); err != nil {
 		return err
+	}
+	if version > PostgreSQLSchemaVersion {
+		return schemaVersionError(version, PostgreSQLSchemaVersion)
 	}
 	if version == PostgreSQLSchemaVersion {
 		if _, err = p.readStatus(ctx, tx, false); err != nil {
@@ -225,16 +236,28 @@ func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 		}
 		return tx.Commit()
 	}
-	if version != 1 {
+	if version != 1 && version != 2 {
 		return errors.New("unsupported PostgreSQL catalog upgrade source schema")
 	}
-	if _, err = p.readStatusVersion(ctx, tx, false, 1); err != nil {
+	old, err := p.readStatusVersion(ctx, tx, false, version)
+	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresLeaseSchema, p.schema)); err != nil {
+	if version == 1 {
+		if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresLeaseSchema, p.schema)); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, fmt.Sprintf(postgresPendingSchema+postgresRetentionUpgrade, p.schema)); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET start_ms=$1`, old.Contract.CoverageStart); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET schema_version=$1 WHERE singleton=1`, PostgreSQLSchemaVersion); err != nil {
+		return err
+	}
+	if _, err = p.readStatus(ctx, tx, false); err != nil {
 		return err
 	}
 	return tx.Commit()

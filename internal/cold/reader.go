@@ -112,7 +112,8 @@ func (r *Reader) CatalogStatus(ctx context.Context) (catalog.Status, error) {
 	if err != nil {
 		return state, err
 	}
-	if !catalog.EqualContract(state.Contract, want) {
+	// Streams added later make the stored contract cover this configuration.
+	if !catalog.ContractCovers(state.Contract, want) {
 		return state, errors.New("catalog immutable contract differs from reader configuration")
 	}
 	blob, err := catalog.NormalizeBlobLocator(r.BlobLocator)
@@ -136,13 +137,32 @@ func repositoryCoverage(state catalog.Status) map[string]int64 {
 	return out
 }
 
+// configuredCoverage is the coverage end of each configured tenant over its
+// configured sources. Streams added to the catalog after this process's
+// configuration do not make it unready: a process configured with them
+// reports their lag (ADR 0008).
+func (r *Reader) configuredCoverage(state catalog.Status) map[string]int64 {
+	sources := make(map[string]bool, len(r.Sources))
+	for _, source := range r.Sources {
+		sources[source] = true
+	}
+	configured := state
+	configured.Coverage = nil
+	for _, stream := range state.Coverage {
+		if r.Tenants[stream.Tenant] && sources[stream.SourceID] {
+			configured.Coverage = append(configured.Coverage, stream)
+		}
+	}
+	return repositoryCoverage(configured)
+}
+
 func (r *Reader) Ready(ctx context.Context) (map[string]int64, error) {
 	if r.Repository != nil {
 		state, err := r.CatalogStatus(ctx)
 		if err != nil {
 			return nil, err
 		}
-		out := repositoryCoverage(state)
+		out := r.configuredCoverage(state)
 		need := r.RequiredEnd(time.Now())
 		for tenant, end := range out {
 			if end < need {

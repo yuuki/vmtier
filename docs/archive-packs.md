@@ -42,7 +42,10 @@ markers are deduplicated together with the pinned VM implementation. The complet
 raw matrix and independent count/stale queries must agree before publication.
 A failed export, oracle, object read-back, cancellation, or timeout leaves coverage
 unchanged; any staged objects are unreferenced attempts. Restart retries from the
-committed coverage and allocates fresh object keys. No automatic orphan GC is added.
+committed coverage and allocates fresh object keys. Each pack's keys are recorded in
+the catalog's object ledger before upload, so opt-in
+[garbage collection](serve.md#garbage-collection) can delete the staged objects of a
+failed attempt.
 
 The Go regressions exercise every rotation boundary, complete-record preservation,
 physical/input/pack limits, empty streams, partial framing, cross-pack conflict and

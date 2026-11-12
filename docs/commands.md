@@ -17,7 +17,9 @@ and pinned VM versions.
 | `catalog-inspect -path DIR -id ID` | Offline SQLite status and optional bounded reference plan | [Inspection](sqlite-catalog.md#build-and-initialization) |
 | `catalog-import` | Offline local JSON v2 to new SQLite authority | [Import](sqlite-catalog.md#import-json-v2) |
 | `catalog-inspect -backend postgres -config FILE` | Online PostgreSQL status and optional bounded reference plan | [PostgreSQL](postgres-catalog.md) |
-| `catalog-upgrade -backend postgres -config FILE` | Explicit PostgreSQL schema upgrade with old writers stopped | [Upgrade](postgres-catalog.md#configuration-and-lifecycle) |
+| `catalog-upgrade -backend postgres -config FILE` | Explicit PostgreSQL schema upgrade (1 or 2 to 3) with old writers stopped | [Upgrade](postgres-catalog.md#configuration-and-lifecycle) |
+| `catalog-upgrade -path DIR -id ID` | Offline SQLite schema upgrade (1 to 2) | [Upgrade](sqlite-catalog.md#upgrade-schema-1) |
+| `catalog-add-streams -config FILE` | Add the configuration's new tenants and sources (SQLite offline, PostgreSQL online) | [Add streams](serve.md#add-tenants-or-sources) |
 | `catalog-import-postgres -config FILE -from DIR -source-id ID` | Stopped SQLite metadata to fresh PostgreSQL catalog/new ID | [Migration](postgres-migration.md) |
 | `catalog-backup`, `catalog-restore` | Offline SQLite backup and restore under a new ID | [Recovery](sqlite-catalog.md#offline-backup-and-restore) |
 | `catalog-init -path DIR -id ID` | JSON v2 initialization (default backend) | [Legacy deployment](legacy-json-v2.md) |
