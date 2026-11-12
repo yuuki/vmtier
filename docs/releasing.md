@@ -25,11 +25,23 @@ release's notes must state the support scope below.
 | Evidence | Local differential, recovery, workload, catalog, and PostgreSQL HA reports in the [evidence index](evidence.md), hosted CI and reproducibility runs in [release validation](release-validation.md), plus the release run's `release-e2e-evidence` artifact |
 
 The following remain unqualified: real Sakura Object Storage (#15), natural Hot
-retention expiry (#16), and enforced ingress lateness (#17). HA, GC, Cold TTL,
-backfill, other VM versions, and other platforms are outside the first-release
-scope. PostgreSQL database HA and old-primary fencing remain operator
-responsibilities. Until those issues close with recorded evidence, tag releases as
-pre-releases (`v0.1.0-rc.1`) and do not describe them as production-supported.
+retention expiry (#16), and enforced ingress lateness (#17). Until those issues
+close with recorded evidence, tag releases as pre-releases (`v0.1.0-rc.1`) and do
+not describe them as production-supported.
+
+[Garbage collection](serve.md#garbage-collection) of objects from failed attempts
+and [Cold retention](serve.md#cold-retention) are opt-in and off by default.
+`catalog-add-streams` [adds tenants or sources](serve.md#add-tenants-or-sources) to
+a catalog. Unit, integration, TLA+, and Lean checks cover these three features,
+but no stock-VM differential suite exercises them yet. HA, backfill, other VM
+versions, and other platforms are outside the first-release scope. PostgreSQL
+database HA and old-primary fencing remain operator responsibilities.
+
+Releases from `v0.1.0-rc.3` use SQLite catalog schema 2 and PostgreSQL catalog
+schema 3. They refuse a catalog that `v0.1.0-rc.2` created until `catalog-upgrade`
+upgrades it, and `v0.1.0-rc.2` refuses an upgraded catalog. Take a backup first,
+then follow [upgrade schema 1](sqlite-catalog.md#upgrade-schema-1) or the
+[PostgreSQL upgrade](postgres-catalog.md#configuration-and-lifecycle).
 
 ## Release contents
 
@@ -160,13 +172,16 @@ on any ref without attesting or creating a release.
 `v0.1.0-rc.1` was the first tag. Its run stopped at `qualify` because
 govulncheck reported GO-2026-6859 in the Go 1.27.3 standard library, so nothing
 was signed or released ([release validation](release-validation.md#tag-v010-rc1)).
-The next candidate is `v0.1.0-rc.2`, built with Go 1.27.4; do not reuse the
-`rc.1` name. Until #15, #16, and #17 close with recorded evidence, use only
-tags with a hyphen: the workflow then creates a GitHub pre-release, and its
-notes say that it is not production-supported. The remaining steps:
+`v0.1.0-rc.2`, built with Go 1.27.4, passed every gate and became a draft
+pre-release ([release validation](release-validation.md#tag-v010-rc2)). It was
+not published, because `main` then gained garbage collection, Cold retention, and
+adding streams (#50) with a catalog schema change. The next candidate is
+`v0.1.0-rc.3`; do not reuse the `rc.1` or `rc.2` names. Until #15, #16, and #17
+close with recorded evidence, use only tags with a hyphen: the workflow then
+creates a GitHub pre-release, and its notes say that it is not
+production-supported. The remaining steps:
 
-1. Apply the [repository settings](#repository-settings) below; the tag push
-   is the first run that can sign or create a release.
+1. Check the [repository settings](#repository-settings) below.
 2. Merge the release preparation to `main` and wait for its `test`, `security`,
    and `PostgreSQL fault qualification` runs to pass. A `workflow_dispatch`
    run of `release.yml` on that commit rehearses every gate except `publish`.

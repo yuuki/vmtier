@@ -88,8 +88,9 @@ For PostgreSQL, follow the [catalog guide](docs/postgres-catalog.md) or
   database-native backups and coordinated failover.
 - Missing required coverage and object errors fail queries. Hot and Cold are
   complementary storage nodes, so the frontend must not skip either as a replica.
-- GC, Cold TTL deletion, compaction, downsampling, and backfill correction are
-  not implemented. Resource budgets are not process RSS guarantees.
+- Garbage collection of failed-attempt objects and Cold retention are opt-in.
+  Compaction, downsampling, and backfill correction are not implemented.
+  Resource budgets are not process RSS guarantees.
 
 See [guarantees and limits](docs/limits.md) before deployment.
 
