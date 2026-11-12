@@ -85,7 +85,7 @@ func openConfiguredRepository(ctx context.Context, c *config.Config) (catalog.Re
 
 func validateConfiguredRepository(ctx context.Context, c *config.Config, db catalog.Repository) error {
 	status, err := db.Status(ctx)
-	if err == nil && !catalog.EqualContract(status.Contract, c.ArchiveContract()) {
+	if err == nil && !catalog.ContractCovers(status.Contract, c.ArchiveContract()) {
 		err = errors.New("catalog contract differs from service configuration")
 	}
 	if err == nil {

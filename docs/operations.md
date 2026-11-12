@@ -20,7 +20,8 @@ trusted network with access controls and TLS termination as appropriate. Neither
 service backend exposes a catalog HTTP mutation API.
 
 Archive sources must be Hot-only stock vmselect endpoints covering all Hot shards.
-Keep tenant IDs, source IDs/URLs, and shard topology stable. Enforce the lateness
+Keep tenant IDs, source IDs/URLs, and shard topology stable; tenants and sources
+can only be added, with [`catalog-add-streams`](serve.md#add-tenants-or-sources). Enforce the lateness
 bound on every ingestion path before setting `lateness_enforced=true`. Block
 mutation APIs at the query frontend. Validate the [time and coverage contract](limits.md)
 and run [preflight](preflight.md) before initializing a catalog.

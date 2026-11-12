@@ -112,7 +112,8 @@ func (r *Reader) CatalogStatus(ctx context.Context) (catalog.Status, error) {
 	if err != nil {
 		return state, err
 	}
-	if !catalog.EqualContract(state.Contract, want) {
+	// Streams added later make the stored contract cover this configuration.
+	if !catalog.ContractCovers(state.Contract, want) {
 		return state, errors.New("catalog immutable contract differs from reader configuration")
 	}
 	blob, err := catalog.NormalizeBlobLocator(r.BlobLocator)

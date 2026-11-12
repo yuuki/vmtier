@@ -693,6 +693,10 @@ def smoke(args):
         upgraded = json.loads(run([binary, 'catalog-upgrade', '-path', catalog, '-id', 'release-smoke'], capture=True))
         if upgraded != status:
             raise ReleaseError(f'catalog-upgrade changed a current SQLite catalog: {upgraded}')
+        write_json(tmp / 'grown.json', {**config, 'tenants': ['1:2', '3:4']})
+        grown = json.loads(run([binary, 'catalog-add-streams', '-config', tmp / 'grown.json'], capture=True))
+        if [s.get('tenant') for s in grown.get('added', [])] != ['3:4'] or len(grown['status'].get('coverage', [])) != 2:
+            raise ReleaseError(f'unexpected catalog-add-streams result {grown}')
         if args.install_to:
             target = Path(args.install_to)
             target.parent.mkdir(parents=True, exist_ok=True)

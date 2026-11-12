@@ -32,6 +32,7 @@ work is tracked in the [first-release design](design.md).
 | Migrate a stopped local JSON v2 catalog | `catalog-import` | Required to validate indexes |
 | Create or restore a consistent backup | `catalog-backup`, `catalog-restore` | None |
 | Upgrade schema 1 state of an earlier release | [`catalog-upgrade`](#upgrade-schema-1) | None |
+| Add tenants or sources | [`catalog-add-streams -config FILE`](serve.md#add-tenants-or-sources) | None |
 | Migrate stopped SQLite state to PostgreSQL | [`catalog-import-postgres`](postgres-migration.md) | None; metadata-only import |
 
 These commands require an offline SQLite directory. For a live SQLite service,

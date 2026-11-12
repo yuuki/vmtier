@@ -163,8 +163,9 @@ The SQLite writer, catalog, and reader support multiple packs without changing
 `w`. [Pack rotation](archive-packs.md) preserves one logical window; it cannot
 bypass the whole-window native-input, physical-sample, pack-count, or time bounds.
 The retained JSON v2 writer continues to enforce a single-pack bound.
-Increasing archive age or allowed lateness in place remains rejected. Adding tenants,
-resharding sources, or changing the fixed contract needs an explicit future migration.
+Increasing archive age or allowed lateness in place remains rejected. Tenants and
+sources can be added with an explicit command ([ADR 0008](adr/0008-adding-streams.md));
+resharding sources or changing the rest of the fixed contract needs a future migration.
 Cache budgets, S3 limits, and timeouts can change through a controlled restart.
 
 Ingress must enforce `L` across retries, queues, imports, and direct writes. The
@@ -524,7 +525,7 @@ recent-only Hot reconstruction. These checks remain unexecuted today.
   retention ([ADR 0007](adr/0007-cold-retention.md)) are implemented through the
   catalog's object ledger; compaction (#45), downsampling (#46) and multipart
   upload (#47) are tracked separately.
-- Dynamic tenant/source topology (#48) and transparent cross-version VM upgrades.
+- Removing tenants or sources, resharding, and transparent cross-version VM upgrades.
 - Kubernetes operators, a web UI, and another public query language/API.
 
 Without Cold retention, storage grows with archived data. Garbage collection removes

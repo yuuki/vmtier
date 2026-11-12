@@ -276,3 +276,51 @@ func TestCollectorRetiresWindowsBelowColdRetention(t *testing.T) {
 		t.Fatalf("retired before the boundary passed the origin: %+v %v", result, err)
 	}
 }
+
+// After streams are added, an archiver still configured without them keeps
+// archiving the streams it knows, and one configured with them archives the
+// new streams from their origin.
+func TestArchiverWithAddedStreams(t *testing.T) {
+	server, source := newSQLiteSource(t, "")
+	cfg := baseConfig(server.URL)
+	a, _ := newSQLiteArchiver(t, cfg)
+	ctx := context.Background()
+	grown := cfg
+	grown.Tenants = []string{"7:3", "8:1"}
+	origin := cfg.CoverageStart + cfg.Window.Milliseconds()
+	added, err := a.Catalog.(catalog.StreamAdder).AddStreams(ctx, archiveContract(grown), origin)
+	if err != nil || len(added) != 1 || added[0].Tenant != "8:1" {
+		t.Fatalf("add streams: %+v %v", added, err)
+	}
+	if result, err := a.RunPass(ctx, testNow); err != nil || result.CommittedWindows != 1 || source.exportCount("8:1") != 0 {
+		t.Fatalf("earlier configuration: %+v %v exports=%d", result, err, source.exportCount("8:1"))
+	}
+	current := &Archiver{Store: a.Store, Catalog: a.Catalog, Config: grown}
+	for i := 0; i < 3; i++ {
+		if _, err := current.RunPass(ctx, testNow); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, err := a.Catalog.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := testNow.Add(-cfg.Age).UnixMilli()
+	for _, stream := range state.Coverage {
+		if stream.End != end {
+			t.Fatalf("stream did not catch up: %+v", stream)
+		}
+		if stream.Tenant == "8:1" && stream.Start != origin {
+			t.Fatalf("added stream start: %+v", stream)
+		}
+	}
+	if source.exportCount("8:1") != 1 {
+		t.Fatalf("added stream exported %d windows, want 1", source.exportCount("8:1"))
+	}
+	// A configuration that is not covered by the catalog is still refused.
+	other := cfg
+	other.Tenants = []string{"9:9"}
+	if _, err := (&Archiver{Store: a.Store, Catalog: a.Catalog, Config: other}).RunPass(ctx, testNow); err == nil {
+		t.Fatal("uncovered configuration archived")
+	}
+}

@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -299,4 +300,39 @@ func (s *SQLite) retireWindow(ctx context.Context, tx *sql.Tx, id, created int64
 	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM windows WHERE id=?`, id)
 	return err
+}
+
+var _ StreamAdder = (*SQLite)(nil)
+
+// AddStreams adds the streams of new tenants or sources in one transaction.
+func (s *SQLite) AddStreams(ctx context.Context, next Contract, origin int64) ([]StreamCoverage, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	state, err := readSQLiteStatus(ctx, tx, s.id)
+	if err != nil {
+		return nil, err
+	}
+	added, err := newStreams(state.Contract, next, origin)
+	if err != nil {
+		return nil, err
+	}
+	for _, stream := range added {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO coverage(tenant,source_id,end_ms,start_ms) VALUES(?,?,?,?)`, stream.Tenant, stream.SourceID, stream.End, stream.Start); err != nil {
+			return nil, err
+		}
+	}
+	encoded, err := json.Marshal(canonicalContract(next))
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE catalog_state SET contract_json=? WHERE singleton=1`, string(encoded)); err != nil {
+		return nil, err
+	}
+	if _, err = readSQLiteStatus(ctx, tx, s.id); err != nil {
+		return nil, err
+	}
+	return added, tx.Commit()
 }

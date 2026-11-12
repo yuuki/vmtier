@@ -114,7 +114,7 @@ and `archive.RetentionBoundary`.
 | `query_complete` | A query the gateway accepts misses no accepted sample: each lies below the coverage end (Cold) or is younger than `R` (Hot). |
 
 | `retentionBoundary_le` | A Cold retention pass that runs (its boundary passed the origin) never retires a window younger than `cold_retention`. |
-| `retention_complete` | With retirement, an accepted query still misses no accepted sample younger than `cold_retention`: each lies in Cold's retained range or in Hot. |
+| `retention_complete` | With retirement, an accepted query still misses no accepted sample younger than `cold_retention` and at or after the stream's origin (the coverage origin, or a later one for a stream added with `catalog-add-streams`): each lies in Cold's retained range or in Hot. |
 
 An `example` shows that `query_complete` needs `R > H + s + w`: with
 `R = H + w`, the gateway accepts a query that Hot can no longer answer.

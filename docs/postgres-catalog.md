@@ -76,6 +76,13 @@ SQLite `catalog-backup`/`catalog-restore` do not back up PostgreSQL. Use Postgre
 native backups and WAL/PITR, test restoration, and fence the old authority before
 cutover. A backup alone cannot recover expired Hot history or missing S3 objects.
 
+`catalog-add-streams -config FILE` adds tenants or sources online. A process still
+configured without them keeps serving and archiving the streams it knows, because
+the stored contract covers its configuration; roll every replica to the new
+configuration promptly, since only a replica configured with a new stream archives
+it and readiness considers every stream. See
+[adding tenants or sources](serve.md#add-tenants-or-sources).
+
 To move an existing stopped SQLite service without rewriting objects, use
 [`catalog-import-postgres`](postgres-migration.md). It creates a fresh destination
 under a new identity and verifies metadata equivalence before committing.

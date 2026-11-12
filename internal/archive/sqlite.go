@@ -48,7 +48,9 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 	if err != nil {
 		return out, err
 	}
-	if !catalog.EqualContract(state.Contract, archiveContract(cfg)) {
+	// Streams added to the catalog after this configuration are left to a
+	// process configured with them.
+	if !catalog.ContractCovers(state.Contract, archiveContract(cfg)) {
 		return out, errors.New("catalog contract differs from archive configuration")
 	}
 	eligibleEnd := (now.Add(-cfg.Age).UnixMilli() / w) * w
@@ -70,6 +72,10 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 	for _, source := range cfg.Sources {
 		sources[source.ID] = source
 	}
+	tenants := make(map[string]bool, len(cfg.Tenants))
+	for _, tenant := range cfg.Tenants {
+		tenants[tenant] = true
+	}
 	streams := oldestStreamsFirst(state.Coverage)
 	runStart := time.Now()
 	clock := func() time.Time { return now.Add(time.Since(runStart)) }
@@ -81,6 +87,9 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 		}
 		key := stream.Tenant + "\x00" + stream.SourceID
 		current := clock()
+		if _, known := sources[stream.SourceID]; !known || !tenants[stream.Tenant] {
+			continue
+		}
 		if stream.End >= eligibleEnd || current.Before(a.retryAfter[key]) {
 			continue
 		}

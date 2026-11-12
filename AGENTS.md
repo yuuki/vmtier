@@ -6,6 +6,7 @@
 - Record every object key in the catalog's ledger before its PUT; publication consumes the records, and garbage collection deletes only keys it claimed from the ledger, never listed or published ones.
 - Retries use fresh attempt keys; after an ambiguous commit, reload coverage first; replaying a window with another publication digest is an error.
 - Published windows are append-only and immutable, and leave only by Cold retention, oldest first; restore and migration use a new catalog ID; the catalog cannot be rebuilt from an object listing.
+- A catalog's contract may only grow by added tenants and sources; processes accept a stored contract that covers their configuration.
 - SQLite has one owner process (directory flock); PostgreSQL checks the lease and fencing token inside each publication transaction.
 - Missing, corrupt or timed-out Cold data is an error, never an empty result; check catalog availability on every query, even with a warm cache.
 - Caches hold only immutable, checksum-verified bytes; all S3 attempts (SDK retries too) share one per-process budget, a permit held until the body closes.

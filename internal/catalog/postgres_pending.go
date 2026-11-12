@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -250,4 +251,45 @@ func (p *Postgres) retireWindow(ctx context.Context, tx *sql.Tx, id int64) error
 	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM `+p.table("windows")+` WHERE id=$1`, id)
 	return err
+}
+
+var _ StreamAdder = (*Postgres)(nil)
+
+// AddStreams adds the streams of new tenants or sources in one transaction
+// under the catalog state row lock, which orders it with publications. It
+// needs no lease: a running archiver with the earlier configuration keeps
+// archiving the streams it knows, whose contract the new one covers.
+func (p *Postgres) AddStreams(ctx context.Context, next Contract, origin int64) ([]StreamCoverage, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `SET LOCAL synchronous_commit = on`); err != nil {
+		return nil, err
+	}
+	state, err := p.readStatus(ctx, tx, true)
+	if err != nil {
+		return nil, err
+	}
+	added, err := newStreams(state.Contract, next, origin)
+	if err != nil {
+		return nil, err
+	}
+	for _, stream := range added {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("coverage")+`(tenant,source_id,end_ms,start_ms) VALUES($1,$2,$3,$4)`, stream.Tenant, stream.SourceID, stream.End, stream.Start); err != nil {
+			return nil, err
+		}
+	}
+	encoded, err := json.Marshal(canonicalContract(next))
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET contract_json=$1 WHERE singleton=1`, string(encoded)); err != nil {
+		return nil, err
+	}
+	if _, err = p.readStatus(ctx, tx, false); err != nil {
+		return nil, err
+	}
+	return added, tx.Commit()
 }

@@ -105,15 +105,37 @@ settings in its [configuration guide](postgres-catalog.md#configuration-and-life
 
 Initialization pins the coverage start, window, archive age, lateness, tenant set,
 source IDs/URL fingerprints, 1 ms deduplication, and normalized blob location.
-Changing pinned values requires rebuilding under a new catalog and object prefix;
-backend import commands preserve the archive contract and object location.
-Restarting with different values fails. Shard topology behind a source URL must
-also stay fixed, although the gateway cannot detect a topology change.
+Tenants and sources can be [added](#add-tenants-or-sources); changing any other
+pinned value requires rebuilding under a new catalog and object prefix. Backend
+import commands preserve the archive contract and object location. Restarting
+with a configuration the catalog does not cover fails. Shard topology behind a
+source URL must also stay fixed, although the gateway cannot detect a topology
+change.
 
 Cache/query budgets, `max_pack_blocks`, scheduling intervals, and S3 limits can
 change on restart. `hot_retention` and `safety_margin` are validated runtime
 settings rather than persisted contract fields; changes must still reflect the
 real Hot policy and leave enough time to archive and recover.
+
+## Add tenants or sources
+
+Stop `serve`, add the new tenants or sources to the configuration, keeping every
+existing tenant and source unchanged, then add their streams to the catalog and
+start `serve` with the new configuration:
+
+```sh
+.bin/vmtier catalog-add-streams -config serve.json
+```
+
+Each new tenant/source pair starts and ends at one origin, by default the next
+window to become eligible, so it is complete from the start. `-start MS` sets an
+earlier aligned origin for the archiver to catch up from Hot; it is refused when
+that window has already left Hot retention and its safety margin. The range below
+a stream's origin is outside the query guarantee for that stream. A tenant's
+coverage is the minimum over its sources, so a new source with an earlier origin
+holds back its tenant's required coverage until it catches up. The command prints
+the added streams and the new status. Removing tenants or sources, or changing a
+source's URL, is not supported. See [ADR 0008](adr/0008-adding-streams.md).
 
 ## Connect stock vmselect
 

@@ -156,7 +156,8 @@ theorem retentionBoundary_le (C w now origin : Int) (hw : 0 < w)
     omega
 
 /-- Cold retention never takes a sample a query still needs, for any
-retention `C`. A stream starts at the origin, or, after a retirement at
+retention `C`. A stream starts at its origin (the coverage origin, or a later
+one for a stream added with `catalog-add-streams`), or, after a retirement at
 `r ≤ now`, at most at that retirement's boundary. Then every accepted sample
 at or after the origin and younger than `C` that an accepted query asks for
 lies in Cold's retained range `[start, cov)` or is younger than `R`. Samples
