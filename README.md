@@ -1,5 +1,11 @@
 # vmtier
 
+[![AI Generated](https://img.shields.io/badge/AI%20Generated-Claude-orange?logo=anthropic)](https://claude.ai/claude-code)
+[![CI](https://github.com/yuuki/vmtier/actions/workflows/ci.yml/badge.svg)](https://github.com/yuuki/vmtier/actions/workflows/ci.yml)
+[![Security](https://github.com/yuuki/vmtier/actions/workflows/security.yml/badge.svg)](https://github.com/yuuki/vmtier/actions/workflows/security.yml)
+[![License](https://img.shields.io/github/license/yuuki/vmtier)](LICENSE)
+[![Go version](https://img.shields.io/github/go-mod/go-version/yuuki/vmtier)](go.mod)
+
 Archive older VictoriaMetrics samples to S3-compatible storage and query Hot and
 Cold data through an unmodified stock vmselect. vmtier is an independent,
 Apache-2.0-licensed project, not an official VictoriaMetrics product.
