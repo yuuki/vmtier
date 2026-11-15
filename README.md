@@ -3,6 +3,7 @@
 [![AI Generated](https://img.shields.io/badge/AI%20Generated-Claude-orange?logo=anthropic)](https://claude.ai/claude-code)
 [![CI](https://github.com/yuuki/vmtier/actions/workflows/ci.yml/badge.svg)](https://github.com/yuuki/vmtier/actions/workflows/ci.yml)
 [![Security](https://github.com/yuuki/vmtier/actions/workflows/security.yml/badge.svg)](https://github.com/yuuki/vmtier/actions/workflows/security.yml)
+[![Release](https://img.shields.io/github/v/release/yuuki/vmtier?include_prereleases)](https://github.com/yuuki/vmtier/releases)
 [![License](https://img.shields.io/github/license/yuuki/vmtier)](LICENSE)
 [![Go version](https://img.shields.io/github/go-mod/go-version/yuuki/vmtier)](go.mod)
 
