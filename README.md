@@ -1,5 +1,6 @@
 # vmtier
 
+[![AI Generated](https://img.shields.io/badge/AI%20Generated-Claude-orange?logo=anthropic)](https://claude.ai/claude-code)
 [![CI](https://github.com/yuuki/vmtier/actions/workflows/ci.yml/badge.svg)](https://github.com/yuuki/vmtier/actions/workflows/ci.yml)
 [![Security](https://github.com/yuuki/vmtier/actions/workflows/security.yml/badge.svg)](https://github.com/yuuki/vmtier/actions/workflows/security.yml)
 [![License](https://img.shields.io/github/license/yuuki/vmtier)](LICENSE)
