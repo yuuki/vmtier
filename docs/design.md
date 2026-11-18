@@ -133,7 +133,8 @@ All timestamps are UTC Unix milliseconds and internal intervals are `[start,end)
 Inclusive VM endpoints receive `end-1ms`. Preserve full labels, tenant identity,
 native tag ordering, block clipping, and pinned-VM duplicate/stale-value semantics.
 
-Let `H` be archive age, `L` maximum accepted write delay, `R` actual Hot query/export
+Let `H` be archive age, `L` the lateness bound (the maximum delay from a sample's
+timestamp until Hot serves it, defined below), `R` actual Hot query/export
 retention, `w` window width, and `s` the safety margin:
 
 ```text
@@ -168,8 +169,18 @@ sources can be added with an explicit command ([ADR 0008](adr/0008-adding-stream
 resharding sources or changing the rest of the fixed contract needs a future migration.
 Cache budgets, S3 limits, and timeouts can change through a controlled restart.
 
-Ingress must enforce `L` across retries, queues, imports, and direct writes. The
-read gateway cannot enforce it. Writes into a published window are not automatically
+Ingress must enforce `L` across retries, queues, imports, and direct writes. `L`
+bounds the time until a sample is searchable, not the time until ingress accepts
+it: every Hot source must return a sample with timestamp `t` no later than `t + L`
+on the clock of the host that runs the archiver. The bound therefore includes
+Hot's own delay between accepting a write and serving it (stock VictoriaMetrics
+searches a sample only after vminsert has delivered it to vmstorage and vmstorage
+has flushed its in-memory buffer) and the clock difference between ingress and the
+archiver. The export and both verifications read the same Hot state, so they
+cannot detect a sample that Hot accepted but does not serve yet, and a published
+window is never exported again. Configuration accepts any `H > L`; `H - L` is the
+only margin for a delay that `L` leaves out, so keep it well above such delays. The
+read gateway cannot enforce `L`. Writes into a published window are not automatically
 added to Cold. Backfill, deletion, and tombstones remain unsupported; mutation APIs
 must be restricted outside vmtier. History before coverage start is outside the
 guarantee. A required Cold coverage gap returns an error, even if some of that

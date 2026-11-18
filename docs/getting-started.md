@@ -119,7 +119,9 @@ use disposable credentials and do not connect to an existing VM or real S3 bucke
    Durations use Go syntax (`720h`, not `30d`). Set a positive, window-aligned
    `coverage_start_ms` within retained source history. The example intentionally
    uses zero and `lateness_enforced=false`; set the latter to true only after all
-   write paths enforce the lateness bound.
+   write paths enforce the lateness bound. L runs until a sample is searchable in
+   Hot (queues, retries, Hot's own flush delay, clock differences), so keep
+   `H - L` well above anything L might leave out.
 3. Run [capacity preflight](preflight.md) on representative busy windows before
    catalog initialization fixes the contract. It checks source completeness and
    pipeline bounds without publishing data.
