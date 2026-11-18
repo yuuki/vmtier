@@ -184,6 +184,48 @@ files. Publishing the draft is the maintainer's step; after it, verify the
 published assets from a clean directory with the commands of
 [verify a release archive](releasing.md#verify-a-release-archive).
 
+## Tag `v0.1.0-rc.3`
+
+The maintainer pushed `v0.1.0-rc.3` on squash commit
+[`9130ad2`](https://github.com/yuuki/vmtier/commit/9130ad257d77ec90f76eeac14f90aced7840ef01)
+(#51). A `workflow_dispatch` run of the same gates on its parent `8ba4b84`
+([43230254612](https://github.com/yuuki/vmtier/actions/runs/43230254612)) had
+passed before.
+
+| Run | Jobs |
+| --- | --- |
+| [43248922857](https://github.com/yuuki/vmtier/actions/runs/43248922857) (2026-11-12 15:32–15:49 UTC) | `build (first)`, `build (second)` (main ancestry check, build, smoke), `reproducibility`, `qualify` (govulncheck and every stock-VM suite), `publish`: success |
+
+The maintainer published the draft as a pre-release on 2026-11-15. The four
+published assets were downloaded into an empty directory: `sha256sum --check
+SHA256SUMS` passed, and `python3 scripts/release.py verify` accepted them.
+`SHA256SUMS` has SHA-256
+`cac60d8c61fbc088d0f13505847e55e75df3a633d53d58777635f6f3bbebdb38`:
+
+```text
+a6660cb07140af9826f963f08ab38c25f8db162d75fa6e4f671b1688fd40f808  vmtier-v0.1.0-rc.3-linux-amd64.build.json
+00dce2281d913607ae8bb08be0b7ea3ea5cc2c248557cb87cc660b270c22700c  vmtier-v0.1.0-rc.3-linux-amd64.cdx.json
+5c8fddddd15adb6b9e4ec3982b8851f6952d2d105b95f475fe772343d56f9814  vmtier-v0.1.0-rc.3-linux-amd64.tar.gz
+```
+
+The build record names commit `9130ad2` and binary SHA-256
+`4bb5e38995005680451c3c2ea574fd38c842fef612b79a063a5b3bea4992b131`
+(14,861,560 bytes). The `release-e2e-evidence` artifact (ID `13959466780`,
+ZIP SHA-256 `d7e697bb0fd7826a863022666b67b32a8470c13bb2ffa2a839207710200322d8`)
+is retained until 2027-02-10.
+
+The repository's attestation API returns two attestations for the archive,
+signed through Sigstore:
+
+| Attestation | Subjects | Rekor |
+| --- | --- | --- |
+| SLSA build provenance | the three files of `SHA256SUMS` | [log index 3835366006](https://search.sigstore.dev?logIndex=3835366006) |
+| CycloneDX SBOM | `vmtier-v0.1.0-rc.3-linux-amd64.tar.gz@sha256:5c8fdddd…6f9814` | [log index 3835367265](https://search.sigstore.dev?logIndex=3835367265) |
+
+`gh attestation verify` was not run for this record; run the commands of
+[verify a release archive](releasing.md#verify-a-release-archive) to check
+the signatures.
+
 ## Archive contents
 
 The archive has 142 entries. Beside the binary, the top-level `LICENSE`,
@@ -232,7 +274,5 @@ stock VM.
 | Smoke test, maintainer procedure, deployment example | `smoke` in every build job, stock-VM suites against the packaged binary in `qualify`, [maintainer procedure](releasing.md#maintainer-procedure), systemd example above | Met |
 | Evidence before claiming release support; excluded areas | [Evidence index](evidence.md), this report; Sakura (#15), natural retention (#16), and enforced ingress lateness (#17) remain open | Not met: pre-releases only |
 
-The run, checksums, and attestations of the first candidate that passed every
-gate, `v0.1.0-rc.2`, are recorded [above](#tag-v010-rc2). Its publication
-remains a maintainer action (see [first release](releasing.md#first-release)),
-and it is a pre-release: the last criterion is still not met.
+The first published release, the pre-release `v0.1.0-rc.3`, is recorded
+[above](#tag-v010-rc3). It is a pre-release: the last criterion is still not met.
