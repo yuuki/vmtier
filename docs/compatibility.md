@@ -24,7 +24,7 @@ supported-version contract.
 ## RPC and HTTP support
 
 Stock vmselect serves the metric query HTTP API. vmtier implements storage read
-RPC and its own health/readiness/metrics HTTP endpoints; it does not expose a
+RPC and its own HTTP endpoints (`/health`, `/serving`, `/ready`, `/metrics`); it does not expose a
 Prometheus query endpoint.
 
 | RPC | Gateway behavior | Use |

@@ -42,7 +42,7 @@ Required query-frontend flags, with deduplication configured consistently across
   -search.disableCache -dedup.minScrapeInterval=1ms
 ```
 
-Keep the RPC listener on a trusted network. `/health` reports process liveness; `/ready` validates the catalog and required coverage. `/metrics` exposes archive lag, retention headroom, object reads, cache hits, and query errors. Use `verify` for periodic payload verification. Cold metadata is also available through the gateway.
+Keep the RPC listener on a trusted network. `/health` reports process liveness; `/serving` validates the catalog only and is the check for a load balancer in front of several gateways ([ADR 0009](adr/0009-load-balancer-check.md)); `/ready` validates the catalog and required coverage, which every gateway of a catalog shares. `/metrics` exposes archive lag, retention headroom, object reads, cache hits, and query errors. Use `verify` for periodic payload verification. Cold metadata is also available through the gateway.
 
 
 ## Initial deployment

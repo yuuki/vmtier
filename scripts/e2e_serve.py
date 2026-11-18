@@ -337,12 +337,14 @@ def run(work, args):
         process = start_service('serve-source-outage', ready=False)
         assert source_proxy.failed.wait(10), 'scheduler never attempted unavailable source'
         assert_http_failure(lambda: request(f'http://127.0.0.1:{http_port}/ready'), 'source outage readiness', status=503)
+        # The load balancer check follows the catalog, not the missing coverage.
+        request(f'http://127.0.0.1:{http_port}/serving')
         assert snapshot(database)['state']['generation'] == 0
         cold_select = free_port()
         start_select(procs, 'cold-only-select', cold_select, [rpc_port])
         failure_query = {'query': 'cold_only', 'time': (boundary - 600000) / 1000, 'timeout': '3s'}
         assert_http_failure(lambda: api(cold_select, tenants[0], 'query', failure_query), 'unarchived required coverage')
-        report['checks'].append('source outage leaves zero coverage and fails readiness and required Cold queries')
+        report['checks'].append('source outage leaves zero coverage and fails readiness and required Cold queries; the load balancer check stays successful')
 
         # Stop during a native stream, before the first commit, then resume from disk.
         source_proxy.pause = True
