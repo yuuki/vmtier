@@ -80,7 +80,10 @@ maintenance and rollout processes. On Kubernetes use two replicas and
 before admitting its replacement; Deployment surge settings alone do not
 count terminating pods. Two explicit hosts with stop-before-restart supervision
 are simpler. Reserve budget separately for other applications sharing the
-bucket. Every instance must use the same allocation and maximum count.
+bucket. Every instance must use the same allocation and maximum count, and the
+same `cold_retention` if it is set: each instance retires with its own value, and
+what the shortest value retires is deleted for all of them. Alert when
+`vmtier_cold_retention_seconds` differs between the instances.
 
 ## Qualification
 

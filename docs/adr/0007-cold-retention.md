@@ -87,7 +87,7 @@ Deleting published data raises questions that orphan collection did not:
 | Delete objects in the retirement transaction | Object I/O must stay outside transactions, and queries holding older plans would fail |
 | A lifecycle rule on object age | Cannot distinguish published from unpublished objects or follow the catalog |
 | Per-tenant retention | No requirement yet; the per-stream start allows it later without a format change |
-| Store the retention in the catalog and shorten it only with an explicit command | Would keep a replica configured with a shorter value from deleting shared history after a takeover, but needs a schema change on both backends, their backup, restore and import paths, and a command, for a failure that requires replicas to run different configurations; documented as an operating rule instead, and worth revisiting with the next schema change |
+| Store the retention in the catalog and shorten it only with an explicit command | Would keep a replica configured with a shorter value from deleting shared history after a takeover, but needs a schema change on both backends, their backup, restore and import paths, and a command, for a failure that requires replicas to run different configurations; documented as an operating rule instead, with the configured value exposed as `vmtier_cold_retention_seconds` so that a difference can be alerted on before it deletes anything, and worth revisiting with the next schema change |
 
 ## Consequences
 
@@ -104,9 +104,12 @@ objects too. Rolling back to the source catalog is safe only while it, too,
 has retired everything older than the retention.
 The retention is the configuration of the process that retires, not catalog
 state. PostgreSQL replicas configured with different values are not refused:
-whichever holds the archiver lease applies its own, so the shortest value wins
-and its deletions are final for all of them. Replicas must be configured alike,
-and a shorter value is a deletion to review, not a routine setting.
+each applies its own in the collection passes it runs as archiver lease holder
+(retirement needs no lease, so a replica that just lost it can still finish a
+pass), so the shortest value wins and its deletions are final for all of them.
+Replicas must be configured alike, and a shorter value is a deletion to review,
+not a routine setting. Every process reports its configured value as
+`vmtier_cold_retention_seconds`; alert when the replicas of a catalog differ.
 Retention needs `DeleteObject` permission, like garbage collection. Data older
 than `cold_retention` is gone for good: restoring an older catalog backup does
 not bring it back, and its queries fail until retirement catches up. Windows

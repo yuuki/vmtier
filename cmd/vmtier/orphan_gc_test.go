@@ -207,7 +207,7 @@ func TestServiceWorkerCollectsUnpublishedObjects(t *testing.T) {
 		"vmtier_orphan_gc_deleted_objects_total 2\n", "vmtier_orphan_gc_failed_passes_total 0\n",
 		"vmtier_object_delete_requests_total 2\n",
 		"vmtier_catalog_unpublished_objects{state=\"pending\"} 0\n", "vmtier_catalog_unpublished_objects{state=\"retired\"} 0\n",
-		"vmtier_catalog_unpublished_objects{state=\"deleting\"} 0\n", "vmtier_cold_retired_windows_total 0\n", "vmtier_catalog_retired_windows 0\n",
+		"vmtier_catalog_unpublished_objects{state=\"deleting\"} 0\n", "vmtier_cold_retired_windows_total 0\n", "vmtier_cold_retention_seconds 0.000\n", "vmtier_catalog_retired_windows 0\n",
 		fmt.Sprintf("vmtier_stream_coverage_start_ms{tenant=\"1:2\",source=\"hot\"} %d\n", c.CoverageStart),
 	} {
 		if !strings.Contains(metrics, want) {
@@ -226,6 +226,11 @@ func TestServiceWorkerCollectsUnpublishedObjects(t *testing.T) {
 	retaining := newWorker(db).(*collectingWorker).collector.(*archive.Collector)
 	if retaining.Retention != 720*time.Hour || retaining.Retire == nil {
 		t.Fatalf("Cold retention not wired: %+v", retaining)
+	}
+	var exposition strings.Builder
+	stats.orphanGC.write(&exposition)
+	if !strings.Contains(exposition.String(), "vmtier_cold_retention_seconds 2592000.000\n") {
+		t.Fatalf("configured Cold retention not exposed:\n%s", exposition.String())
 	}
 	c.ColdRetention = ""
 	// Disabled collection runs the archiver alone and says so.

@@ -87,10 +87,13 @@ and clients outside vmtier. SQLite keeps its existing process-local budget seman
   validates its fence. Long transactions or delayed renewal can therefore fail an
   attempt safely instead of making progress. Test this alongside archive timeout
   and retention headroom rather than assuming the default TTL fits every workload.
-- Configure the same `cold_retention` on every replica, or on none. The lease
-  holder retires windows with its own value, so after a takeover by a replica
-  with a shorter value the shared history older than that value is deleted for
-  good ([Cold retention](serve.md#cold-retention)).
+- Configure the same `cold_retention` on every replica, or on none. A replica
+  retires windows with its own value when it runs collection as lease holder,
+  so after a takeover by a replica with a shorter value the shared history
+  older than that value is deleted for good
+  ([Cold retention](serve.md#cold-retention)). Alert when
+  `vmtier_cold_retention_seconds` differs between replicas; the difference is
+  visible before the takeover.
 - Keep clock synchronization on database hosts. Lease decisions use database time;
   database promotion must fence the old primary and preserve acknowledged state.
 - A lost commit response is ambiguous. Reload coverage and reconcile the original

@@ -190,6 +190,7 @@ func archiveWorkers(c *config.Config, blobs objectstore.BlobStore, stats *servic
 		return nil, errors.New("service.orphan_gc_interval requires a blob store that can delete objects")
 	}
 	stats.orphanGC.enabled.Store(gcInterval > 0)
+	stats.orphanGC.retention.Store(int64(c.ColdRetentionPeriod()))
 	return func(repo catalog.Repository) archivePassRunner {
 		cfg := c.Archive(0, 0)
 		cfg.Memory = &stats.archiveMemory

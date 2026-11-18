@@ -242,11 +242,13 @@ before `coverage_start_ms`: Cold returns nothing there and queries return whatev
 Hot still holds, as VictoriaMetrics does beyond its own retention. A stream's start
 never moves back. Lengthening `cold_retention` pauses retirement until the boundary
 passes the start again; data already retired is gone. `cold_retention` is each
-process's configuration, not catalog state. With PostgreSQL, the process that holds
-the archiver lease retires with its own value, so the shortest value of any replica
-takes effect as soon as that replica holds the lease, and what it retires is gone
-for every replica. Give all replicas the same value, change it on all of them
-together, and review a shorter value as a deletion. Restoring a catalog backup
+process's configuration, not catalog state. With PostgreSQL, a replica retires with
+its own value in the collection passes it runs as archiver lease holder, and the
+retirement itself does not check the lease. The shortest value of any replica
+therefore takes effect as soon as that replica runs a pass, and what it retires is
+gone for every replica. Give all replicas the same value, change it on all of them
+together, review a shorter value as a deletion, and alert when
+`vmtier_cold_retention_seconds` differs between the replicas of a catalog. Restoring a catalog backup
 older than a retirement does not bring that data back: queries over those windows
 fail on the missing objects until the first collection pass retires them again.
 Retirement deletes objects that a catalog kept for rollback may still reference;
@@ -372,6 +374,7 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_orphan_gc_last_success_timestamp_seconds` | Last pass without an error; zero before one |
 | `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts), `retired` (windows removed by Cold retention), `deleting` (claimed, deletion unfinished) and, for PostgreSQL, `foreign` (pending keys of another database incarnation, never collected); omitted when the catalog cannot be read |
 | `vmtier_cold_retired_windows_total` | Windows this process retired |
+| `vmtier_cold_retention_seconds` | `cold_retention` as this process is configured; zero keeps Cold data forever. Alert when the replicas of one catalog report different values |
 | `vmtier_catalog_retired_windows`, `vmtier_stream_coverage_start_ms{tenant,source}` | Windows retired over the catalog's lifetime, and each stream's retained start |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
