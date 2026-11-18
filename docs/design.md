@@ -178,9 +178,15 @@ searches a sample only after vminsert has delivered it to vmstorage and vmstorag
 has flushed its in-memory buffer) and the clock difference between ingress and the
 archiver. The export and both verifications read the same Hot state, so they
 cannot detect a sample that Hot accepted but does not serve yet, and a published
-window is never exported again. Configuration accepts any `H > L`; `H - L` is the
-only margin for a delay that `L` leaves out, so keep it well above such delays. The
-read gateway cannot enforce `L`. Writes into a published window are not automatically
+window is never exported again. On an idle node of the pinned stock VM, a sample
+took 2 to 4 seconds from vminsert's answer to the export API for an existing
+series and 4 to 11 seconds for a new one; stock vmselect itself hides the last 30
+seconds from queries by default (`-search.latencyOffset`). Configuration accepts
+any `H > L`; `H - L` is the only margin for a delay that `L` leaves out, so keep it
+at minutes or more. `H` and `L` cannot be changed in place: where a catalog's
+`H - L` does not cover that delay, make ingress reject samples that much earlier
+than `L` ([ADR 0010](adr/0010-lateness-until-searchable.md)). The read gateway
+cannot enforce `L`. Writes into a published window are not automatically
 added to Cold. Backfill, deletion, and tombstones remain unsupported; mutation APIs
 must be restricted outside vmtier. History before coverage start is outside the
 guarantee. A required Cold coverage gap returns an error, even if some of that
