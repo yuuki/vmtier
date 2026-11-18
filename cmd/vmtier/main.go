@@ -134,7 +134,9 @@ func runArchive(ctx context.Context, c *config.Config, s objectstore.BlobStore, 
 	if e := c.ValidateArchiveRange(start, end); e != nil {
 		return e
 	}
-	r, e := archive.Run(ctx, s, cs, c.Archive(start, end), now)
+	// The range above was chosen at now. The retention checks of the run use
+	// the current time, so that the catalog read of the range lookup counts.
+	r, e := archive.Run(ctx, s, cs, c.Archive(start, end), time.Now())
 	if e != nil {
 		return e
 	}
