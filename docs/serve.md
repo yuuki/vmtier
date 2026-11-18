@@ -241,7 +241,12 @@ The range below a stream's start is outside the query guarantee, like the range
 before `coverage_start_ms`: Cold returns nothing there and queries return whatever
 Hot still holds, as VictoriaMetrics does beyond its own retention. A stream's start
 never moves back. Lengthening `cold_retention` pauses retirement until the boundary
-passes the start again; data already retired is gone. Restoring a catalog backup
+passes the start again; data already retired is gone. `cold_retention` is each
+process's configuration, not catalog state. With PostgreSQL, the process that holds
+the archiver lease retires with its own value, so the shortest value of any replica
+takes effect as soon as that replica holds the lease, and what it retires is gone
+for every replica. Give all replicas the same value, change it on all of them
+together, and review a shorter value as a deletion. Restoring a catalog backup
 older than a retirement does not bring that data back: queries over those windows
 fail on the missing objects until the first collection pass retires them again.
 Retirement deletes objects that a catalog kept for rollback may still reference;
