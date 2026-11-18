@@ -131,6 +131,8 @@ func (c Config) validateConfig() error {
 // A retry resumes from catalog state; uploaded but unpublished objects are safe
 // orphans. A conflicting writer causes an error, never a blind retry/overwrite.
 func Run(ctx context.Context, blobs objectstore.BlobStore, catalogs catalog.Store, cfg Config, now time.Time) (*Result, error) {
+	// now is the time at entry: loading the catalog counts as elapsed time.
+	runStart := time.Now()
 	if err := cfg.validateConfig(); err != nil {
 		return nil, err
 	}
@@ -148,7 +150,7 @@ func Run(ctx context.Context, blobs objectstore.BlobStore, catalogs catalog.Stor
 	if err = validateTopology(m, cfg); err != nil {
 		return nil, err
 	}
-	run := archiveRun{blobs: blobs, catalogs: catalogs, cfg: cfg, now: now, runStart: time.Now(), m: m, generation: generation, out: out}
+	run := archiveRun{blobs: blobs, catalogs: catalogs, cfg: cfg, now: now, runStart: runStart, m: m, generation: generation, out: out}
 	window := cfg.Window.Milliseconds()
 	for start := cfg.StartMS; start < cfg.EndMS; {
 		end := start + window
