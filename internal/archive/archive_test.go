@@ -448,3 +448,30 @@ func localCatalog(t *testing.T) *catalog.Local {
 	}
 	return s
 }
+
+// slowReadCatalog delays every catalog read, as a slow catalog service would.
+type slowReadCatalog struct {
+	catalog.Store
+	delay time.Duration
+}
+
+func (c slowReadCatalog) Read(ctx context.Context) (*catalog.Manifest, error) {
+	time.Sleep(c.delay)
+	return c.Store.Read(ctx)
+}
+
+func TestRunCountsCatalogLoadAgainstRetention(t *testing.T) {
+	cfg := baseConfig("")
+	server, calls := sourceServer(t, cfg, "")
+	defer server.Close()
+	cfg.Sources[0].URL = server.URL
+	// The window leaves the safety margin 50ms after testNow.
+	cfg.Retention = 4*time.Hour + 50*time.Millisecond
+	controls := slowReadCatalog{Store: localCatalog(t), delay: 100 * time.Millisecond}
+	if _, err := Run(context.Background(), localStore(t), controls, cfg, testNow); err == nil {
+		t.Fatal("safety margin that elapsed during the catalog load accepted")
+	}
+	if calls.Load() != 0 {
+		t.Fatal("window exported after its safety margin elapsed")
+	}
+}

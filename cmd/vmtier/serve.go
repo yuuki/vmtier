@@ -190,6 +190,7 @@ func archiveWorkers(c *config.Config, blobs objectstore.BlobStore, stats *servic
 		return nil, errors.New("service.orphan_gc_interval requires a blob store that can delete objects")
 	}
 	stats.orphanGC.enabled.Store(gcInterval > 0)
+	stats.orphanGC.retention.Store(int64(c.ColdRetentionPeriod()))
 	return func(repo catalog.Repository) archivePassRunner {
 		cfg := c.Archive(0, 0)
 		cfg.Memory = &stats.archiveMemory
@@ -259,6 +260,19 @@ func runArchiveLoop(ctx context.Context, worker archivePassRunner, interval time
 func serveMux(c *config.Config, reader *cold.Reader, api *gateway.API, blobs objectstore.BlobStore, stats *serviceStats) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
+	// /serving is the load balancer check: this process passes the catalog
+	// check that every query runs. It leaves archive lag to /ready, because
+	// all gateways of a catalog share their coverage: a check that followed it
+	// would remove them together, and fail the queries outside the lag too.
+	mux.HandleFunc("/serving", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		if _, err := reader.CatalogStatus(ctx); err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprintln(w, "ok")
+	})
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()

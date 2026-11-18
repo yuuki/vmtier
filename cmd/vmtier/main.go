@@ -134,7 +134,9 @@ func runArchive(ctx context.Context, c *config.Config, s objectstore.BlobStore, 
 	if e := c.ValidateArchiveRange(start, end); e != nil {
 		return e
 	}
-	r, e := archive.Run(ctx, s, cs, c.Archive(start, end), now)
+	// The range above was chosen at now. The retention checks of the run use
+	// the current time, so that the catalog read of the range lookup counts.
+	r, e := archive.Run(ctx, s, cs, c.Archive(start, end), time.Now())
 	if e != nil {
 		return e
 	}
@@ -251,6 +253,17 @@ func runGateway(ctx context.Context, c *config.Config, s objectstore.BlobStore, 
 func gatewayMux(c *config.Config, s objectstore.BlobStore, reader *cold.Reader, api *gateway.API) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok\n")) })
+	// /serving is the load balancer check, as in serve: the catalog check of
+	// every query passes. Coverage, which all gateways share, is left to /ready.
+	mux.HandleFunc("/serving", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		if _, e := reader.Catalog(ctx); e != nil {
+			http.Error(w, e.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("ok\n"))
+	})
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()

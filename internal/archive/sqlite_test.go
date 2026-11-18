@@ -354,3 +354,34 @@ func TestSQLiteArchiverCancellationStopsExport(t *testing.T) {
 		t.Fatalf("cancelled export published: %+v %v", status, err)
 	}
 }
+
+// slowStatusCatalog delays every catalog status read, as a slow connection or
+// a queue for the catalog would.
+type slowStatusCatalog struct {
+	catalog.Repository
+	delay time.Duration
+}
+
+func (c slowStatusCatalog) Status(ctx context.Context) (catalog.Status, error) {
+	time.Sleep(c.delay)
+	return c.Repository.Status(ctx)
+}
+
+func TestSQLiteArchiverCountsCatalogReadAgainstRetention(t *testing.T) {
+	server, source := newSQLiteSource(t, "")
+	cfg := baseConfig(server.URL)
+	// The oldest window leaves the safety margin 50ms after testNow.
+	cfg.Retention = 4*time.Hour + 50*time.Millisecond
+	a, _ := newSQLiteArchiver(t, cfg)
+	a.Catalog = slowStatusCatalog{Repository: a.Catalog, delay: 100 * time.Millisecond}
+	if _, err := a.RunPass(context.Background(), testNow); err == nil {
+		t.Fatal("safety margin that elapsed during the catalog read accepted")
+	}
+	if source.exportCount("7:3") != 0 {
+		t.Fatal("window exported after its safety margin elapsed")
+	}
+	status, err := a.Catalog.Status(context.Background())
+	if err != nil || status.Generation != 0 {
+		t.Fatalf("late publication advanced coverage: %+v %v", status, err)
+	}
+}

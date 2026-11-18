@@ -20,8 +20,9 @@ arithmetic the code performs, over all integers:
 * `gatewayAccepts` is the coverage check of `cold.Reader.Search`.
 
 What is assumed, not proved: Hot retains every sample younger than `R`;
-ingress enforces `L`; export plus oracle verification return exactly the
-samples Hot holds; and the catalog's coverage is contiguous, with one
+ingress enforces `L`, measured until Hot serves the sample on the archiver's
+clock; export plus oracle verification return exactly the samples Hot
+serves; and the catalog's coverage is contiguous, with one
 complete window per index (checked by `spec/VmtierPublication.tla`).
 All quantities are UTC milliseconds.
 -/
@@ -98,9 +99,9 @@ theorem archivable_interval_nonempty (c : Contract) (start : Int) :
 
 /-- An attempt checks `validateTime` when it starts exporting at `x1` and
 again at `x2 ≥ x1` before publication. Then every sample of the window that
-ingress ever accepts (at a time `a ≤ t + L`) was accepted before the export
-began, and Hot still retained it at every instant of the export: the
-published window is complete. -/
+ingress ever accepts (Hot serves it from a time `a ≤ t + L`) was served
+before the export began, and Hot still retained it at every instant of the
+export: the published window is complete. -/
 theorem export_complete (c : Contract) (start x1 x2 t a : Int)
     (h1 : timeValid c start (start + c.w) x1)
     (h2 : timeValid c start (start + c.w) x2)

@@ -25,8 +25,8 @@ Start on both hosts with distinct listeners reachable by the proxies:
 Both instances serve reads. Only the holder of the PostgreSQL archiver lease
 publishes windows; the fencing token is checked inside the publication
 transaction. A replacement waits for lease expiry after an ungraceful failure.
-`vmtier_archive_leader` identifies the current local lease holder. Gateways use
-coverage-based `/ready` checks regardless of archiver role.
+`vmtier_archive_leader` identifies the current local lease holder. Both gateways
+report the same coverage-based `/ready` state regardless of archiver role.
 
 ## One logical Cold endpoint
 
@@ -50,9 +50,16 @@ Choose VM replication flags for the actual Hot topology, as described in the
 main service guide. Do not list both complete Cold replicas as independent
 storage shards. A failed connection can make an in-flight query fail; clients
 may retry. No successful partial result should be accepted during failover.
-HAProxy checks the service HTTP `/ready` endpoint on port 8080 while forwarding
-native RPC TCP on port 8401. Restrict access to trusted peers; this example does
-not add RPC authentication or public TLS termination.
+HAProxy checks the service HTTP `/serving` endpoint on port 8080 while forwarding
+native RPC TCP on port 8401. `/serving` fails when this gateway cannot pass its
+catalog check, so the proxy moves traffic to the other gateway. Do not use
+`/ready` for this check, or for a Kubernetes readiness probe: both gateways share
+the catalog's coverage, so `/ready` fails on both at once whenever a newly
+required window is not published yet, which removes the whole Cold endpoint and
+fails every query, not only those over the missing range. Watch archive lag with
+`vmtier_stream_archive_lag_seconds` instead, and alert when it stays above zero
+for longer than a window normally takes to archive. Restrict access to trusted
+peers; this example does not add RPC authentication or public TLS termination.
 
 ## Aggregate S3 limits
 
@@ -73,7 +80,10 @@ maintenance and rollout processes. On Kubernetes use two replicas and
 before admitting its replacement; Deployment surge settings alone do not
 count terminating pods. Two explicit hosts with stop-before-restart supervision
 are simpler. Reserve budget separately for other applications sharing the
-bucket. Every instance must use the same allocation and maximum count.
+bucket. Every instance must use the same allocation and maximum count, and the
+same `cold_retention` if it is set: each instance retires with its own value, and
+what the shortest value retires is deleted for all of them. Alert when
+`vmtier_cold_retention_seconds` differs between the instances.
 
 ## Qualification
 

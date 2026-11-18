@@ -35,6 +35,10 @@ type Archiver struct {
 // EndMS in Config are ignored: coverage and the current archive-age boundary own
 // scheduling. A successful empty window is published without payload objects.
 func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) {
+	// now is the time at entry: the catalog read below counts as elapsed
+	// time, so the retention checks never run on an earlier clock.
+	runStart := time.Now()
+	clock := func() time.Time { return now.Add(time.Since(runStart)) }
 	out := &Result{}
 	if err := ctx.Err(); err != nil {
 		return out, err
@@ -77,8 +81,6 @@ func (a *Archiver) RunPass(ctx context.Context, now time.Time) (*Result, error) 
 		tenants[tenant] = true
 	}
 	streams := oldestStreamsFirst(state.Coverage)
-	runStart := time.Now()
-	clock := func() time.Time { return now.Add(time.Since(runStart)) }
 	generation := state.Generation
 	var failures []error
 	for _, stream := range streams {

@@ -19,7 +19,7 @@
 - Never relabel old packs or regenerate an old fixture to make a new decoder pass; pack and index format v1: `internal/pack`.
 - Catalog schemas (SQLite 2, PostgreSQL 3, JSON v2): `internal/catalog`; object keys: `internal/archive/pipeline.go`, `validObjectKey`, `validKey`.
 - CLI commands, flags and `vmtier_*` metrics (`cmd/vmtier`); configuration keys (`internal/config`); refusal reasons (`internal/querylimit`).
-- Supported and rejected RPCs (`internal/gateway`); `/health`, `/ready`, `/metrics`; JSON v2 catalog HTTP API (`internal/catalog/http.go`); `release/` assets.
+- Supported and rejected RPCs (`internal/gateway`); `/health`, `/serving`, `/ready`, `/metrics`; JSON v2 catalog HTTP API (`internal/catalog/http.go`); `release/` assets.
 
 ## Before opening a pull request
 - `make bootstrap` (once per checkout or `go.mod` change), `make check`; also catalog, PostgreSQL or migration → `make test-integration`.

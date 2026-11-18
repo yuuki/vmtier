@@ -18,6 +18,9 @@ type orphanGCStats struct {
 	enabled                                    atomic.Bool
 	passes, failures, claimed, delete, retired atomic.Uint64
 	lastSuccess                                atomic.Int64
+	// retention is the configured Cold retention in nanoseconds; zero keeps
+	// Cold data forever.
+	retention atomic.Int64
 }
 
 func (s *orphanGCStats) write(w io.Writer) {
@@ -28,6 +31,9 @@ func (s *orphanGCStats) write(w io.Writer) {
 	fmt.Fprintf(w, "vmtier_orphan_gc_enabled %d\nvmtier_orphan_gc_passes_total %d\nvmtier_orphan_gc_failed_passes_total %d\nvmtier_orphan_gc_claimed_objects_total %d\nvmtier_orphan_gc_deleted_objects_total %d\nvmtier_orphan_gc_last_success_timestamp_seconds %d\n",
 		enabled, s.passes.Load(), s.failures.Load(), s.claimed.Load(), s.delete.Load(), s.lastSuccess.Load())
 	fmt.Fprintf(w, "vmtier_cold_retired_windows_total %d\n", s.retired.Load())
+	// The configured value, so that replicas configured differently can be
+	// alerted on before one of them retires with the shorter value.
+	fmt.Fprintf(w, "vmtier_cold_retention_seconds %.3f\n", time.Duration(s.retention.Load()).Seconds())
 }
 
 // orphanPassRunner runs one garbage collection pass.

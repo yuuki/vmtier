@@ -47,7 +47,7 @@ All timestamps use UTC Unix milliseconds. Internal intervals are `[start,end)`; 
 | --- | --- |
 | H | Archive age measured from sample timestamps, not file modification or object creation time. |
 | R | The retention period during which Hot VM data remains queryable and exportable. vmtier does not change it. |
-| L | The maximum delay actually accepted by upstream ingestion. Configuration alone does not enforce it. |
+| L | The maximum delay from a sample's timestamp until Hot serves it, which upstream ingestion must enforce ([ADR 0010](adr/0010-lateness-until-searchable.md)). Configuration alone does not enforce it. |
 | Coverage | Intervals whose verification and catalog commit have completed. Only the end of their contiguous prefix is a watermark. |
 | Safety margin | Finite time reserved for archiving, retries, and recovery. |
 

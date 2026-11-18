@@ -22,7 +22,8 @@ service backend exposes a catalog HTTP mutation API.
 Archive sources must be Hot-only stock vmselect endpoints covering all Hot shards.
 Keep tenant IDs, source IDs/URLs, and shard topology stable; tenants and sources
 can only be added, with [`catalog-add-streams`](serve.md#add-tenants-or-sources). Enforce the lateness
-bound on every ingestion path before setting `lateness_enforced=true`. Block
+bound on every ingestion path, measured until the sample is searchable in Hot
+([time contract](design.md#data-and-time-contract)), before setting `lateness_enforced=true`. Block
 mutation APIs at the query frontend. Validate the [time and coverage contract](limits.md)
 and run [preflight](preflight.md) before initializing a catalog.
 
@@ -70,7 +71,7 @@ No actual Sakura bucket or credentials have been used to validate connectivity, 
 
 Liveness reports a running process. Readiness checks configured coverage and retention headroom, but does not prove that actual VM retention and ingestion rules match the configuration. Monitor archive outcomes, last commit, unarchived windows, lag, retention headroom, object requests/bytes/errors, gateway failures, and query-limit rejections.
 
-The gateway exposes `/health`, `/ready`, and `/metrics`. `/ready` returns HTTP 503 unless contiguous coverage for every tenant and source reaches `floor((now-H)/window)*window`. Reading an old catalog successfully is insufficient. A query requiring an unarchived interval fails; a query entirely within previously committed coverage can still work while archival of newer windows is delayed.
+The gateway exposes `/health`, `/serving`, `/ready`, and `/metrics`. `/serving` returns HTTP 503 only when the catalog check of a query fails; use it for load balancer checks. `/ready` returns HTTP 503 unless contiguous coverage for every tenant and source reaches `floor((now-H)/window)*window`. Reading an old catalog successfully is insufficient. A query requiring an unarchived interval fails; a query entirely within previously committed coverage can still work while archival of newer windows is delayed.
 
 | Metric | Meaning |
 | --- | --- |

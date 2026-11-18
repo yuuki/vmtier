@@ -93,7 +93,7 @@ settings in its [configuration guide](postgres-catalog.md#configuration-and-life
 | `sources` | 1–100 unique `{ "id": "hot", "url": "http://127.0.0.1:8481" }` entries. Each URL is a Hot-only vmselect base URL covering all shards for that source. IDs use the catalog ID character rules. |
 | `archive_age`, `lateness`, `hot_retention`, `safety_margin`, `window` | Required timing policy: `H > L >= 0`, positive safety margin and window, and `R > H + safety_margin + window`. Set retention to match the actual Hot deployment. |
 | `coverage_start_ms` | Required positive epoch milliseconds, divisible by the window width in milliseconds. Choose the earliest complete window still available from Hot; history before it is outside the coverage guarantee. |
-| `lateness_enforced` | Must be `true` only after every ingestion path enforces `lateness`. This is an operator assertion, not an ingestion control. |
+| `lateness_enforced` | Must be `true` only after every ingestion path enforces `lateness`: Hot serves each accepted sample within `lateness` of its timestamp, on this host's clock, which includes Hot's delay between accepting and serving a write ([time contract](design.md#data-and-time-contract)). This is an operator assertion, not an ingestion control. |
 | `cache_bytes` | Immutable raw index/block LRU cache allowance in bytes, including key/bookkeeping charges; omitted or zero disables retention. Maximum 256 MiB. Parsed indexes and shared-read buffers have separate accounting. |
 | `max_query_bytes` | Per-query read/decoded-work allowance in bytes; omitted or zero uses 128 MiB. Maximum 1 GiB, subject to the shared allowance below. This is not a process RSS limit. |
 | `query_memory_bytes` | Shared query work reservations; omitted or zero uses 256 MiB. Must cover one effective `max_query_bytes` reservation, at most 8 GiB. See [query work admission](#query-work-admission). |
@@ -241,7 +241,14 @@ The range below a stream's start is outside the query guarantee, like the range
 before `coverage_start_ms`: Cold returns nothing there and queries return whatever
 Hot still holds, as VictoriaMetrics does beyond its own retention. A stream's start
 never moves back. Lengthening `cold_retention` pauses retirement until the boundary
-passes the start again; data already retired is gone. Restoring a catalog backup
+passes the start again; data already retired is gone. `cold_retention` is each
+process's configuration, not catalog state. With PostgreSQL, a replica retires with
+its own value in the collection passes it runs as archiver lease holder, and the
+retirement itself does not check the lease. The shortest value of any replica
+therefore takes effect as soon as that replica runs a pass, and what it retires is
+gone for every replica. Give all replicas the same value, change it on all of them
+together, review a shorter value as a deletion, and alert when
+`vmtier_cold_retention_seconds` differs between the replicas of a catalog. Restoring a catalog backup
 older than a retirement does not bring that data back: queries over those windows
 fail on the missing objects until the first collection pass retires them again.
 Retirement deletes objects that a catalog kept for rollback may still reference;
@@ -334,11 +341,17 @@ archive process or independent maintenance client against its bucket.
 See [operations](operations.md#monitoring) for shared gateway metrics, catalog
 capacity accounting, and failure handling.
 
-`/health` reports process liveness. `/ready` returns 503 until every configured stream
+`/health` reports process liveness. `/serving` returns 503 while this process
+cannot pass the catalog check that every query runs (catalog unreachable, or its
+contract or blob locator differs from the configuration); use it for load balancer
+health checks. `/ready` returns 503 until every configured stream
 has required coverage and catalog checks pass. It does not scrub all S3 payloads or
 prove that external ingestion/retention settings match the contract. A stream
 missing required coverage makes global readiness fail; another tenant's fully
-covered queries can still succeed. A stopped service can fail Hot-only queries as well because stock
+covered queries can still succeed. Coverage falls behind the required end each time
+a window becomes eligible, until that window is published, so `/ready` is a signal
+for monitoring and for gating traffic after a restore, not for removing a gateway
+from a load balancer: all gateways of a catalog would fail it together. A stopped service can fail Hot-only queries as well because stock
 vmselect fans out to both storage nodes and partial responses are disabled.
 
 `/metrics` retains the gateway, object-I/O, and tenant coverage metrics and adds:
@@ -361,6 +374,7 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_orphan_gc_last_success_timestamp_seconds` | Last pass without an error; zero before one |
 | `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts), `retired` (windows removed by Cold retention), `deleting` (claimed, deletion unfinished) and, for PostgreSQL, `foreign` (pending keys of another database incarnation, never collected); omitted when the catalog cannot be read |
 | `vmtier_cold_retired_windows_total` | Windows this process retired |
+| `vmtier_cold_retention_seconds` | `cold_retention` as this process is configured; zero keeps Cold data forever. Alert when the replicas of one catalog report different values |
 | `vmtier_catalog_retired_windows`, `vmtier_stream_coverage_start_ms{tenant,source}` | Windows retired over the catalog's lifetime, and each stream's retained start |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
@@ -378,7 +392,7 @@ Published windows survive restart; an interrupted attempt does not advance cover
 | Startup rejects missing state or an unexpected ID | Confirm the working directory, catalog path, and ID. Initialize only a new deployment; restore missing existing state from backup. |
 | State-directory lock error | Stop the current owner before maintenance. Use `/ready` and `/metrics` to observe a running service. |
 | Contract or blob locator mismatch | Compare the configured fixed fields with offline `catalog-inspect`; do not initialize over existing state. |
-| `/health` succeeds but `/ready` returns 503 | Read the response and archive error logs; inspect per-stream lag/headroom metrics. Initial catch-up and an unavailable source can both leave coverage incomplete. |
+| `/health` succeeds but `/ready` returns 503 | Read the response and archive error logs; inspect per-stream lag/headroom metrics. Initial catch-up and an unavailable source can both leave coverage incomplete, and so does each newly eligible window until it is published. If `/serving` also returns 503, the catalog check fails: read its response. |
 | Metadata or broad queries time out | Check query range/cardinality, S3 budget waits, and the frontend deadline. Larger deadlines do not increase throughput or remove the gateway's 30-second cap. |
 | A window exceeds a pack or verifier limit | Use [preflight](preflight.md) on representative data before initialization. Rotation does not remove whole-window or single-record bounds; a bound catalog's window width cannot be edited in place. |
 | Queries fail with `memory_admission` | Check `vmtier_query_memory_reserved_bytes` and refusal metrics. The shared budget permits only a bounded number of full per-query reservations; changing it requires workload/memory qualification. |

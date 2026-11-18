@@ -45,7 +45,9 @@ tests; older VM revisions do not qualify the current dependency set.
   [release artifacts](adr/0005-release-artifacts.md),
   [orphan garbage collection](adr/0006-orphan-garbage-collection.md),
   [Cold retention](adr/0007-cold-retention.md),
-  [adding tenants and sources](adr/0008-adding-streams.md).
+  [adding tenants and sources](adr/0008-adding-streams.md),
+  [load balancer check](adr/0009-load-balancer-check.md),
+  [lateness until searchable](adr/0010-lateness-until-searchable.md).
 - [Related implementations](prior-art.md) and [third-party notices](../THIRD_PARTY_NOTICES.md).
 - [Validation evidence index](evidence.md): scoped reports and retained raw results.
 

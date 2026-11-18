@@ -22,8 +22,14 @@ Expose gateways as **one logical Cold storage node** to stock vmselect. Keep Hot
 as the complementary storage node, with partial responses disabled. Simply adding
 both gateways as independent storage nodes makes a failed gateway capable of
 failing the complete query. Use a redundant L4 endpoint and a pair of health-checked
-TCP proxies. Health checks target the gateway HTTP `/ready` endpoint; archive
-leadership is not a read-readiness requirement.
+TCP proxies. Health checks target the gateway HTTP `/serving` endpoint, which
+fails when a gateway cannot pass the catalog check of every query; archive
+leadership is not a requirement. Do not remove gateways on `/ready`: coverage
+is shared, so every gateway fails it together while a newly required window is
+being archived, and removing them all fails the queries outside that window
+too ([ADR 0009](adr/0009-load-balancer-check.md)). Monitor archive lag with
+`vmtier_stream_archive_lag_seconds`, and alert when it stays above zero for
+longer than a window normally takes to archive.
 
 A proxy or gateway failure may fail an in-flight RPC. Stock vmselect must reconnect
 through the same endpoint; retries and actual query parity are qualified by the
@@ -67,7 +73,8 @@ and clients outside vmtier. SQLite keeps its existing process-local budget seman
 
 - Loss of an archive owner leaves already committed reads available. A new owner
   must acquire a higher fencing token before publishing. If Cold coverage falls
-  behind the required boundary, affected queries and readiness fail.
+  behind the required boundary, affected queries and readiness fail; `/serving`
+  stays successful, so the gateways keep answering the other queries.
 - Catalog unavailability causes errors even with warm object caches. PostgreSQL
   standby routing is rejected; a lagging replica cannot report stale coverage as
   authoritative. Reconnection uses the configured endpoint.
@@ -80,6 +87,13 @@ and clients outside vmtier. SQLite keeps its existing process-local budget seman
   validates its fence. Long transactions or delayed renewal can therefore fail an
   attempt safely instead of making progress. Test this alongside archive timeout
   and retention headroom rather than assuming the default TTL fits every workload.
+- Configure the same `cold_retention` on every replica, or on none. A replica
+  retires windows with its own value when it runs collection as lease holder,
+  so after a takeover by a replica with a shorter value the shared history
+  older than that value is deleted for good
+  ([Cold retention](serve.md#cold-retention)). Alert when
+  `vmtier_cold_retention_seconds` differs between replicas; the difference is
+  visible before the takeover.
 - Keep clock synchronization on database hosts. Lease decisions use database time;
   database promotion must fence the old primary and preserve acknowledged state.
 - A lost commit response is ambiguous. Reload coverage and reconcile the original

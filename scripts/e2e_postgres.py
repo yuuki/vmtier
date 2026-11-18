@@ -115,7 +115,7 @@ def write_proxy(path, listen, backends, health_ports=None):
              'frontend cold', f'  bind 127.0.0.1:{listen}', '  default_backend gateways',
              'backend gateways', '  balance first']
     if health_ports:
-        lines += ['  option httpchk GET /ready', '  http-check expect status 200']
+        lines += ['  option httpchk GET /serving', '  http-check expect status 200']
     for i, port in enumerate(backends):
         health = f' port {health_ports[i]}' if health_ports else ''
         lines.append(f'  server node{i} 127.0.0.1:{port} check{health} inter 1s fall 2 rise 1 on-marked-down shutdown-sessions')
