@@ -391,7 +391,9 @@ series, or query text. Committed object-byte totals are logical referenced bytes
 not measured bucket usage; orphan attempts and provider accounting remain separate.
 See [service metrics](serve.md#health-metrics-and-shutdown) for units and restart semantics.
 Readiness
-requires valid catalog state and required coverage; health reports liveness.
+requires valid catalog state and required coverage; health reports liveness;
+the load balancer check (`/serving`) requires valid catalog state only
+([ADR 0009](adr/0009-load-balancer-check.md)).
 Archive failures leave already covered reads available, but a query intersecting
 missing required coverage fails.
 

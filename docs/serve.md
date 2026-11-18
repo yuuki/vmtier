@@ -334,11 +334,17 @@ archive process or independent maintenance client against its bucket.
 See [operations](operations.md#monitoring) for shared gateway metrics, catalog
 capacity accounting, and failure handling.
 
-`/health` reports process liveness. `/ready` returns 503 until every configured stream
+`/health` reports process liveness. `/serving` returns 503 while this process
+cannot pass the catalog check that every query runs (catalog unreachable, or its
+contract or blob locator differs from the configuration); use it for load balancer
+health checks. `/ready` returns 503 until every configured stream
 has required coverage and catalog checks pass. It does not scrub all S3 payloads or
 prove that external ingestion/retention settings match the contract. A stream
 missing required coverage makes global readiness fail; another tenant's fully
-covered queries can still succeed. A stopped service can fail Hot-only queries as well because stock
+covered queries can still succeed. Coverage falls behind the required end each time
+a window becomes eligible, until that window is published, so `/ready` is a signal
+for monitoring and for gating traffic after a restore, not for removing a gateway
+from a load balancer: all gateways of a catalog would fail it together. A stopped service can fail Hot-only queries as well because stock
 vmselect fans out to both storage nodes and partial responses are disabled.
 
 `/metrics` retains the gateway, object-I/O, and tenant coverage metrics and adds:
@@ -378,7 +384,7 @@ Published windows survive restart; an interrupted attempt does not advance cover
 | Startup rejects missing state or an unexpected ID | Confirm the working directory, catalog path, and ID. Initialize only a new deployment; restore missing existing state from backup. |
 | State-directory lock error | Stop the current owner before maintenance. Use `/ready` and `/metrics` to observe a running service. |
 | Contract or blob locator mismatch | Compare the configured fixed fields with offline `catalog-inspect`; do not initialize over existing state. |
-| `/health` succeeds but `/ready` returns 503 | Read the response and archive error logs; inspect per-stream lag/headroom metrics. Initial catch-up and an unavailable source can both leave coverage incomplete. |
+| `/health` succeeds but `/ready` returns 503 | Read the response and archive error logs; inspect per-stream lag/headroom metrics. Initial catch-up and an unavailable source can both leave coverage incomplete, and so does each newly eligible window until it is published. If `/serving` also returns 503, the catalog check fails: read its response. |
 | Metadata or broad queries time out | Check query range/cardinality, S3 budget waits, and the frontend deadline. Larger deadlines do not increase throughput or remove the gateway's 30-second cap. |
 | A window exceeds a pack or verifier limit | Use [preflight](preflight.md) on representative data before initialization. Rotation does not remove whole-window or single-record bounds; a bound catalog's window width cannot be edited in place. |
 | Queries fail with `memory_admission` | Check `vmtier_query_memory_reserved_bytes` and refusal metrics. The shared budget permits only a bounded number of full per-query reservations; changing it requires workload/memory qualification. |

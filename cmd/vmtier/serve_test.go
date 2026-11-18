@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/yuuki/vmtier/internal/archive"
 	"github.com/yuuki/vmtier/internal/catalog"
+	"github.com/yuuki/vmtier/internal/gateway"
 )
 
 func TestServeRequiresInitializedPinnedSQLite(t *testing.T) {
@@ -155,4 +157,55 @@ func TestServeShutdownReleasesCatalogOwnership(t *testing.T) {
 		t.Fatalf("shutdown retained catalog lock: %v", err)
 	}
 	reopened.Close()
+}
+
+// The load balancer check must not follow archive lag: every gateway of a
+// catalog shares it, so a check that did would remove them all together.
+func TestServingCheckIgnoresArchiveLag(t *testing.T) {
+	ctx := context.Background()
+	c, _ := sqliteCLIConfig(t, t.TempDir(), false)
+	c.Catalog.Type, c.Catalog.Path = "sqlite", filepath.Join(t.TempDir(), "catalog")
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := c.BlobLocator()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := catalog.CreateSQLite(ctx, c.Catalog.Path, c.Catalog.ID, c.ArchiveContract(), blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store, err := c.OpenBlobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closer, ok := store.(interface{ Close() error }); ok {
+		defer closer.Close()
+	}
+	reader, err := c.RepositoryReader(store, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats serviceStats
+	mux := serveMux(&c, reader, gateway.New(metricsLimitBackend{}, gateway.Limits{}), store, &stats)
+	status := func(path string) int {
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		return recorder.Code
+	}
+	// Nothing is published, so coverage is far behind the required end.
+	if got := status("/ready"); got != http.StatusServiceUnavailable {
+		t.Fatalf("/ready with missing coverage: status %d", got)
+	}
+	if got := status("/serving"); got != http.StatusOK {
+		t.Fatalf("/serving with missing coverage: status %d", got)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := status("/serving"); got != http.StatusServiceUnavailable {
+		t.Fatalf("/serving without a catalog: status %d", got)
+	}
 }
