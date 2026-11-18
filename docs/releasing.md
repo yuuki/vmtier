@@ -8,12 +8,11 @@ release workflow saves a **draft**; publishing it is a separate maintainer actio
 [ADR 0005](adr/0005-release-artifacts.md) records why the pipeline is shaped
 this way.
 
-No release has been published. The CI `release-check` job has reproduced the
-archive on GitHub-hosted runners, a rebuild outside GitHub matched it byte for
-byte, and a tagless run of the release workflow passed every gate except
-`publish`; [release validation](release-validation.md) records the runs and
-checksums. Each
-release's notes must state the support scope below.
+The first published release is the pre-release `v0.1.0-rc.3`. The CI
+`release-check` job has reproduced the archive on GitHub-hosted runners, a
+rebuild outside GitHub matched it byte for byte, and the tag runs passed every
+gate; [release validation](release-validation.md) records the runs and
+checksums. Each release's notes must state the support scope below.
 
 ## Support scope
 
@@ -175,11 +174,13 @@ was signed or released ([release validation](release-validation.md#tag-v010-rc1)
 `v0.1.0-rc.2`, built with Go 1.27.4, passed every gate and became a draft
 pre-release ([release validation](release-validation.md#tag-v010-rc2)). It was
 not published, because `main` then gained garbage collection, Cold retention, and
-adding streams (#50) with a catalog schema change. The next candidate is
-`v0.1.0-rc.3`; do not reuse the `rc.1` or `rc.2` names. Until #15, #16, and #17
-close with recorded evidence, use only tags with a hyphen: the workflow then
-creates a GitHub pre-release, and its notes say that it is not
-production-supported. The remaining steps:
+adding streams (#50) with a catalog schema change. `v0.1.0-rc.3` passed every
+gate and was published as the first pre-release
+([release validation](release-validation.md#tag-v010-rc3)). Do not reuse the
+`rc.1`, `rc.2` or `rc.3` names. Until #15, #16, and #17 close with recorded
+evidence, use only tags with a hyphen: the workflow then creates a GitHub
+pre-release, and its notes say that it is not production-supported. For each
+new candidate:
 
 1. Check the [repository settings](#repository-settings) below.
 2. Merge the release preparation to `main` and wait for its `test`, `security`,
