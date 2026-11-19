@@ -190,6 +190,12 @@ func (s *SQLite) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCount
 // is refused before anything is written. Repeating a completed upgrade only
 // verifies the current state.
 func UpgradeSQLite(ctx context.Context, dir, id string) (Status, error) {
+	return upgradeSQLite(ctx, dir, id, 0)
+}
+
+// upgradeSQLite is UpgradeSQLite; a nonzero from requires the stored schema
+// to be from, as a restore requires it to be the one its metadata records.
+func upgradeSQLite(ctx context.Context, dir, id string, from int) (Status, error) {
 	s, err := openSQLiteFile(ctx, dir, id)
 	if err != nil {
 		return Status{}, err
@@ -198,7 +204,7 @@ func UpgradeSQLite(ctx context.Context, dir, id string) (Status, error) {
 	if err = s.quickCheck(ctx); err != nil {
 		return Status{}, err
 	}
-	if err = s.upgrade(ctx); err != nil {
+	if err = s.upgrade(ctx, from); err != nil {
 		return Status{}, err
 	}
 	status, err := s.Status(ctx)
@@ -208,8 +214,9 @@ func UpgradeSQLite(ctx context.Context, dir, id string) (Status, error) {
 	return status, s.Close()
 }
 
-// upgrade applies the changes from schema 1 or 2 in one transaction.
-func (s *SQLite) upgrade(ctx context.Context) error {
+// upgrade applies the changes from schema 1 or 2 in one transaction. A
+// nonzero from requires the stored schema to be from.
+func (s *SQLite) upgrade(ctx context.Context, from int) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -218,6 +225,9 @@ func (s *SQLite) upgrade(ctx context.Context) error {
 	var version int
 	if err = tx.QueryRowContext(ctx, `SELECT schema_version FROM catalog_state WHERE singleton=1`).Scan(&version); err != nil {
 		return fmt.Errorf("read initialized SQLite catalog: %w", err)
+	}
+	if from != 0 && version != from {
+		return fmt.Errorf("stored catalog schema %d differs from the expected schema %d", version, from)
 	}
 	switch {
 	case version == SQLiteSchemaVersion:

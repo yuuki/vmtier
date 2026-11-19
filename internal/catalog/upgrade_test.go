@@ -605,3 +605,49 @@ func TestSQLiteRestoreUpgradesReleasedSchema2Backups(t *testing.T) {
 		t.Fatalf("restored ledger: %+v %v", counts, err)
 	}
 }
+
+// Restore refuses metadata whose schema differs from the database image: an
+// upgrade must not hide the difference.
+func TestSQLiteRestoreRefusesMetadataOfAnotherSchema(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	s := sqliteTestStore(t, contract())
+	if err := s.Backup(ctx, filepath.Join(root, "current")); err != nil {
+		t.Fatal(err)
+	}
+	createReleasedSQLite2(t, filepath.Join(root, "old"), "released", hourContract())
+	writeReleasedBackup(t, filepath.Join(root, "old"), filepath.Join(root, "released"), "released", 2)
+	for _, tc := range []struct {
+		backup string
+		schema int
+	}{{"current", 2}, {"current", 0}, {"current", -7}, {"released", SQLiteSchemaVersion}} {
+		path := filepath.Join(root, tc.backup, backupMetadataFile)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var meta sqliteBackupMetadata
+		if err := json.Unmarshal(data, &meta); err != nil {
+			t.Fatal(err)
+		}
+		meta.Status.SchemaVersion = tc.schema
+		changed, err := json.Marshal(meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, changed, 0600); err != nil {
+			t.Fatal(err)
+		}
+		dest := filepath.Join(root, fmt.Sprintf("restored-%s-%d", tc.backup, tc.schema))
+		if restored, err := RestoreSQLite(ctx, filepath.Join(root, tc.backup), dest, "restored"); err == nil {
+			restored.Close()
+			t.Fatalf("restored a %s backup whose metadata records schema %d", tc.backup, tc.schema)
+		}
+		if _, err := os.Stat(dest); !os.IsNotExist(err) {
+			t.Fatalf("refused restore left %s: %v", dest, err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

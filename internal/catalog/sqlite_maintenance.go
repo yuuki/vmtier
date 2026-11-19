@@ -193,8 +193,9 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 	expected := meta.Status
 	if expected.SchemaVersion < SQLiteSchemaVersion {
 		// A backup of an older schema is upgraded in the staging copy after
-		// its checksum was verified; the backup is unchanged.
-		if _, err := UpgradeSQLite(ctx, stage, expected.ID); err != nil {
+		// its checksum was verified; the backup is unchanged. The image must
+		// hold the schema that the metadata records.
+		if _, err := upgradeSQLite(ctx, stage, expected.ID, expected.SchemaVersion); err != nil {
 			return nil, fmt.Errorf("upgrade schema %d backup: %w", expected.SchemaVersion, err)
 		}
 		if expected.SchemaVersion == 1 {
@@ -481,7 +482,7 @@ func readBackupMetadata(path string) (sqliteBackupMetadata, error) {
 	if d.Decode(&extra) != io.EOF {
 		return meta, errors.New("trailing or oversized backup metadata")
 	}
-	if (meta.Version != 1 && meta.Version != backupMetadataVersion) || (meta.Version == 1) != (meta.Status.SchemaVersion == 1) || meta.DatabaseBytes <= 0 || !validHash(meta.DatabaseSHA256) || !validID(meta.Status.ID) {
+	if (meta.Version != 1 && meta.Version != backupMetadataVersion) || (meta.Version == 1) != (meta.Status.SchemaVersion == 1) || meta.Status.SchemaVersion < 1 || meta.DatabaseBytes <= 0 || !validHash(meta.DatabaseSHA256) || !validID(meta.Status.ID) {
 		return meta, errors.New("invalid SQLite backup metadata")
 	}
 	return meta, nil
