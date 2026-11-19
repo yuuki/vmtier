@@ -187,8 +187,8 @@ func (s *SQLite) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCount
 // keys recorded earlier do not get, and the stream totals, which the upgrade
 // fills from the committed packs. It holds the directory lock throughout, so a live service
 // refuses it; take a backup first. A file that fails SQLite's integrity check
-// is refused before anything is written. Repeating a completed upgrade only
-// verifies the current state.
+// is refused before anything is written. Repeating a completed upgrade
+// verifies the current state and recomputes the stream totals.
 func UpgradeSQLite(ctx context.Context, dir, id string) (Status, error) {
 	return upgradeSQLite(ctx, dir, id, 0)
 }
@@ -231,7 +231,15 @@ func (s *SQLite) upgrade(ctx context.Context, from int) error {
 	}
 	switch {
 	case version == SQLiteSchemaVersion:
-		return nil
+		// A current catalog keeps its state; only its derived stream totals
+		// are recomputed, which repairs any drift.
+		if _, err = readSQLiteStatus(ctx, tx, s.id); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, streamTotalsBackfillSQL("coverage", "windows", "packs")); err != nil {
+			return err
+		}
+		return tx.Commit()
 	case version > SQLiteSchemaVersion:
 		return schemaVersionError(version, SQLiteSchemaVersion)
 	case version != 1 && version != 2:

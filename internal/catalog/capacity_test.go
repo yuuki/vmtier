@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCommittedCapacity(t *testing.T) {
@@ -184,6 +185,26 @@ func testStreamTotals(t *testing.T, f ledgerFixture, mismatch string) {
 	}
 }
 
+// streamTotalsMismatchSQL counts the streams whose totals differ from the
+// packs of their windows.
+func streamTotalsMismatchSQL(coverage, windows, packs string) string {
+	return `SELECT count(*) FROM ` + coverage + ` c WHERE (c.committed_packs, c.committed_data_bytes, c.committed_index_bytes) <> ` + streamTotalsOfPacks(windows, packs)
+}
+
+// checkStreamTotals fails when a stream's totals differ from its packs.
+func checkStreamTotals(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, query string) error {
+	var mismatched int64
+	if err := q.QueryRowContext(ctx, query).Scan(&mismatched); err != nil {
+		return err
+	}
+	if mismatched != 0 {
+		return fmt.Errorf("stream totals of %d streams differ from the committed packs", mismatched)
+	}
+	return nil
+}
+
 // queryRower runs a fixture's queries through its raw SQL connection.
 type queryRower struct{ f ledgerFixture }
 
@@ -191,27 +212,120 @@ func (q queryRower) QueryRowContext(ctx context.Context, query string, args ...a
 	return q.f.queryRow(query, args...)
 }
 
-// Restore refuses a backup whose stream totals differ from its packs, so a
-// restored catalog never reports them.
-func TestSQLiteRestoreRefusesWrongStreamTotals(t *testing.T) {
+// Drifted stream totals are derived data: they block neither Cold retention
+// nor a restore, the capacity observation refuses negative ones instead of
+// reporting them, and catalog-upgrade recomputes them in place.
+func TestSQLiteDriftedStreamTotalsBlockNothing(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
-	s := sqliteTestStore(t, contract())
-	first := sqlitePublication("1:2", "a", 100, 2)
-	recordPublication(t, s, first)
-	if _, err := s.PublishWindow(ctx, 0, first); err != nil {
+	s, err := CreateSQLite(ctx, root+"/state", "test", hourContract(), BlobLocator{Type: "s3", Bucket: "test"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE coverage SET committed_data_bytes=committed_data_bytes+1`); err != nil {
+	defer func() { _ = s.Close() }()
+	for i, p := range []Publication{hourPublication("1:2", "a", 1, 2), hourPublication("1:2", "a", 2, 1)} {
+		recordPublication(t, s, p)
+		if _, err := s.PublishWindow(ctx, uint64(i), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE coverage SET committed_packs=0, committed_data_bytes=committed_data_bytes+1`); err != nil {
 		t.Fatal(err)
+	}
+	if n, err := s.RetireWindows(ctx, retentionEnding(time.Now().UnixMilli(), 2), 10); err != nil || n != 1 {
+		t.Fatalf("retirement with drifted totals: %d %v", n, err)
+	}
+	if got, err := s.Capacity(ctx); err == nil || !strings.Contains(err.Error(), "catalog-upgrade") {
+		t.Fatalf("negative totals reported: %+v %v", got, err)
 	}
 	if err := s.Backup(ctx, root+"/backup"); err != nil {
 		t.Fatal(err)
 	}
-	if restored, err := RestoreSQLite(ctx, root+"/backup", root+"/restored", "restored"); err == nil || !strings.Contains(err.Error(), "stream totals") {
-		if restored != nil {
-			restored.Close()
+	restored, err := RestoreSQLite(ctx, root+"/backup", root+"/restored", "restored")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20}}
+	if got, err := restored.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, want) {
+		t.Fatalf("restored totals: %+v %v", got.Streams, err)
+	}
+	if err := restored.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := UpgradeSQLite(ctx, root+"/state", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := OpenSQLite(ctx, root+"/state", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repaired.Close()
+	if after := sqliteStatus(t, repaired); !reflect.DeepEqual(after, before) || after.Generation != 2 {
+		t.Fatalf("catalog-upgrade changed the state: %+v %+v", before, after)
+	}
+	if got, err := repaired.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, want) {
+		t.Fatalf("repaired totals: %+v %v", got.Streams, err)
+	}
+}
+
+func TestPostgresDriftedStreamTotalsBlockNothing(t *testing.T) {
+	ctx, dsn, db, p := postgresTestStore(t, hourContract())
+	for i, publication := range []Publication{hourPublication("1:2", "a", 1, 2), hourPublication("1:2", "a", 2, 1)} {
+		recordPublication(t, p, publication)
+		if _, err := publishPostgresTest(ctx, p, uint64(i), publication); err != nil {
+			t.Fatal(err)
 		}
-		t.Fatalf("restore accepted wrong stream totals: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE coverage SET committed_packs=0, committed_data_bytes=committed_data_bytes+1`); err != nil {
+		t.Fatal(err)
+	}
+	var now int64
+	if err := db.QueryRowContext(ctx, `SELECT `+postgresNowMS).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := p.RetireWindows(ctx, retentionEnding(now, 2), 10); err != nil || n != 1 {
+		t.Fatalf("retirement with drifted totals: %d %v", n, err)
+	}
+	if got, err := p.Capacity(ctx); err == nil || !strings.Contains(err.Error(), "catalog-upgrade") {
+		t.Fatalf("negative totals reported: %+v %v", got, err)
+	}
+	before := postgresStatus(t, ctx, p)
+	if err := UpgradePostgres(ctx, dsn, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if after := postgresStatus(t, ctx, p); !reflect.DeepEqual(after, before) {
+		t.Fatalf("catalog-upgrade changed the state: %+v %+v", before, after)
+	}
+	want := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20}}
+	if got, err := p.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, want) {
+		t.Fatalf("repaired totals: %+v %v", got.Streams, err)
+	}
+}
+
+// The PostgreSQL import computes the destination's totals from the copied
+// packs, so a drifted source neither blocks the migration nor carries over.
+func TestPostgresImportRecomputesStreamTotals(t *testing.T) {
+	ctx, dsn, _ := postgresTestDatabase(t)
+	source := sqliteTestStore(t, contract())
+	first := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, source, first)
+	if _, err := source.PublishWindow(ctx, 0, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.db.ExecContext(ctx, `UPDATE coverage SET committed_index_bytes=7`); err != nil {
+		t.Fatal(err)
+	}
+	destination, err := ImportSQLiteToPostgres(ctx, source, dsn, "imported")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer destination.Close()
+	want := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 2, CommittedDataBytes: 20, CommittedIndexBytes: 40}}
+	if got, err := destination.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, want) {
+		t.Fatalf("imported totals: %+v %v", got.Streams, err)
 	}
 }

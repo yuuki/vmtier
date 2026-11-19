@@ -221,6 +221,10 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 	if err := validateRestoredReferences(ctx, s, status); err != nil {
 		return nil, err
 	}
+	// Stream totals are derived: recompute them rather than trust the copy.
+	if _, err := s.db.ExecContext(ctx, streamTotalsBackfillSQL("coverage", "windows", "packs")); err != nil {
+		return nil, err
+	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE catalog_state SET catalog_id=? WHERE singleton=1", newID); err != nil {
 		return nil, err
 	}
@@ -249,9 +253,6 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 		return err
 	}
 	if err := checkRestoredLedger(ctx, tx, status); err != nil {
-		return err
-	}
-	if err := checkStreamTotals(ctx, tx, streamTotalsMismatchSQL("coverage", "windows", "packs")); err != nil {
 		return err
 	}
 	return tx.Commit()

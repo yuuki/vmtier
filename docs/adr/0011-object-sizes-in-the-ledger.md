@@ -12,9 +12,10 @@ object key that no window references: keys of running or failed attempts
 (`pending`), keys of windows that [Cold retention](0007-cold-retention.md)
 removed (`retired`), and keys that garbage collection claimed (`deleting`). It
 recorded no sizes, so `vmtier_catalog_unpublished_objects` counted objects but
-not bytes. Garbage collection is opt-in; without it, failed attempts and retired
-windows stay in the bucket for ever, and vmtier could not say how much of the
-bucket they use.
+not bytes. Garbage collection is opt-in; without it, the objects of failed
+attempts stay in the bucket for ever. Cold retention requires garbage
+collection, so the objects of retired windows wait only for its next passes.
+vmtier could not say how much of the bucket either kind uses.
 
 Providers report bucket usage themselves (for example the per-bucket usage of
 Sakura Object Storage, #15), but that total mixes the catalog's published

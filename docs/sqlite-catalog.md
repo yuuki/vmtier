@@ -189,7 +189,8 @@ from an older backup. The restored ledger keeps the pending keys of attempts tha
 failed before the backup; [garbage collection](serve.md#garbage-collection) of the
 restored catalog may delete them, which is safe because a stopped writer never
 resumes an attempt. A backup of schema 1 or 2 is upgraded in the staging copy after
-its checksum was verified; the backup itself is unchanged.
+its checksum was verified; the backup itself is unchanged. Restore recomputes the
+stream totals from the restored packs.
 The [offline recovery suite](recovery-validation.md) exercises a real stock VM
 cutover, older-backup catch-up, and process crashes using local disposable objects.
 It does not establish recovery from a physical disk or object-store disaster.
@@ -223,8 +224,9 @@ old-vmtier catalog-backup -path .state/catalog-sqlite -id sakura-serve-001 \
 ```
 
 The upgrade takes the directory lock, adds what the stored schema lacks and changes
-the schema version in one transaction, and prints the status. Repeating it only
-verifies the state. Publication metadata is unchanged; the stream totals are filled
+the schema version in one transaction, and prints the status. Repeating it verifies
+the state and recomputes the stream totals from the packs, which repairs them if
+they ever drift. Publication metadata is unchanged; the stream totals are filled
 from the committed packs. Objects left by attempts that
 failed before schema 2 were never recorded and are not collected. Keys recorded
 before schema 3 keep no size: `vmtier_catalog_unpublished_objects_unsized` counts

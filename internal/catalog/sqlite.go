@@ -50,9 +50,9 @@ CREATE TABLE coverage (
  source_id TEXT NOT NULL,
  end_ms INTEGER NOT NULL CHECK (end_ms >= 0),
  start_ms INTEGER NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
- committed_packs INTEGER NOT NULL DEFAULT 0 CHECK (committed_packs >= 0),
- committed_data_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0),
- committed_index_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0),
+ committed_packs INTEGER NOT NULL DEFAULT 0,
+ committed_data_bytes INTEGER NOT NULL DEFAULT 0,
+ committed_index_bytes INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY (tenant, source_id)
 ) WITHOUT ROWID;
 CREATE TABLE windows (
@@ -104,9 +104,9 @@ const sqliteObjectBytesUpgrade = `ALTER TABLE pending_objects ADD COLUMN ` + sql
 // sqliteStreamTotalsUpgrade adds the stream totals of schema 3 to the
 // coverage of an older schema; the upgrade then fills them from the packs.
 const sqliteStreamTotalsUpgrade = `
-ALTER TABLE coverage ADD COLUMN committed_packs INTEGER NOT NULL DEFAULT 0 CHECK (committed_packs >= 0);
-ALTER TABLE coverage ADD COLUMN committed_data_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0);
-ALTER TABLE coverage ADD COLUMN committed_index_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0);
+ALTER TABLE coverage ADD COLUMN committed_packs INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE coverage ADD COLUMN committed_data_bytes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE coverage ADD COLUMN committed_index_bytes INTEGER NOT NULL DEFAULT 0;
 `
 
 // sqliteRetentionUpgrade adds the retention columns of schema 2 to a schema 1

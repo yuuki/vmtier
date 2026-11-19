@@ -3,7 +3,6 @@ package catalog
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 )
 
@@ -12,6 +11,12 @@ import (
 // transaction that changes the windows. A capacity observation then reads one
 // row per stream instead of scanning the packs. The window count needs no
 // column: a stream's windows are exactly the range [start_ms, end_ms).
+//
+// The totals are derived from the packs and never decide anything: no
+// constraint on them can stop a publication or a retirement, restore and
+// imports recompute them instead of trusting a copy, and catalog-upgrade
+// recomputes them in place. A negative total, which only a drift can
+// produce, makes the capacity observation fail rather than report it.
 type streamTotals struct {
 	packs, dataBytes, indexBytes int64
 }
@@ -38,31 +43,11 @@ func streamTotalsOfPacks(windows, packs string) string {
 	return `(SELECT count(*), coalesce(sum(p.data_bytes),0), coalesce(sum(p.index_bytes),0) FROM ` + windows + ` w JOIN ` + packs + ` p ON p.window_id=w.id WHERE w.tenant=c.tenant AND w.source_id=c.source_id)`
 }
 
-// streamTotalsBackfillSQL sets every stream's totals from its packs; schema
-// upgrades and imports run it once.
+// streamTotalsBackfillSQL sets every stream's totals from its packs. Schema
+// upgrades, catalog-upgrade of a current catalog, restore and the PostgreSQL
+// import run it; it scans the whole windows and packs tables.
 func streamTotalsBackfillSQL(coverage, windows, packs string) string {
 	return `UPDATE ` + coverage + ` AS c SET (committed_packs, committed_data_bytes, committed_index_bytes) = ` + streamTotalsOfPacks(windows, packs)
-}
-
-// streamTotalsMismatchSQL counts the streams whose totals differ from their
-// packs; restore and import require none.
-func streamTotalsMismatchSQL(coverage, windows, packs string) string {
-	return `SELECT count(*) FROM ` + coverage + ` c WHERE (c.committed_packs, c.committed_data_bytes, c.committed_index_bytes) <> ` + streamTotalsOfPacks(windows, packs)
-}
-
-// checkStreamTotals refuses a catalog whose stream totals differ from its
-// packs.
-func checkStreamTotals(ctx context.Context, q interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, query string) error {
-	var mismatched int64
-	if err := q.QueryRowContext(ctx, query).Scan(&mismatched); err != nil {
-		return err
-	}
-	if mismatched != 0 {
-		return errors.New("catalog stream totals differ from the committed packs")
-	}
-	return nil
 }
 
 // streamTotalsSQL reads every stream's totals.
@@ -98,6 +83,9 @@ func capacityFromCoverage(state Status, totals map[[2]string]streamTotals) (Capa
 		span := stream.End - stream.Start
 		if !ok || span < 0 || span%state.Contract.WindowMS != 0 {
 			return Capacity{}, fmt.Errorf("catalog stream %s/%s has no valid totals", stream.Tenant, stream.SourceID)
+		}
+		if t.packs < 0 || t.dataBytes < 0 || t.indexBytes < 0 {
+			return Capacity{}, fmt.Errorf("catalog stream %s/%s has negative totals; catalog-upgrade recomputes them from the packs", stream.Tenant, stream.SourceID)
 		}
 		s := StreamCapacity{Tenant: stream.Tenant, SourceID: stream.SourceID, Windows: span / state.Contract.WindowMS,
 			Packs: t.packs, CommittedDataBytes: t.dataBytes, CommittedIndexBytes: t.indexBytes}

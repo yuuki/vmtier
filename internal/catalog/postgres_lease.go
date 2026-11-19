@@ -237,7 +237,7 @@ func (p *fencedPostgres) Close() error { return nil }
 // stream totals (schema 4), and changes the version so legacy writers reject
 // new work. Keys recorded before schema 4 keep no size; the stream totals are
 // filled from the committed packs. Repeating a completed upgrade verifies the
-// current state without changing it.
+// current state and recomputes the stream totals, changing nothing else.
 func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	p, err := connectPostgres(ctx, dsn, id)
 	if err != nil {
@@ -267,6 +267,11 @@ func UpgradePostgres(ctx context.Context, dsn, id string) (err error) {
 	}
 	if version == PostgreSQLSchemaVersion {
 		if _, err = p.readStatus(ctx, tx, false); err != nil {
+			return err
+		}
+		// A current catalog keeps its state; only its derived stream totals
+		// are recomputed, which repairs any drift.
+		if _, err = tx.ExecContext(ctx, streamTotalsBackfillSQL(p.table("coverage"), p.table("windows"), p.table("packs"))); err != nil {
 			return err
 		}
 		return tx.Commit()

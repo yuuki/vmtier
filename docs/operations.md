@@ -122,8 +122,11 @@ gauges cover only keys vmtier recorded: objects left before the ledger existed o
 written by other software are not counted. Garbage collection is opt-in and does
 not cover objects left before the ledger existed. Use provider accounting for actual bucket growth and
 host monitoring for disk availability and peak RSS. Provider bucket usage minus
-the committed and unpublished byte gauges approximates objects vmtier does not
-know (other catalogs, older versions, objects left before the ledger). A steadily growing `pending`
+the committed and unpublished byte gauges approximates the objects vmtier does
+not know (other catalogs, older versions, objects left before the ledger) plus
+the unpublished keys without a recorded size. The ledger gauges and the capacity
+gauges come from separate read-only transactions: a retirement between them can
+leave one scrape counting a window's objects in neither. A steadily growing `pending`
 count with garbage collection enabled means attempts fail faster than they are
 collected, or that collection fails; check `vmtier_orphan_gc_failed_passes_total`.
 Each capacity scrape reads the catalog status and one coverage row per stream,
@@ -131,8 +134,11 @@ which holds the stream's committed pack count and lengths
 ([ADR 0012](adr/0012-stream-totals.md)); a stream's window count follows from its
 coverage range. The cost therefore grows with the number of streams, not with the
 archived history. Publication and Cold retention update these totals in the
-transaction that changes the windows; restore and the PostgreSQL import check
-them against the packs. The shared five-second scrape context bounds the
+transaction that changes the windows; restore and the PostgreSQL import
+recompute them from the packs. The totals never block publication, retention or
+a restore. A negative total can only come from a drift; it makes the capacity
+gauges unavailable (`vmtier_catalog_capacity_available 0`) until
+`catalog-upgrade`, run on the current catalog, recomputes the totals in place. The shared five-second scrape context bounds the
 observation time. With PostgreSQL, every scraped replica reads the shared
 database. The [catalog-capacity report](catalog-capacity-validation.md) records
 scrape latency and selection contention for its 87,600-window fixture.

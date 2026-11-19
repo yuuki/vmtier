@@ -74,7 +74,9 @@ func ImportSQLiteToPostgres(ctx context.Context, source *SQLite, dsn, newID stri
 	if err = p.copySQLiteLedger(ctx, tx, snapshot, state, &imported); err != nil {
 		return nil, err
 	}
-	if err = p.copyStreamTotals(ctx, tx, snapshot); err != nil {
+	// Stream totals are derived: compute them from the copied packs rather
+	// than copy the source's.
+	if _, err = tx.ExecContext(ctx, streamTotalsBackfillSQL(p.table("coverage"), p.table("windows"), p.table("packs"))); err != nil {
 		return nil, err
 	}
 	want := state
@@ -171,27 +173,6 @@ func (p *Postgres) copySQLiteLedger(ctx context.Context, tx, snapshot *sql.Tx, s
 		}
 	}
 	return rows.Err()
-}
-
-// copyStreamTotals fills the destination's stream totals from its copied
-// packs and requires them to equal the source's, which restore validation
-// checked against the source's packs.
-func (p *Postgres) copyStreamTotals(ctx context.Context, tx, snapshot *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, streamTotalsBackfillSQL(p.table("coverage"), p.table("windows"), p.table("packs"))); err != nil {
-		return err
-	}
-	want, err := readStreamTotals(ctx, snapshot, "coverage")
-	if err != nil {
-		return err
-	}
-	got, err := readStreamTotals(ctx, tx, p.table("coverage"))
-	if err != nil {
-		return err
-	}
-	if !reflect.DeepEqual(got, want) {
-		return errors.New("PostgreSQL import stream totals differ from SQLite source")
-	}
-	return nil
 }
 
 // copySQLiteWindows copies the windows of the SQLite snapshot in generation

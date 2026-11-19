@@ -68,7 +68,10 @@ The upgrade preserves published metadata and identity, initializes an unowned
 lease when upgrading from schema 1, adds an empty object ledger and starts every
 stream at the coverage origin when upgrading from schema 1 or 2, adds the
 ledger's size column, and fills the new stream totals from the committed packs.
-Keys recorded before schema 4 keep no size. Older binaries
+Keys recorded before schema 4 keep no size. Repeating the upgrade on a current
+catalog recomputes the stream totals from the packs; it holds the catalog state
+and coverage locks while it scans them, which pauses publication and status reads
+for that time. Older binaries
 reject the new schema. Back up before upgrading; no automatic schema downgrade is
 provided. Objects of attempts that failed before schema 3 were never recorded
 and are not collected.

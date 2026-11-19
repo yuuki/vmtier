@@ -46,9 +46,9 @@ CREATE TABLE %[1]s.coverage (
  source_id TEXT NOT NULL,
  end_ms BIGINT NOT NULL CHECK (end_ms >= 0),
  start_ms BIGINT NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
- committed_packs BIGINT NOT NULL DEFAULT 0 CHECK (committed_packs >= 0),
- committed_data_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0),
- committed_index_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0),
+ committed_packs BIGINT NOT NULL DEFAULT 0,
+ committed_data_bytes BIGINT NOT NULL DEFAULT 0,
+ committed_index_bytes BIGINT NOT NULL DEFAULT 0,
  PRIMARY KEY (tenant, source_id)
 );
 CREATE TABLE %[1]s.windows (
@@ -111,9 +111,9 @@ const postgresObjectBytesUpgrade = `ALTER TABLE %[1]s.pending_objects ADD COLUMN
 // coverage of an older schema; the upgrade then fills them from the packs.
 // Columns with a constant default rewrite no rows.
 const postgresStreamTotalsUpgrade = `
-ALTER TABLE %[1]s.coverage ADD COLUMN committed_packs BIGINT NOT NULL DEFAULT 0 CHECK (committed_packs >= 0);
-ALTER TABLE %[1]s.coverage ADD COLUMN committed_data_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0);
-ALTER TABLE %[1]s.coverage ADD COLUMN committed_index_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0);
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_packs BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_data_bytes BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_index_bytes BIGINT NOT NULL DEFAULT 0;
 `
 
 // postgresRetentionUpgrade adds the retention columns of schema 3 to an older
