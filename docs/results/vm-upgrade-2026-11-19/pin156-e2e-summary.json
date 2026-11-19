@@ -1,0 +1,177 @@
+{
+  "vmtier_commit": "6c3fdbdaae32c861c5f4ec581a5202b6e58b3240",
+  "stock_vm": "v1.156.0-cluster built by make stock from 02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+  "note": "Working tree also held an uncommitted documentation change (docs/vm-version-investigation.md); no Go source or harness differed from the commit.",
+  "suites": {
+    "e2e-local": {
+      "command": "python scripts/e2e.py --backend local --workdir <work>",
+      "status": "passed",
+      "error": null,
+      "differential_checks": 360,
+      "checks": [
+        "reference and pre-archive Hot both contain identical old data",
+        "unenforced late-write contract rejected",
+        "unreachable export source rejected before coverage commit",
+        "SIGKILL during native stream leaves no committed coverage; fresh archive resumes",
+        "age-selected native export uploaded, verified and committed",
+        "same archive windows replay safely and verify succeeds",
+        "committed catalog rejects a changed coverage origin instead of masking holes",
+        "committed catalog rejects changes to archive age and allowed lateness",
+        "native portable pack independently served to unmodified stock vmselect (query + Range GET)",
+        "Cold-only raw export excludes all young samples, including the exact boundary millisecond",
+        "fresh Hot storage contains recent samples only; raw old-range export is empty for both tenants",
+        "360 exact differential instant/range queries passed across Cold, Hot and boundary",
+        "label names/values and series discovery include Cold; tenant-separated values match reference",
+        "immutable block cache reuses data with zero additional Range GETs; values unchanged",
+        "warm-cache queries and readiness fail on catalog outage; durable authority restart restores reads",
+        "missing/truncated/checksum-invalid objects fail query and verify; restored objects recover",
+        "Cold delete API explicitly rejects unsupported mutation",
+        "catalog startup refuses missing authority state; no implicit empty genesis",
+        "running Cold gateway attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes"
+      ],
+      "vm_revision": "02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+      "recorded_at_utc": "2026-11-19T05:03:49.264601+00:00"
+    },
+    "e2e-s3": {
+      "command": "python scripts/e2e.py --backend s3 --replicas 2 --workdir <work>",
+      "status": "passed",
+      "error": null,
+      "differential_checks": 360,
+      "checks": [
+        "reference and pre-archive Hot both contain identical old data",
+        "unenforced late-write contract rejected",
+        "unreachable export source rejected before coverage commit",
+        "SIGKILL during native stream leaves no committed coverage; fresh archive resumes",
+        "age-selected native export uploaded, verified and committed",
+        "same archive windows replay safely and verify succeeds",
+        "committed catalog rejects a changed coverage origin instead of masking holes",
+        "committed catalog rejects changes to archive age and allowed lateness",
+        "native portable pack independently served to unmodified stock vmselect (query + Range GET)",
+        "Cold-only raw export excludes all young samples, including the exact boundary millisecond",
+        "fresh Hot storage contains recent samples only; raw old-range export is empty for both tenants",
+        "360 exact differential instant/range queries passed across Cold, Hot and boundary",
+        "label names/values and series discovery include Cold; tenant-separated values match reference",
+        "immutable block cache reuses data with zero additional Range GETs; values unchanged",
+        "warm-cache queries and readiness fail on catalog outage; durable authority restart restores reads",
+        "missing/truncated/checksum-invalid objects fail query and verify; restored objects recover",
+        "Cold delete API explicitly rejects unsupported mutation",
+        "catalog startup refuses missing authority state; no implicit empty genesis",
+        "running Cold gateway attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes",
+        "all S3 traffic passed a conditional-request-rejecting, ETag-stripping proxy with valid Content-MD5 PUTs"
+      ],
+      "vm_revision": "02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+      "recorded_at_utc": "2026-11-19T05:04:56.136720+00:00"
+    },
+    "serve-local": {
+      "command": "python scripts/e2e_serve.py --backend local --workdir <work>",
+      "status": "passed",
+      "error": null,
+      "differential_checks": 360,
+      "checks": [
+        "reference and pre-archive Hot contain the same old data",
+        "serve refuses missing state; SQLite initialization is explicit",
+        "source outage leaves zero coverage and fails readiness and required Cold queries; the load balancer check stays successful",
+        "healthy tenant reaches coverage and remains queryable while another source stream fails",
+        "SIGTERM during native export publishes nothing; restart automatically archives six stream windows",
+        "live owner excludes offline inspect/verify/backup and a second serve process without changing catalog",
+        "stock vmselect reads committed SQLite native packs through independent Cold RPC and Range GET",
+        "Cold raw export excludes young samples at and after the exact boundary millisecond",
+        "fresh Hot contains recent data only; both tenants have empty old-range raw exports",
+        "restart preserves coverage and avoids reexport; changed policy/source/blob locator/identity are rejected",
+        "360 exact instant/range comparisons passed across Cold, Hot and the boundary",
+        "Cold label names/values and series discovery match the reference for both tenants",
+        "warm immutable cache returns equal data with no additional Range GETs",
+        "service outage propagates as query failure; restart restores reads from persistent SQLite state",
+        "missing/truncated/checksum-invalid payloads fail queries; restored bytes recover without catalog mutation",
+        "running service attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes",
+        "Cold delete remains explicitly unsupported",
+        "clean shutdown releases ownership for offline backup/verify and leaves completed windows unchanged"
+      ],
+      "vm_revision": "02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+      "recorded_at_utc": "2026-11-19T05:05:03.920440+00:00"
+    },
+    "serve-s3": {
+      "command": "python scripts/e2e_serve.py --backend s3 --replicas 2 --pack-max-blocks 4 --workdir <work>",
+      "status": "passed",
+      "error": null,
+      "differential_checks": 360,
+      "checks": [
+        "reference and pre-archive Hot contain the same old data",
+        "serve refuses missing state; SQLite initialization is explicit",
+        "source outage leaves zero coverage and fails readiness and required Cold queries; the load balancer check stays successful",
+        "healthy tenant reaches coverage and remains queryable while another source stream fails",
+        "SIGTERM during native export publishes nothing; restart automatically archives six stream windows",
+        "live owner excludes offline inspect/verify/backup and a second serve process without changing catalog",
+        "stock vmselect reads committed SQLite native packs through independent Cold RPC and Range GET",
+        "Cold raw export excludes young samples at and after the exact boundary millisecond",
+        "fresh Hot contains recent data only; both tenants have empty old-range raw exports",
+        "restart preserves coverage and avoids reexport; changed policy/source/blob locator/identity are rejected",
+        "360 exact instant/range comparisons passed across Cold, Hot and the boundary",
+        "Cold label names/values and series discovery match the reference for both tenants",
+        "shared S3 transport exposes admitted attempts and wait metrics without queue rejection",
+        "warm immutable cache returns equal data with no additional Range GETs",
+        "service outage propagates as query failure; restart restores reads from persistent SQLite state",
+        "missing/truncated/checksum-invalid payloads fail queries; restored bytes recover without catalog mutation",
+        "running service attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes",
+        "Cold delete remains explicitly unsupported",
+        "clean shutdown releases ownership for offline backup/verify and leaves completed windows unchanged",
+        "S3 traffic passes conditional-request rejection and ETag removal; every PUT has valid Content-MD5"
+      ],
+      "vm_revision": "02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+      "recorded_at_utc": "2026-11-19T05:08:09.551016+00:00"
+    },
+    "recovery": {
+      "command": "python scripts/e2e_recovery.py --workdir <work>",
+      "status": "passed",
+      "error": null,
+      "differential_checks": {
+        "committed-after-sigkill": 120,
+        "json-before-cutover": 120,
+        "restored-after-catchup": 120,
+        "sqlite-after-cutover": 120
+      },
+      "checks": [
+        "JSON v2 writer/authority stopped; import retains coverage and every object byte/stat; Cold and boundary results match stock reference before/after cutover",
+        "older offline backup restores under a new ID; readiness and missing-suffix queries fail until exact Hot-retained catch-up",
+        "SIGKILL after staging leaves orphan objects unpublished; retry ignores them; committed windows survive SIGKILL and are not re-exported",
+        "expired restored checkpoint refuses before source requests, stays unready, fails missing-suffix query and preserves coverage"
+      ],
+      "vm_revision": "02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+      "recorded_at_utc": null
+    },
+    "pg-ha": {
+      "command": "python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --workdir <work>",
+      "status": "passed",
+      "error": null,
+      "differential_checks": 360,
+      "checks": [
+        "SIGKILL lease holder during partial coverage; standby acquires expired lease and commits remaining windows exactly once",
+        "both read gateways return exact Cold results from the same catalog through independent RPC connections",
+        "stock-vmselect reconnects to the surviving gateway at the unchanged Cold endpoint; coverage is unchanged",
+        "loss of one HAProxy instance recovers through the second proxy behind the stable L4 fixture",
+        "360 exact Cold/Hot/boundary queries and both tenants metadata match full-data reference after gateway/proxy failover",
+        "both candidates S3 retries pass transport admission; summed admitted attempts equal observed failed GETs and aggregate observed rate/concurrency stay within stated bounds"
+      ],
+      "vm_revision": null,
+      "recorded_at_utc": "2026-11-19T05:12:57.587013+00:00"
+    },
+    "pg-migration": {
+      "command": "python scripts/e2e_postgres.py --replicas 2 --pack-max-blocks 4 --migrate-sqlite --workdir <work>",
+      "status": "passed",
+      "error": null,
+      "differential_checks": 360,
+      "checks": [
+        "stopped SQLite owner imports into a new PostgreSQL identity with identical contract, locator, coverage, digests and refs; verified empty window and payloads preserved without blob PUTs",
+        "SIGKILL lease holder during partial coverage; standby acquires expired lease and commits remaining windows exactly once",
+        "both read gateways return exact Cold results from the same catalog through independent RPC connections",
+        "stock-vmselect reconnects to the surviving gateway at the unchanged Cold endpoint; coverage is unchanged",
+        "loss of one HAProxy instance recovers through the second proxy behind the stable L4 fixture",
+        "360 exact Cold/Hot/boundary queries and both tenants metadata match full-data reference after gateway/proxy failover",
+        "both candidates S3 retries pass transport admission; summed admitted attempts equal observed failed GETs and aggregate observed rate/concurrency stay within stated bounds",
+        "PostgreSQL catch-up and exact queries succeed after Hot old data removal; stopped SQLite source remains unchanged"
+      ],
+      "vm_revision": null,
+      "recorded_at_utc": "2026-11-19T05:16:05.189697+00:00"
+    }
+  }
+}

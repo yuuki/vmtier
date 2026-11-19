@@ -1,0 +1,11 @@
+{
+  "v1.156.0": {
+    "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.156.0/victoria-metrics-linux-amd64-v1.156.0-cluster.tar.gz",
+    "sha256": "e026eb6da6221c9058ad5ebeb8dda97106b2086b628d84c5c2b3d3ed8a7939d4",
+    "checksums": "e026eb6da6221c9058ad5ebeb8dda97106b2086b628d84c5c2b3d3ed8a7939d4  victoria-metrics-linux-amd64-v1.156.0-cluster.tar.gz\na41e05e84e1e524f2b129d9c05096898a98f9c1947fa4b78647daa2a1bc43d45  vminsert-prod\nc6b5d0486cfb54626691b97c881e780a7233dde2a4d84933e83780d5bc3e41c8  vmselect-prod\n6f63d0d296500545edd34a053b30b85918df837bfe0820568a34ef93bca0fc3e  vmstorage-prod\n",
+    "tag_commit": "02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+    "source_archive": "https://codeload.github.com/VictoriaMetrics/VictoriaMetrics/tar.gz/02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+    "source_archive_sha256": "da08df2db5dd360cf0c3fbc90dc00ffc9f074cb6afbc995be5601cb4ce06db48",
+    "release_date": "Released at 2026-11-09 (upstream CHANGELOG.md)"
+  }
+}

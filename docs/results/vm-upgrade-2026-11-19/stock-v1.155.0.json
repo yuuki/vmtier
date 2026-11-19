@@ -1,0 +1,29 @@
+{
+  "vmselect_version": "v1.155.0-cluster-vmtier-e2e-cab3d5fbeeedd5d0374c1dabde93939af4c2499c",
+  "import": {
+    "metric": {
+      "__name__": "fixture_156",
+      "job": "codec"
+    },
+    "values": [
+      -1.5,
+      4
+    ],
+    "timestamps": [
+      1795046400010,
+      1795046400050
+    ]
+  },
+  "native_bytes": 68,
+  "native_hex": "00000343e234c00000000343e234c0c600000016666978747572655f313536016a6f6201636f64656301000000169480d391be68e480d391be681d02010202400150016e",
+  "matcher_results_over_0_ab_x": {
+    "0^": "100",
+    "a^b": "010",
+    "x\\b": "000",
+    "^0$": "100",
+    "a\\b": "000",
+    "a\\B": "000",
+    "(?m)0$": "100",
+    "0$x": "000"
+  }
+}

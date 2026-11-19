@@ -1,0 +1,285 @@
+{
+  "fixture": "Two vmstorage nodes: same metric and timestamps; values 1,2 on node 0, stale markers on node 1. Dedup 1ms everywhere.",
+  "binary_sha256": {
+    "vmstorage": "6f63d0d296500545edd34a053b30b85918df837bfe0820568a34ef93bca0fc3e",
+    "vminsert": "a41e05e84e1e524f2b129d9c05096898a98f9c1947fa4b78647daa2a1bc43d45",
+    "vmselect": "c6b5d0486cfb54626691b97c881e780a7233dde2a4d84933e83780d5bc3e41c8",
+    "vmtier": "e6e6394c07060d86fc2e24728694a69983049bd580abe6ec8555f3f2fc2d0c59"
+  },
+  "candidate_version": "vmselect-20261106-175521-tags-v1.156.0-cluster-0-g02bcbd7e56",
+  "start_ms": 1795035600000,
+  "end_ms": 1795046400000,
+  "native_sha256": "85dc103bc86200c6504709d521f23e5cf86b5951f0fc41c97a4929a614af58db",
+  "source_raw": {
+    "resultType": "matrix",
+    "result": [
+      {
+        "metric": {
+          "__name__": "replica_conflict"
+        },
+        "values": [
+          [
+            1795035630,
+            "1"
+          ],
+          [
+            1795035660,
+            "2"
+          ]
+        ]
+      }
+    ]
+  },
+  "archive_exit_code": 0,
+  "archive_output": "{\"committed_windows\":3,\"skipped_windows\":0,\"entries\":3,\"samples\":2,\"bytes\":1357}\n{\"time\":\"2026-11-19T03:48:15.148009387Z\",\"level\":\"INFO\",\"msg\":\"archive window selected\",\"start_ms\":1795035600000,\"end_ms\":1795039200000,\"sources\":1,\"tenants\":1}\n{\"time\":\"2026-11-19T03:48:15.157333158Z\",\"level\":\"INFO\",\"msg\":\"archive window committed\",\"start_ms\":1795035600000,\"end_ms\":1795039200000,\"generation\":1}\n{\"time\":\"2026-11-19T03:48:15.157357346Z\",\"level\":\"INFO\",\"msg\":\"archive window selected\",\"start_ms\":1795039200000,\"end_ms\":1795042800000,\"sources\":1,\"tenants\":1}\n{\"time\":\"2026-11-19T03:48:15.16376503Z\",\"level\":\"INFO\",\"msg\":\"archive window committed\",\"start_ms\":1795039200000,\"end_ms\":1795042800000,\"generation\":2}\n{\"time\":\"2026-11-19T03:48:15.163795057Z\",\"level\":\"INFO\",\"msg\":\"archive window selected\",\"start_ms\":1795042800000,\"end_ms\":1795046400000,\"sources\":1,\"tenants\":1}\n{\"time\":\"2026-11-19T03:48:15.169615282Z\",\"level\":\"INFO\",\"msg\":\"archive window committed\",\"start_ms\":1795042800000,\"end_ms\":1795046400000,\"generation\":3}\n",
+  "catalog": {
+    "version": 2,
+    "vm_version": "v1.155.0-cluster",
+    "id": "collision-probe",
+    "generation": 3,
+    "contract": {
+      "coverage_start_ms": 1795035600000,
+      "window_ms": 3600000,
+      "archive_age_ms": 11893687,
+      "lateness_ms": 1800000,
+      "dedup_ms": 1,
+      "tenants": [
+        "1:2"
+      ],
+      "sources": [
+        {
+          "id": "hot",
+          "fingerprint": "dc78d5b0b27146eb5055a53c72c65a3cd9d973da318e629eb4a6decab8de8d5f"
+        }
+      ]
+    },
+    "entries": [
+      {
+        "tenant": "1:2",
+        "start_ms": 1795035600000,
+        "end_ms": 1795039200000,
+        "source_id": "hot",
+        "source_fingerprint": "dc78d5b0b27146eb5055a53c72c65a3cd9d973da318e629eb4a6decab8de8d5f",
+        "index_key": "tenants/1:2/attempts/bf1fcade0a6a26a8d9710decd6ddeed4/7e5c227b9935d5354a77515e71c4d1981c8b9793e1839a0a110adbb642a01015.json",
+        "data_key": "tenants/1:2/attempts/bf1fcade0a6a26a8d9710decd6ddeed4/7e5c227b9935d5354a77515e71c4d1981c8b9793e1839a0a110adbb642a01015.pack",
+        "index_sha256": "7e5c227b9935d5354a77515e71c4d1981c8b9793e1839a0a110adbb642a01015"
+      },
+      {
+        "tenant": "1:2",
+        "start_ms": 1795039200000,
+        "end_ms": 1795042800000,
+        "source_id": "hot",
+        "source_fingerprint": "dc78d5b0b27146eb5055a53c72c65a3cd9d973da318e629eb4a6decab8de8d5f",
+        "index_key": "tenants/1:2/attempts/57499915e6d0cdb2962245f91cd63179/969bdec250d89972d98025ff4b4a61f65ab7223b9eacd17777756074fd1ee447.json",
+        "data_key": "tenants/1:2/attempts/57499915e6d0cdb2962245f91cd63179/969bdec250d89972d98025ff4b4a61f65ab7223b9eacd17777756074fd1ee447.pack",
+        "index_sha256": "969bdec250d89972d98025ff4b4a61f65ab7223b9eacd17777756074fd1ee447"
+      },
+      {
+        "tenant": "1:2",
+        "start_ms": 1795042800000,
+        "end_ms": 1795046400000,
+        "source_id": "hot",
+        "source_fingerprint": "dc78d5b0b27146eb5055a53c72c65a3cd9d973da318e629eb4a6decab8de8d5f",
+        "index_key": "tenants/1:2/attempts/494e0e2fc123ff2b5a3dc2e842af9a12/47a208a6ab9a800ad4337fbb7c6070292b9d69bfd7322d951055501ecc0c4390.json",
+        "data_key": "tenants/1:2/attempts/494e0e2fc123ff2b5a3dc2e842af9a12/47a208a6ab9a800ad4337fbb7c6070292b9d69bfd7322d951055501ecc0c4390.pack",
+        "index_sha256": "47a208a6ab9a800ad4337fbb7c6070292b9d69bfd7322d951055501ecc0c4390"
+      }
+    ]
+  },
+  "cold_raw": {
+    "resultType": "matrix",
+    "result": [
+      {
+        "metric": {
+          "__name__": "replica_conflict"
+        },
+        "values": [
+          [
+            1795035630,
+            "1"
+          ],
+          [
+            1795035660,
+            "2"
+          ]
+        ]
+      }
+    ]
+  },
+  "cold_matches_source": true,
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "selected_GOMAXPROCS": "2",
+    "selection": "argument",
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "name": "source-storage-0-full",
+        "kind": "managed",
+        "command": [
+          "<work>/replica-156/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:54599",
+          "-vminsertAddr=127.0.0.1:47789",
+          "-vmselectAddr=127.0.0.1:47647",
+          "-storageDataPath=<work>/replica-156/source-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11195,
+        "exit_code": 0
+      },
+      {
+        "name": "source-storage-1-full",
+        "kind": "managed",
+        "command": [
+          "<work>/replica-156/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:41857",
+          "-vminsertAddr=127.0.0.1:35399",
+          "-vmselectAddr=127.0.0.1:36121",
+          "-storageDataPath=<work>/replica-156/source-storage-1-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11202,
+        "exit_code": 0
+      },
+      {
+        "name": "source-insert-full",
+        "kind": "managed",
+        "command": [
+          "<work>/replica-156/harness-root/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:41475",
+          "-storageNode=127.0.0.1:47789,127.0.0.1:35399",
+          "-replicationFactor=2",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11209,
+        "exit_code": 0
+      },
+      {
+        "name": "source-select-full",
+        "kind": "managed",
+        "command": [
+          "<work>/replica-156/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:55445",
+          "-storageNode=127.0.0.1:47647,127.0.0.1:36121",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=<work>/replica-156/source-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11216,
+        "exit_code": 0
+      },
+      {
+        "name": "direct-insert-0",
+        "kind": "managed",
+        "command": [
+          "<vm-v1.156.0>/vminsert",
+          "-httpListenAddr=127.0.0.1:51901",
+          "-storageNode=127.0.0.1:47789",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11223,
+        "exit_code": 0
+      },
+      {
+        "name": "direct-insert-1",
+        "kind": "managed",
+        "command": [
+          "<vm-v1.156.0>/vminsert",
+          "-httpListenAddr=127.0.0.1:49757",
+          "-storageNode=127.0.0.1:35399",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11230,
+        "exit_code": 0
+      },
+      {
+        "name": "init",
+        "kind": "one-shot",
+        "command": [
+          "<repo>/.bin/vmtier",
+          "catalog-init",
+          "-path",
+          "<work>/replica-156/catalog.json",
+          "-id",
+          "collision-probe"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0
+      },
+      {
+        "name": "gateway",
+        "kind": "managed",
+        "command": [
+          "<repo>/.bin/vmtier",
+          "gateway",
+          "-config",
+          "<work>/replica-156/config.json",
+          "-listen",
+          "127.0.0.1:44119",
+          "-http",
+          "127.0.0.1:57481"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11252,
+        "exit_code": 0
+      },
+      {
+        "name": "cold-select",
+        "kind": "managed",
+        "command": [
+          "<work>/replica-156/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:37127",
+          "-storageNode=127.0.0.1:44119",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=<work>/replica-156/cold-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "pid": 11259,
+        "exit_code": 0
+      }
+    ]
+  }
+}

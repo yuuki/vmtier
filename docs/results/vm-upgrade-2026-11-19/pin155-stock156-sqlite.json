@@ -1,0 +1,1012 @@
+{
+  "architecture": "SQLite catalog with one serve process, scheduled archive and read gateway",
+  "archive_metrics": {
+    "vmtier_archive_bytes_total": 72873.0,
+    "vmtier_archive_committed_windows_total": 6.0,
+    "vmtier_archive_failed_passes_total": 1.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"error\"}": 1.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 1795060088.0,
+    "vmtier_archive_leader": 1.0,
+    "vmtier_archive_pack_bytes": 0.0,
+    "vmtier_archive_pack_peak_bytes": 18456.0,
+    "vmtier_archive_passes_total": 8.0,
+    "vmtier_archive_samples_total": 9038.0,
+    "vmtier_archive_verifier_bytes": 0.0,
+    "vmtier_archive_verifier_peak_bytes": 34458.0,
+    "vmtier_blocks_total": 1.0,
+    "vmtier_build_info{version=\"v0.0.0-20261118082442-034d185b0be5\",commit=\"034d185b0be5829aebcf325024fb800482379126\",go_version=\"go1.27.4\",vm_version=\"v1.155.0-cluster\"}": 1.0,
+    "vmtier_cache_entries": 0.0,
+    "vmtier_cache_evictions_total": 0.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_inflight_reads": 0.0,
+    "vmtier_cache_limit_bytes": 0.0,
+    "vmtier_cache_misses_total": 5.0,
+    "vmtier_cache_used_bytes": 0.0,
+    "vmtier_catalog_capacity_available": 1.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 39317.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 33556.0,
+    "vmtier_catalog_file_bytes{file=\"database\"}": 49152.0,
+    "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+    "vmtier_catalog_file_bytes{file=\"wal\"}": 506792.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_catalog_packs": 24.0,
+    "vmtier_catalog_retired_windows": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"deleting\"}": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"foreign\"}": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"pending\"}": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"retired\"}": 0.0,
+    "vmtier_catalog_windows": 6.0,
+    "vmtier_cold_retention_seconds": 0.0,
+    "vmtier_cold_retired_windows_total": 0.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1795046400000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1795046400000.0,
+    "vmtier_go_heap_alloc_bytes_total": 6828200.0,
+    "vmtier_go_heap_objects_bytes": 2376704.0,
+    "vmtier_go_heap_released_bytes": 6545408.0,
+    "vmtier_go_memory_total_bytes": 17930504.0,
+    "vmtier_object_delete_requests_total": 0.0,
+    "vmtier_object_download_bytes_total": 78672.0,
+    "vmtier_object_get_requests_total": 52.0,
+    "vmtier_object_put_requests_total": 48.0,
+    "vmtier_object_range_requests_total": 1.0,
+    "vmtier_orphan_gc_claimed_objects_total": 0.0,
+    "vmtier_orphan_gc_deleted_objects_total": 0.0,
+    "vmtier_orphan_gc_enabled": 0.0,
+    "vmtier_orphan_gc_failed_passes_total": 0.0,
+    "vmtier_orphan_gc_last_success_timestamp_seconds": 0.0,
+    "vmtier_orphan_gc_passes_total": 0.0,
+    "vmtier_query_decoded_bytes_total": 11520.0,
+    "vmtier_query_errors_total": 1.0,
+    "vmtier_query_index_estimate_peak_bytes": 3807.0,
+    "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+    "vmtier_query_memory_limit_bytes": 268435456.0,
+    "vmtier_query_memory_reserved_bytes": 0.0,
+    "vmtier_query_read_bytes_total": 5799.0,
+    "vmtier_query_requests_total": 2.0,
+    "vmtier_query_result_estimate_bytes_total": 594.0,
+    "vmtier_query_work_bytes": 134217728.0,
+    "vmtier_query_work_peak_bytes": 20513.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 850311.451,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 850311.451,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1795046400000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1795046400000.0,
+    "vmtier_stream_coverage_start_ms{tenant=\"1:2\",source=\"hot\"}": 1795035600000.0,
+    "vmtier_stream_coverage_start_ms{tenant=\"7:9\",source=\"hot\"}": 1795035600000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 850311.451,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 850311.451
+  },
+  "backend": "local",
+  "blob_outage": {
+    "cache_bytes": 0,
+    "coverage_unchanged": true,
+    "error_body": "{\"status\":\"error\",\"errorType\":\"422\",\"error\":\"error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:46831: cannot execute funcName=\\\"search_v7\\\" on vmstorage \\\"127.0.0.1:46831\\\": Cold search: object not found\"}",
+    "exact_baseline_and_recovery": true,
+    "healthy_and_ready_during_outage": true,
+    "http_status": 422,
+    "process_pid": 11159,
+    "vmtier_object_get_requests_total_delta": 1.0,
+    "vmtier_query_errors_total_delta": 1.0,
+    "vmtier_query_requests_total_delta": 1.0
+  },
+  "cache_measurement": {
+    "cache_limit_bytes": 33554432,
+    "cold_latency_ms": 4.228448999924694,
+    "cold_range_gets": 2.0,
+    "vm_result_cache": "disabled",
+    "warm_blob_bytes": 0.0,
+    "warm_latency_ms": 2.4232160000110525,
+    "warm_range_gets": 0.0
+  },
+  "candidate_binary_versions": {
+    "vminsert": "vminsert-20261106-175521-tags-v1.156.0-cluster-0-g02bcbd7e56",
+    "vmselect": "vmselect-20261106-175521-tags-v1.156.0-cluster-0-g02bcbd7e56",
+    "vmstorage": "vmstorage-20261106-175521-tags-v1.156.0-cluster-0-g02bcbd7e56"
+  },
+  "catalog": {
+    "coverage": [
+      {
+        "end_ms": 1795046400000,
+        "source_id": "hot",
+        "start_ms": 1795035600000,
+        "tenant": "1:2"
+      },
+      {
+        "end_ms": 1795046400000,
+        "source_id": "hot",
+        "start_ms": 1795035600000,
+        "tenant": "7:9"
+      }
+    ],
+    "generation": 6,
+    "packs": 24,
+    "schema": 2,
+    "windows": 6
+  },
+  "checks": [
+    "reference and pre-archive Hot contain the same old data",
+    "serve refuses missing state; SQLite initialization is explicit",
+    "source outage leaves zero coverage and fails readiness and required Cold queries; the load balancer check stays successful",
+    "healthy tenant reaches coverage and remains queryable while another source stream fails",
+    "SIGTERM during native export publishes nothing; restart automatically archives six stream windows",
+    "live owner excludes offline inspect/verify/backup and a second serve process without changing catalog",
+    "stock vmselect reads committed SQLite native packs through independent Cold RPC and Range GET",
+    "Cold raw export excludes young samples at and after the exact boundary millisecond",
+    "fresh Hot contains recent data only; both tenants have empty old-range raw exports",
+    "restart preserves coverage and avoids reexport; changed policy/source/blob locator/identity are rejected",
+    "360 exact instant/range comparisons passed across Cold, Hot and the boundary",
+    "Cold label names/values and series discovery match the reference for both tenants",
+    "warm immutable cache returns equal data with no additional Range GETs",
+    "service outage propagates as query failure; restart restores reads from persistent SQLite state",
+    "missing/truncated/checksum-invalid payloads fail queries; restored bytes recover without catalog mutation",
+    "running service attempts blob GET and returns its error; health/coverage readiness stay successful and exact reads recover without publication changes",
+    "Cold delete remains explicitly unsupported",
+    "clean shutdown releases ownership for offline backup/verify and leaves completed windows unchanged"
+  ],
+  "collision_fixture": true,
+  "comparison": "exact timestamps, labels and numeric strings; no tolerance",
+  "compatibility_driver_sha256": "a42364ee1f8a57b3391648a125e67b01e9f6e9880ff82afcddac3b4a63e43a41",
+  "dedup_interval": "1ms",
+  "differential_checks": 360,
+  "environment": {
+    "go": "go version go1.27.4 linux/amd64",
+    "linux_kernel": "6.18.44-fc-v653",
+    "logical_cpus_available": 4,
+    "machine": "x86_64",
+    "measurement_scope": "single development container, loopback; no real Sakura/AWS/MinIO service",
+    "moto": null,
+    "os": "Ubuntu 24.04.5 LTS",
+    "python": "3.13.18"
+  },
+  "final_metrics": {
+    "vmtier_archive_bytes_total": 0.0,
+    "vmtier_archive_committed_windows_total": 0.0,
+    "vmtier_archive_failed_passes_total": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"canceled\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"error\"}": 0.0,
+    "vmtier_archive_failed_windows_total{tenant=\"7:9\",source=\"hot\",reason=\"timeout\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"1:2\"}": 0.0,
+    "vmtier_archive_lag_seconds{tenant=\"7:9\"}": 0.0,
+    "vmtier_archive_last_commit_timestamp_seconds": 0.0,
+    "vmtier_archive_leader": 1.0,
+    "vmtier_archive_pack_bytes": 0.0,
+    "vmtier_archive_pack_peak_bytes": 0.0,
+    "vmtier_archive_passes_total": 14.0,
+    "vmtier_archive_samples_total": 0.0,
+    "vmtier_archive_verifier_bytes": 0.0,
+    "vmtier_archive_verifier_peak_bytes": 0.0,
+    "vmtier_blocks_total": 762.0,
+    "vmtier_build_info{version=\"v0.0.0-20261118082442-034d185b0be5\",commit=\"034d185b0be5829aebcf325024fb800482379126\",go_version=\"go1.27.4\",vm_version=\"v1.155.0-cluster\"}": 1.0,
+    "vmtier_cache_entries": 0.0,
+    "vmtier_cache_evictions_total": 0.0,
+    "vmtier_cache_hits_total": 0.0,
+    "vmtier_cache_inflight_reads": 0.0,
+    "vmtier_cache_limit_bytes": 0.0,
+    "vmtier_cache_misses_total": 2178.0,
+    "vmtier_cache_used_bytes": 0.0,
+    "vmtier_catalog_capacity_available": 1.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"data\"}": 39317.0,
+    "vmtier_catalog_committed_object_bytes{kind=\"index\"}": 33556.0,
+    "vmtier_catalog_file_bytes{file=\"database\"}": 61440.0,
+    "vmtier_catalog_file_bytes{file=\"shared_memory\"}": 32768.0,
+    "vmtier_catalog_file_bytes{file=\"wal\"}": 0.0,
+    "vmtier_catalog_generation": 6.0,
+    "vmtier_catalog_packs": 24.0,
+    "vmtier_catalog_retired_windows": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"deleting\"}": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"foreign\"}": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"pending\"}": 0.0,
+    "vmtier_catalog_unpublished_objects{state=\"retired\"}": 0.0,
+    "vmtier_catalog_windows": 6.0,
+    "vmtier_cold_retention_seconds": 0.0,
+    "vmtier_cold_retired_windows_total": 0.0,
+    "vmtier_coverage_end_ms{tenant=\"1:2\"}": 1795046400000.0,
+    "vmtier_coverage_end_ms{tenant=\"7:9\"}": 1795046400000.0,
+    "vmtier_go_heap_alloc_bytes_total": 53870416.0,
+    "vmtier_go_heap_objects_bytes": 2937464.0,
+    "vmtier_go_heap_released_bytes": 2875392.0,
+    "vmtier_go_memory_total_bytes": 13998344.0,
+    "vmtier_object_delete_requests_total": 0.0,
+    "vmtier_object_download_bytes_total": 2555069.0,
+    "vmtier_object_get_requests_total": 1416.0,
+    "vmtier_object_put_requests_total": 0.0,
+    "vmtier_object_range_requests_total": 422.0,
+    "vmtier_orphan_gc_claimed_objects_total": 0.0,
+    "vmtier_orphan_gc_deleted_objects_total": 0.0,
+    "vmtier_orphan_gc_enabled": 0.0,
+    "vmtier_orphan_gc_failed_passes_total": 0.0,
+    "vmtier_orphan_gc_last_success_timestamp_seconds": 0.0,
+    "vmtier_orphan_gc_passes_total": 0.0,
+    "vmtier_query_decoded_bytes_total": 13449024.0,
+    "vmtier_query_errors_total": 0.0,
+    "vmtier_query_index_estimate_peak_bytes": 3807.0,
+    "vmtier_query_limit_refusals_total{reason=\"blocks\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"catalog_plan\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"decoded_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"memory_admission\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"read_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"response_bytes\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"series\"}": 0.0,
+    "vmtier_query_limit_refusals_total{reason=\"shared_reads\"}": 0.0,
+    "vmtier_query_memory_limit_bytes": 268435456.0,
+    "vmtier_query_memory_reserved_bytes": 0.0,
+    "vmtier_query_read_bytes_total": 2555069.0,
+    "vmtier_query_requests_total": 380.0,
+    "vmtier_query_result_estimate_bytes_total": 462960.0,
+    "vmtier_query_work_bytes": 134217728.0,
+    "vmtier_query_work_peak_bytes": 741838.0,
+    "vmtier_ready": 1.0,
+    "vmtier_retention_headroom_seconds{tenant=\"1:2\"}": 850308.414,
+    "vmtier_retention_headroom_seconds{tenant=\"7:9\"}": 850308.414,
+    "vmtier_stream_archive_lag_seconds{tenant=\"1:2\",source=\"hot\"}": 0.0,
+    "vmtier_stream_archive_lag_seconds{tenant=\"7:9\",source=\"hot\"}": 0.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"1:2\",source=\"hot\"}": 1795046400000.0,
+    "vmtier_stream_coverage_end_ms{tenant=\"7:9\",source=\"hot\"}": 1795046400000.0,
+    "vmtier_stream_coverage_start_ms{tenant=\"1:2\",source=\"hot\"}": 1795035600000.0,
+    "vmtier_stream_coverage_start_ms{tenant=\"7:9\",source=\"hot\"}": 1795035600000.0,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"1:2\",source=\"hot\"}": 850308.414,
+    "vmtier_stream_retention_headroom_seconds{tenant=\"7:9\",source=\"hot\"}": 850308.414
+  },
+  "fixture": {
+    "archive_age_ms": 11885508,
+    "boundary_ms": 1795046400000,
+    "created_at_ms": 1795060085508,
+    "end_ms": 1795053600000,
+    "finished_at_ms": 1795060093012,
+    "input_samples": 17654,
+    "max_pack_blocks": 4,
+    "next_eligible_at_ms": 1795061885508,
+    "scrape_interval_ms": 30000,
+    "series_per_tenant": 16,
+    "special_cases": [
+      "irregular gaps",
+      "counter reset",
+      "stale marker",
+      "NaN",
+      "+Inf",
+      "-Inf",
+      "duplicate/conflicting timestamps",
+      "millisecond boundary",
+      "empty/absent labels"
+    ],
+    "start_ms": 1795035600000,
+    "tenants": [
+      "1:2",
+      "7:9"
+    ],
+    "window_ms": 3600000
+  },
+  "frontend_reconnect": {
+    "cached_dial_error_retries": 6,
+    "cached_dial_error_retry_budget_seconds": 5,
+    "seconds": 0.6133232909999151
+  },
+  "interrupted_shutdown_seconds": 0.003281501999936154,
+  "metadata_measurements": [
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36435.0,
+      "get_requests": 12.0,
+      "latency_ms": 3.3412000000225817,
+      "path": "labels",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36435.0,
+      "get_requests": 12.0,
+      "latency_ms": 4.865806999987399,
+      "path": "label/cold_label/values",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36435.0,
+      "get_requests": 12.0,
+      "latency_ms": 4.229051000038453,
+      "path": "label/__name__/values",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36435.0,
+      "get_requests": 12.0,
+      "latency_ms": 4.403152999998383,
+      "path": "series",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "1:2",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36438.0,
+      "get_requests": 12.0,
+      "latency_ms": 3.277679999996508,
+      "path": "labels",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36438.0,
+      "get_requests": 12.0,
+      "latency_ms": 3.753595000034693,
+      "path": "label/cold_label/values",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36438.0,
+      "get_requests": 12.0,
+      "latency_ms": 3.1356880000430465,
+      "path": "label/__name__/values",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    },
+    {
+      "cache_bytes": 0,
+      "download_bytes": 36438.0,
+      "get_requests": 12.0,
+      "latency_ms": 3.648547000011604,
+      "path": "series",
+      "phase": "uncached",
+      "range_requests": 12.0,
+      "status": "passed",
+      "tenant": "7:9",
+      "vm_result_cache": "disabled"
+    }
+  ],
+  "object_bytes": {
+    "index": 33556,
+    "pack": 39317
+  },
+  "omitted_legacy_flags": [],
+  "provenance": {
+    "binary_sha256": {
+      "vminsert": "a41e05e84e1e524f2b129d9c05096898a98f9c1947fa4b78647daa2a1bc43d45",
+      "vmselect": "c6b5d0486cfb54626691b97c881e780a7233dde2a4d84933e83780d5bc3e41c8",
+      "vmstorage": "6f63d0d296500545edd34a053b30b85918df837bfe0820568a34ef93bca0fc3e",
+      "vmtier": "e6e6394c07060d86fc2e24728694a69983049bd580abe6ec8555f3f2fc2d0c59"
+    },
+    "executor_hostname": "vm",
+    "go_source_tree_hash_scope": "sorted cmd/**/*.go, internal/**/*.go, go.mod and go.sum; path NUL bytes NUL",
+    "go_source_tree_sha256": "18ce999bc5afd125e5d2f26b68baf72a411e9a6277e275cb70aebef72af7ef85",
+    "harness_sha256": {
+      "e2e.py": "02115b51a2ef491b91fd4bfd2d93cf86674c4770a5b46f5183e79fe55bc7ec00",
+      "e2e_serve.py": "ae81e9a7bd99bb39c2fda6b5f5a4f184339cfa93f9d472ca2a218dd728b973a4",
+      "s3_compat_proxy.py": "36c2fe5ca563d25227df6acb8c0a553c5407d109053e89cd7a3a932f8c4b13ef"
+    }
+  },
+  "query_timings_ms": {
+    "boundary_reference": {
+      "count": 60,
+      "median": 1.0737844999653134,
+      "p95": 1.3243350000493592
+    },
+    "boundary_tiered": {
+      "count": 60,
+      "median": 1.854778999984319,
+      "p95": 3.0923440000378832
+    },
+    "cold_reference": {
+      "count": 60,
+      "median": 1.1690004999991288,
+      "p95": 1.9018730000652795
+    },
+    "cold_tiered": {
+      "count": 60,
+      "median": 2.7735040000607114,
+      "p95": 6.195135000098162
+    },
+    "hot_reference": {
+      "count": 60,
+      "median": 1.0235585000373248,
+      "p95": 1.6440060001059464
+    },
+    "hot_tiered": {
+      "count": 60,
+      "median": 1.218336000022191,
+      "p95": 2.423482000040167
+    }
+  },
+  "recorded_at_utc": "2026-11-19T03:48:13.012524+00:00",
+  "replicas": 1,
+  "restart_shutdown_seconds": 0.03198555899996336,
+  "runtime": {
+    "outer_GOMAXPROCS": null,
+    "policy": "CLI --gomaxprocs > outer GOMAXPROCS > 2; applied to all workload children",
+    "processes": [
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:44087",
+          "-vminsertAddr=127.0.0.1:54277",
+          "-vmselectAddr=127.0.0.1:44349",
+          "-storageDataPath=<work>/sqlite-156-collision/reference-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-storage-0-full",
+        "pid": 10925
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:47467",
+          "-storageNode=127.0.0.1:54277",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-insert-full",
+        "pid": 10932
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:47843",
+          "-storageNode=127.0.0.1:44349",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=<work>/sqlite-156-collision/reference-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "reference-select-full",
+        "pid": 10939
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:36853",
+          "-vminsertAddr=127.0.0.1:41655",
+          "-vmselectAddr=127.0.0.1:52009",
+          "-storageDataPath=<work>/sqlite-156-collision/hot-storage-0-full",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-full",
+        "pid": 10946
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:33171",
+          "-storageNode=127.0.0.1:41655",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-full",
+        "pid": 10953
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:45433",
+          "-storageNode=127.0.0.1:52009",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=<work>/sqlite-156-collision/hot-select-full"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-full",
+        "pid": 10960
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "serve-missing"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "catalog-init",
+          "-backend",
+          "sqlite",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-path",
+          "<work>/sqlite-156-collision/catalog",
+          "-id",
+          "serve-e2e"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "catalog-init"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-source-outage",
+        "pid": 10985
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:46693",
+          "-storageNode=127.0.0.1:46831",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=<work>/sqlite-156-collision/cold-only-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "cold-only-select",
+        "pid": 10995
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-resumed-independent-streams",
+        "pid": 11005
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "<work>/sqlite-156-collision/catalog",
+          "-id",
+          "serve-e2e",
+          "-out",
+          "<work>/sqlite-156-collision/forbidden-live-backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "backup-owned"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-listen",
+          "127.0.0.1:35749",
+          "-http",
+          "127.0.0.1:44811"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "serve-second-owner"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "verify",
+          "-config",
+          "<work>/sqlite-156-collision/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "verify-owned"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "inspect",
+          "-config",
+          "<work>/sqlite-156-collision/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "inspect-owned"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmstorage",
+          "-httpListenAddr=127.0.0.1:36853",
+          "-vminsertAddr=127.0.0.1:41655",
+          "-vmselectAddr=127.0.0.1:52009",
+          "-storageDataPath=<work>/sqlite-156-collision/hot-storage-0-recent-only",
+          "-retentionPeriod=30d",
+          "-dedup.minScrapeInterval=1ms",
+          "-inmemoryDataFlushInterval=1s",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-storage-0-recent-only",
+        "pid": 11070
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vminsert",
+          "-httpListenAddr=127.0.0.1:33171",
+          "-storageNode=127.0.0.1:41655",
+          "-replicationFactor=1",
+          "-memory.allowedBytes=128MiB"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-insert-recent-only",
+        "pid": 11077
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:45433",
+          "-storageNode=127.0.0.1:52009",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=<work>/sqlite-156-collision/hot-select-recent-only"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "hot-select-recent-only",
+        "pid": 11084
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/changed-archive_age.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-archive_age"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/changed-lateness.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-lateness"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/changed-source.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-source"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/changed-blob-locator.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-blob-locator"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/changed-identity.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 1,
+        "kind": "one-shot",
+        "name": "reject-identity"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-restarted-after-hot-removal",
+        "pid": 11129
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmselect",
+          "-httpListenAddr=127.0.0.1:56353",
+          "-storageNode=127.0.0.1:52009,127.0.0.1:46831",
+          "-replicationFactor=1",
+          "-globalReplicationFactor=1",
+          "-search.skipSlowReplicas=false",
+          "-search.denyPartialResponse=true",
+          "-search.disableCache",
+          "-search.maxLabelsAPIDuration=5s",
+          "-dedup.minScrapeInterval=1ms",
+          "-memory.allowedBytes=128MiB",
+          "-cacheDataPath=<work>/sqlite-156-collision/tiered-select"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "tiered-select",
+        "pid": 11136
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-cache-enabled",
+        "pid": 11152
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "serve",
+          "-config",
+          "<work>/sqlite-156-collision/config.json",
+          "-listen",
+          "127.0.0.1:46831",
+          "-http",
+          "127.0.0.1:60713"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "managed",
+        "name": "serve-fault-tests",
+        "pid": 11159
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "catalog-backup",
+          "-path",
+          "<work>/sqlite-156-collision/catalog",
+          "-id",
+          "serve-e2e",
+          "-out",
+          "<work>/sqlite-156-collision/final-backup"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "backup-after-stop"
+      },
+      {
+        "command": [
+          "<work>/sqlite-156-collision/harness-root/.bin/vmtier",
+          "verify",
+          "-config",
+          "<work>/sqlite-156-collision/config.json"
+        ],
+        "environment": {
+          "GOMAXPROCS": "2"
+        },
+        "exit_code": 0,
+        "kind": "one-shot",
+        "name": "verify-after-stop"
+      }
+    ],
+    "selected_GOMAXPROCS": "2",
+    "selection": "argument"
+  },
+  "scope": "Experimental compatibility evidence; does not extend the supported version contract.",
+  "started_at_utc": "2026-11-19T03:48:04.758444+00:00",
+  "status": "passed",
+  "suite": "sqlite",
+  "tiered_vm_labels_api_max_duration": "5s",
+  "vm_result_cache": "disabled",
+  "vmtier_codec_pin": "v1.155.0-cluster/cab3d5fbeeedd5d0374c1dabde93939af4c2499c",
+  "vmtier_git_commit": "034d185b0be5829aebcf325024fb800482379126"
+}
