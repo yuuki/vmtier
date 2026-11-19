@@ -36,11 +36,14 @@ but no stock-VM differential suite exercises them yet. HA, backfill, other VM
 versions, and other platforms are outside the first-release scope. PostgreSQL
 database HA and old-primary fencing remain operator responsibilities.
 
-Releases from `v0.1.0-rc.3` use SQLite catalog schema 2 and PostgreSQL catalog
-schema 3. They refuse a catalog that `v0.1.0-rc.2` created until `catalog-upgrade`
-upgrades it, and `v0.1.0-rc.2` refuses an upgraded catalog. Take a backup first,
-then follow [upgrade schema 1](sqlite-catalog.md#upgrade-schema-1) or the
+Releases after `v0.1.0-rc.3` use SQLite catalog schema 3 and PostgreSQL catalog
+schema 4, which record object sizes in the object ledger
+([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)). They refuse a catalog that
+`v0.1.0-rc.3` or an earlier release created until `catalog-upgrade` upgrades it,
+and those releases refuse an upgraded catalog. Take a backup first, then follow
+[upgrade an earlier schema](sqlite-catalog.md#upgrade-an-earlier-schema) or the
 [PostgreSQL upgrade](postgres-catalog.md#configuration-and-lifecycle).
+`v0.1.0-rc.3` used SQLite schema 2 and PostgreSQL schema 3.
 
 ## Release contents
 

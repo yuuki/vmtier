@@ -47,7 +47,8 @@ tests; older VM revisions do not qualify the current dependency set.
   [Cold retention](adr/0007-cold-retention.md),
   [adding tenants and sources](adr/0008-adding-streams.md),
   [load balancer check](adr/0009-load-balancer-check.md),
-  [lateness until searchable](adr/0010-lateness-until-searchable.md).
+  [lateness until searchable](adr/0010-lateness-until-searchable.md),
+  [object sizes in the ledger](adr/0011-object-sizes-in-the-ledger.md).
 - [Related implementations](prior-art.md) and [third-party notices](../THIRD_PARTY_NOTICES.md).
 - [Validation evidence index](evidence.md): scoped reports and retained raw results.
 

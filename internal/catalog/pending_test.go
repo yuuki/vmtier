@@ -83,6 +83,15 @@ func postgresLedgerFixtureFor(t *testing.T, c Contract) ledgerFixture {
 	}
 }
 
+// pendingObjects records keys whose objects all have the given size.
+func pendingObjects(size int64, keys ...string) []PendingObject {
+	out := make([]PendingObject, len(keys))
+	for i, key := range keys {
+		out[i] = PendingObject{Key: key, Bytes: size}
+	}
+	return out
+}
+
 func publicationKeys(p Publication) []string {
 	var keys []string
 	for _, ref := range p.Packs {
@@ -107,7 +116,8 @@ func testLedgerClaim(t *testing.T, f ledgerFixture) {
 	published, abandoned := sqlitePublication("1:2", "a", 100, 1), sqlitePublication("1:2", "a", 200, 2)
 	recordPublication(t, f.repo, published)
 	recordPublication(t, f.repo, abandoned)
-	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Pending: 6}) {
+	// One pack of 10+20 bytes and two more of the same sizes.
+	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Pending: 6, Bytes: LedgerStateValues{Pending: 90}}) {
 		t.Fatalf("recorded counts: %+v %v", counts, err)
 	}
 	if _, err := f.publish(0, published); err != nil {
@@ -132,20 +142,21 @@ func testLedgerClaim(t *testing.T, f ledgerFixture) {
 	if want := publicationKeys(abandoned); len(second) != 4 || !reflect.DeepEqual(all[0:1], want[0:1]) || !containsAll(second, want) {
 		t.Fatalf("resumed claim: first=%v second=%v want=%v", first, second, want)
 	}
-	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Deleting: 4}) {
+	// A claim keeps the recorded sizes until the keys are forgotten.
+	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Deleting: 4, Bytes: LedgerStateValues{Deleting: 60}}) {
 		t.Fatalf("claimed counts: %+v %v", counts, err)
 	}
 	// A claimed key can never be published, even by an attempt that verified it.
 	if _, err := f.publish(1, abandoned); !errors.Is(err, ErrUnrecordedObject) {
 		t.Fatalf("claimed key published: %v", err)
 	}
-	if err := f.repo.RecordPendingObjects(ctx, "1:2", []string{abandoned.Packs[0].DataKey}); !errors.Is(err, ErrInvalidPublication) {
+	if err := f.repo.RecordPendingObjects(ctx, "1:2", pendingObjects(10, abandoned.Packs[0].DataKey)); !errors.Is(err, ErrInvalidPublication) {
 		t.Fatalf("claimed key recorded again: %v", err)
 	}
 	if err := f.repo.ForgetDeletedObjects(ctx, publicationKeys(abandoned)[:2]); err != nil {
 		t.Fatal(err)
 	}
-	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Deleting: 2}) {
+	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Deleting: 2, Bytes: LedgerStateValues{Deleting: 30}}) {
 		t.Fatalf("forgotten counts: %+v %v", counts, err)
 	}
 	if err := f.repo.ForgetDeletedObjects(ctx, publicationKeys(abandoned)); err != nil {
@@ -207,17 +218,22 @@ func testLedgerRecordValidation(t *testing.T, f ledgerFixture) {
 		{"hidden component", "1:2", []string{"tenants/1:2/.attempts/x"}},
 		{"repeated", "1:2", []string{"tenants/1:2/attempts/x", "tenants/1:2/attempts/x"}},
 	} {
-		if err := f.repo.RecordPendingObjects(ctx, tc.tenant, tc.keys); !errors.Is(err, ErrInvalidPublication) {
+		if err := f.repo.RecordPendingObjects(ctx, tc.tenant, pendingObjects(1, tc.keys...)); !errors.Is(err, ErrInvalidPublication) {
 			t.Fatalf("%s accepted: %v", tc.name, err)
 		}
 	}
-	if err := f.repo.RecordPendingObjects(ctx, "1:2", []string{"tenants/1:2/attempts/x"}); err != nil {
+	for _, size := range []int64{-1, MaxRecordedObjectBytes + 1} {
+		if err := f.repo.RecordPendingObjects(ctx, "1:2", pendingObjects(size, "tenants/1:2/attempts/x")); !errors.Is(err, ErrInvalidPublication) {
+			t.Fatalf("object size %d accepted: %v", size, err)
+		}
+	}
+	if err := f.repo.RecordPendingObjects(ctx, "1:2", pendingObjects(MaxRecordedObjectBytes, "tenants/1:2/attempts/x")); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.repo.RecordPendingObjects(ctx, "1:2", []string{"tenants/1:2/attempts/y", "tenants/1:2/attempts/x"}); !errors.Is(err, ErrInvalidPublication) {
+	if err := f.repo.RecordPendingObjects(ctx, "1:2", pendingObjects(0, "tenants/1:2/attempts/y", "tenants/1:2/attempts/x")); !errors.Is(err, ErrInvalidPublication) {
 		t.Fatalf("duplicate recording accepted: %v", err)
 	}
-	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts.Pending != 1 {
+	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Pending: 1, Bytes: LedgerStateValues{Pending: MaxRecordedObjectBytes}}) {
 		t.Fatalf("failed recording was not atomic: %+v %v", counts, err)
 	}
 }
@@ -352,7 +368,7 @@ func TestPostgresUpgradeAddsObjectLedger(t *testing.T) {
 	if counts, err := upgraded.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{}) {
 		t.Fatalf("upgraded ledger: %+v %v", counts, err)
 	}
-	if err := upgraded.RecordPendingObjects(ctx, "1:2", []string{"tenants/1:2/attempts/after-upgrade"}); err != nil {
+	if err := upgraded.RecordPendingObjects(ctx, "1:2", pendingObjects(10, "tenants/1:2/attempts/after-upgrade")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -372,13 +388,18 @@ func TestPostgresImportCopiesObjectLedger(t *testing.T) {
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("claim: %v %v", claimed, err)
 	}
+	want, err := source.UnpublishedObjects(ctx)
+	if err != nil || want.Pending != 1 || want.Deleting != 1 || want.Bytes.Pending+want.Bytes.Deleting != 30 {
+		t.Fatalf("source ledger: %+v %v", want, err)
+	}
 	destination, err := ImportSQLiteToPostgres(ctx, source, dsn, "ledger-cutover")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer destination.Close()
-	if counts, err := destination.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Pending: 1, Deleting: 1}) {
-		t.Fatalf("imported ledger: %+v %v", counts, err)
+	// States and object sizes survive the import.
+	if counts, err := destination.UnpublishedObjects(ctx); err != nil || counts != want {
+		t.Fatalf("imported ledger: %+v %v, want %+v", counts, err, want)
 	}
 	keys, err := destination.ClaimUnpublishedObjects(ctx, time.Hour, 10)
 	if err != nil || !reflect.DeepEqual(keys, claimed) {
@@ -467,7 +488,7 @@ func TestSQLiteRestoreKeepsLedgerAndUpgradesSchema1Backups(t *testing.T) {
 	restored.Close()
 
 	// A backup whose ledger names a published key is refused.
-	if _, err := s.db.Exec(`INSERT INTO pending_objects VALUES(?,0,'deleting')`, first.Packs[0].IndexKey); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO pending_objects(object_key,created_ms,state) VALUES(?,0,'deleting')`, first.Packs[0].IndexKey); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Backup(ctx, filepath.Join(root, "damaged")); err != nil {
@@ -484,7 +505,7 @@ func TestSQLiteRestoreKeepsLedgerAndUpgradesSchema1Backups(t *testing.T) {
 	// A backup made by a release without the ledger still restores.
 	before := sqliteStatus(t, s)
 	downgradeSQLite(t, s)
-	writeSchema1Backup(t, filepath.Join(root, "state"), filepath.Join(root, "schema1"), "original")
+	writeReleasedBackup(t, filepath.Join(root, "state"), filepath.Join(root, "schema1"), "original", 1)
 	upgraded, err := RestoreSQLite(ctx, filepath.Join(root, "schema1"), filepath.Join(root, "restored-schema1"), "restored-schema1")
 	if err != nil {
 		t.Fatal(err)
@@ -500,9 +521,10 @@ func TestSQLiteRestoreKeepsLedgerAndUpgradesSchema1Backups(t *testing.T) {
 	}
 }
 
-// writeSchema1Backup writes a backup of a schema 1 catalog as an earlier
-// release did: a database image and metadata that records schema 1.
-func writeSchema1Backup(t *testing.T, stateDir, backupDir, id string) {
+// writeReleasedBackup writes a backup of a catalog of an earlier schema as
+// the release of that schema did: a database image and metadata of version 1
+// for schema 1, of version 2 for schema 2.
+func writeReleasedBackup(t *testing.T, stateDir, backupDir, id string, schema int) {
 	t.Helper()
 	ctx := context.Background()
 	s, err := openSQLiteFile(ctx, stateDir, id)
@@ -517,7 +539,7 @@ func writeSchema1Backup(t *testing.T, stateDir, backupDir, id string) {
 	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", image); err != nil {
 		t.Fatal(err)
 	}
-	status, err := readSQLiteStatusVersion(ctx, sqlDB{s.db}, id, 1)
+	status, err := readSQLiteStatusVersion(ctx, sqlDB{s.db}, id, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +547,11 @@ func writeSchema1Backup(t *testing.T, stateDir, backupDir, id string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.Marshal(sqliteBackupMetadata{Version: 1, DatabaseBytes: size, DatabaseSHA256: checksum, Status: status})
+	version := 2
+	if schema == 1 {
+		version = 1
+	}
+	data, err := json.Marshal(sqliteBackupMetadata{Version: version, DatabaseBytes: size, DatabaseSHA256: checksum, Status: status})
 	if err != nil {
 		t.Fatal(err)
 	}

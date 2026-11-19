@@ -72,12 +72,12 @@ func publishSQLite(t *testing.T, f *sqliteFixture, tenant, source string, start 
 	if err != nil {
 		t.Fatal(err)
 	}
-	var keys []string
+	var objects []catalog.PendingObject
 	for _, ref := range refs {
-		keys = append(keys, ref.DataKey, ref.IndexKey)
+		objects = append(objects, catalog.PendingObject{Key: ref.DataKey, Bytes: ref.DataBytes}, catalog.PendingObject{Key: ref.IndexKey, Bytes: ref.IndexBytes})
 	}
-	if len(keys) > 0 {
-		if err = f.db.RecordPendingObjects(ctx, tenant, keys); err != nil {
+	if len(objects) > 0 {
+		if err = f.db.RecordPendingObjects(ctx, tenant, objects); err != nil {
 			t.Fatal(err)
 		}
 	}

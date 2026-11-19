@@ -163,7 +163,7 @@ func TestServiceWorkerCollectsUnpublishedObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	orphans := []string{"tenants/1:2/attempts/failed/x.pack", "tenants/1:2/attempts/failed/x.json"}
+	orphans := []catalog.PendingObject{{Key: "tenants/1:2/attempts/failed/x.pack", Bytes: 5}, {Key: "tenants/1:2/attempts/failed/x.json", Bytes: 3}}
 	if err := db.RecordPendingObjects(ctx, "1:2", orphans); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestServiceWorkerCollectsUnpublishedObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.(io.Closer).Close()
-	for _, key := range append([]string{"tenants/1:2/other-catalog/keep.pack"}, orphans...) {
+	for _, key := range []string{"tenants/1:2/other-catalog/keep.pack", orphans[0].Key, orphans[1].Key} {
 		if err := store.Put(ctx, key, []byte(key)); err != nil {
 			t.Fatal(err)
 		}
@@ -182,32 +182,45 @@ func TestServiceWorkerCollectsUnpublishedObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reader, err := c.RepositoryReader(store, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scrape := func() string {
+		recorder := httptest.NewRecorder()
+		serveMux(&c, reader, gateway.New(metricsLimitBackend{}, gateway.Limits{}), store, &stats).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		return recorder.Body.String()
+	}
+	// The ledger measures the recorded objects before they are collected.
+	before := scrape()
+	for _, want := range []string{
+		"vmtier_catalog_unpublished_objects{state=\"pending\"} 2\n", "vmtier_catalog_unpublished_object_bytes{state=\"pending\"} 8\n",
+		"vmtier_catalog_unpublished_objects_unsized{state=\"pending\"} 0\n", "vmtier_catalog_unpublished_object_bytes{state=\"foreign\"} 0\n",
+	} {
+		if !strings.Contains(before, want) {
+			t.Fatalf("metrics lack %q:\n%s", want, before)
+		}
+	}
 	worker := newWorker(db)
 	time.Sleep(20 * time.Millisecond)
 	if _, err := worker.RunPass(ctx, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range orphans {
-		if _, err := os.Stat(filepath.Join(c.Store.Path, key)); !os.IsNotExist(err) {
-			t.Fatalf("orphan %s survived: %v", key, err)
+	for _, orphan := range orphans {
+		if _, err := os.Stat(filepath.Join(c.Store.Path, orphan.Key)); !os.IsNotExist(err) {
+			t.Fatalf("orphan %s survived: %v", orphan.Key, err)
 		}
 	}
 	if _, err := store.Get(ctx, "tenants/1:2/other-catalog/keep.pack"); err != nil {
 		t.Fatalf("unrecorded object deleted: %v", err)
 	}
-	reader, err := c.RepositoryReader(store, db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorder := httptest.NewRecorder()
-	serveMux(&c, reader, gateway.New(metricsLimitBackend{}, gateway.Limits{}), store, &stats).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	metrics := recorder.Body.String()
+	metrics := scrape()
 	for _, want := range []string{
 		"vmtier_orphan_gc_enabled 1\n", "vmtier_orphan_gc_passes_total 1\n", "vmtier_orphan_gc_claimed_objects_total 2\n",
 		"vmtier_orphan_gc_deleted_objects_total 2\n", "vmtier_orphan_gc_failed_passes_total 0\n",
 		"vmtier_object_delete_requests_total 2\n",
 		"vmtier_catalog_unpublished_objects{state=\"pending\"} 0\n", "vmtier_catalog_unpublished_objects{state=\"retired\"} 0\n",
-		"vmtier_catalog_unpublished_objects{state=\"deleting\"} 0\n", "vmtier_cold_retired_windows_total 0\n", "vmtier_cold_retention_seconds 0.000\n", "vmtier_catalog_retired_windows 0\n",
+		"vmtier_catalog_unpublished_objects{state=\"deleting\"} 0\n", "vmtier_catalog_unpublished_object_bytes{state=\"pending\"} 0\n", "vmtier_cold_retired_windows_total 0\n", "vmtier_cold_retention_seconds 0.000\n", "vmtier_catalog_retired_windows 0\n",
 		fmt.Sprintf("vmtier_stream_coverage_start_ms{tenant=\"1:2\",source=\"hot\"} %d\n", c.CoverageStart),
 	} {
 		if !strings.Contains(metrics, want) {

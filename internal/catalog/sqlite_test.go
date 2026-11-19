@@ -37,14 +37,14 @@ func sqlitePublication(tenant, source string, start int64, packs int) Publicatio
 // does before its uploads, so that the publication may reference them.
 func recordPublication(t testing.TB, ledger ObjectLedger, p Publication) {
 	t.Helper()
-	var keys []string
+	var objects []PendingObject
 	for _, ref := range p.Packs {
-		keys = append(keys, ref.DataKey, ref.IndexKey)
+		objects = append(objects, PendingObject{Key: ref.DataKey, Bytes: ref.DataBytes}, PendingObject{Key: ref.IndexKey, Bytes: ref.IndexBytes})
 	}
-	if len(keys) == 0 {
+	if len(objects) == 0 {
 		return
 	}
-	if err := ledger.RecordPendingObjects(context.Background(), p.Tenant, keys); err != nil {
+	if err := ledger.RecordPendingObjects(context.Background(), p.Tenant, objects); err != nil {
 		t.Fatal("record pending objects:", err)
 	}
 }
@@ -195,7 +195,7 @@ func TestSQLiteRejectsInvalidTransitions(t *testing.T) {
 	if counts, err := s.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{}) {
 		t.Fatalf("publication left pending records: %+v %v", counts, err)
 	}
-	if err := s.RecordPendingObjects(ctx, "1:2", []string{p.Packs[0].DataKey}); !errors.Is(err, ErrInvalidPublication) {
+	if err := s.RecordPendingObjects(ctx, "1:2", pendingObjects(10, p.Packs[0].DataKey)); !errors.Is(err, ErrInvalidPublication) {
 		t.Fatalf("published key recorded as pending: %v", err)
 	}
 	next := sqlitePublication("1:2", "a", 200, 1)

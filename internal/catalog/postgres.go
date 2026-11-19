@@ -14,7 +14,7 @@ import (
 	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
-const PostgreSQLSchemaVersion = 3
+const PostgreSQLSchemaVersion = 4
 
 // Postgres stores catalog metadata in an explicitly initialized PostgreSQL
 // schema. It permits independent clients; publication is serialized by a row
@@ -81,17 +81,28 @@ CREATE TABLE %[1]s.packs (
 );
 ` + postgresLeaseSchema + postgresPendingSchema
 
-// postgresPendingSchema is the object ledger added by schema 3.
+// postgresPendingSchema is the object ledger added by schema 3, with the
+// object sizes of schema 4. A NULL size is a key recorded before schema 4.
 const postgresPendingSchema = `
 CREATE TABLE %[1]s.pending_objects (
  object_key TEXT PRIMARY KEY CHECK (octet_length(object_key) BETWEEN 1 AND 1024),
  created_ms BIGINT NOT NULL CHECK (created_ms >= 0),
  state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting')),
- incarnation TEXT NOT NULL DEFAULT '' CHECK (octet_length(incarnation) <= 256)
+ incarnation TEXT NOT NULL DEFAULT '' CHECK (octet_length(incarnation) <= 256),
+ ` + postgresObjectBytesColumn + `
 );
 CREATE INDEX pending_objects_age ON %[1]s.pending_objects (state, created_ms);
 CREATE INDEX windows_start ON %[1]s.windows (start_ms);
 `
+
+// postgresObjectBytesColumn records the size of a ledger key's object, bounded
+// like a pack descriptor.
+const postgresObjectBytesColumn = `object_bytes BIGINT CHECK (object_bytes IS NULL OR (object_bytes >= 0 AND object_bytes <= 67108864))`
+
+// postgresObjectBytesUpgrade adds the object sizes of schema 4 to a schema 3
+// ledger; existing keys keep no size. Adding a nullable column without a
+// default rewrites no rows.
+const postgresObjectBytesUpgrade = `ALTER TABLE %[1]s.pending_objects ADD COLUMN ` + postgresObjectBytesColumn + `;`
 
 // postgresRetentionUpgrade adds the retention columns of schema 3 to an older
 // catalog: every stream starts at the coverage origin and nothing is retired.

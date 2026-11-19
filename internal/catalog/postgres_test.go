@@ -283,7 +283,7 @@ func TestPostgresRejectsInvalidTransitions(t *testing.T) {
 	if counts, err := s.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{}) {
 		t.Fatalf("publication left pending records: %+v %v", counts, err)
 	}
-	if err := s.RecordPendingObjects(ctx, "1:2", []string{first.Packs[0].DataKey}); !errors.Is(err, ErrInvalidPublication) {
+	if err := s.RecordPendingObjects(ctx, "1:2", pendingObjects(10, first.Packs[0].DataKey)); !errors.Is(err, ErrInvalidPublication) {
 		t.Fatalf("published key recorded as pending: %v", err)
 	}
 	before := postgresStatus(t, ctx, s)

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	SQLiteSchemaVersion     = 2
+	SQLiteSchemaVersion     = 3
 	SQLiteFile              = "catalog.db"
 	MaxPacksPerWindow       = 1024
 	SQLiteMaxPacksPerWindow = MaxPacksPerWindow

@@ -77,16 +77,26 @@ CREATE TABLE packs (
 ) WITHOUT ROWID;
 ` + sqlitePendingSchema
 
-// sqlitePendingSchema is the object ledger added by schema 2.
+// sqlitePendingSchema is the object ledger added by schema 2, with the object
+// sizes of schema 3. A NULL size is a key recorded before schema 3.
 const sqlitePendingSchema = `
 CREATE TABLE pending_objects (
  object_key TEXT PRIMARY KEY CHECK (length(object_key) BETWEEN 1 AND 1024),
  created_ms INTEGER NOT NULL CHECK (created_ms >= 0),
- state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting'))
+ state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting')),
+ ` + sqliteObjectBytesColumn + `
 ) WITHOUT ROWID;
 CREATE INDEX pending_objects_age ON pending_objects (state, created_ms);
 CREATE INDEX windows_start ON windows (start_ms);
 `
+
+// sqliteObjectBytesColumn records the size of a ledger key's object, bounded
+// like a pack descriptor.
+const sqliteObjectBytesColumn = `object_bytes INTEGER CHECK (object_bytes IS NULL OR (object_bytes >= 0 AND object_bytes <= 67108864))`
+
+// sqliteObjectBytesUpgrade adds the object sizes of schema 3 to a schema 2
+// ledger; existing keys keep no size.
+const sqliteObjectBytesUpgrade = `ALTER TABLE pending_objects ADD COLUMN ` + sqliteObjectBytesColumn + `;`
 
 // sqliteRetentionUpgrade adds the retention columns of schema 2 to a schema 1
 // catalog: every stream starts at the coverage origin and nothing is retired.

@@ -165,7 +165,7 @@ compare queries during an upgrade.
 | S3 request budget | A process shares admission across archive/query traffic and retries. SQLite assumes a sole client; PostgreSQL divides explicit aggregate limits by the operator-enforced maximum client count. |
 | Old S3 catalog | No automatic compatibility or migration; initialize the independent authority explicitly. |
 
-The service supports SQLite schema 2 or PostgreSQL schema 3, upgraded explicitly
+The service supports SQLite schema 3 or PostgreSQL schema 4, upgraded explicitly
 from earlier schemas with `catalog-upgrade`; the retained JSON
 catalog format is v2. All use pack/native format v1 with the pinned VM identity.
 Offline v2 import checks referenced indexes and copies metadata without rewriting

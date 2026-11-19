@@ -31,7 +31,7 @@ work is tracked in the [first-release design](design.md).
 | Scrub every referenced index and payload | `verify -config FILE` | Required |
 | Migrate a stopped local JSON v2 catalog | `catalog-import` | Required to validate indexes |
 | Create or restore a consistent backup | `catalog-backup`, `catalog-restore` | None |
-| Upgrade schema 1 state of an earlier release | [`catalog-upgrade`](#upgrade-schema-1) | None |
+| Upgrade schema 1 or 2 state of an earlier release | [`catalog-upgrade`](#upgrade-an-earlier-schema) | None |
 | Add tenants or sources | [`catalog-add-streams -config FILE`](serve.md#add-tenants-or-sources) | None |
 | Migrate stopped SQLite state to PostgreSQL | [`catalog-import-postgres`](postgres-migration.md) | None; metadata-only import |
 
@@ -188,8 +188,8 @@ does not contact S3, scrub payloads, discover orphans, or recover commits missin
 from an older backup. The restored ledger keeps the pending keys of attempts that
 failed before the backup; [garbage collection](serve.md#garbage-collection) of the
 restored catalog may delete them, which is safe because a stopped writer never
-resumes an attempt. A backup of schema 1 is upgraded in the staging copy after its
-checksum was verified; the backup itself is unchanged.
+resumes an attempt. A backup of schema 1 or 2 is upgraded in the staging copy after
+its checksum was verified; the backup itself is unchanged.
 The [offline recovery suite](recovery-validation.md) exercises a real stock VM
 cutover, older-backup catch-up, and process crashes using local disposable objects.
 It does not establish recovery from a physical disk or object-store disaster.
@@ -205,34 +205,37 @@ Operational recovery still requires backup age plus restore/catch-up time to fit
 headroom. A backup cannot restore expired source history. Unsupported schema versions
 are rejected.
 
-## Upgrade schema 1
+## Upgrade an earlier schema
 
 Schema 2 adds the object ledger used by [garbage collection](serve.md#garbage-collection)
 and the stream starts and retired-window count used by [Cold retention](serve.md#cold-retention).
-`serve` and the offline commands, `catalog-backup` included, refuse a schema 1
+Schema 3 adds the object sizes of the ledger ([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)).
+`serve` and the offline commands, `catalog-backup` included, refuse a schema 1 or 2
 directory until it is upgraded explicitly. Stop the service and take a backup with
 the release that wrote the catalog (`old-vmtier` below) before installing this one,
 then upgrade in place:
 
 ```sh
 old-vmtier catalog-backup -path .state/catalog-sqlite -id sakura-serve-001 \
-  -out .state/backups/before-schema-2
+  -out .state/backups/before-schema-3
 .bin/vmtier catalog-upgrade -path .state/catalog-sqlite -id sakura-serve-001
 ```
 
-The upgrade takes the directory lock, adds the ledger table and changes the schema
-version in one transaction, and prints the status. Repeating it only verifies the
-state. Publication metadata is unchanged. Objects left by attempts that failed
-before the upgrade were never recorded and are not collected. A release that
-predates schema 2 refuses the upgraded directory; to roll back, restore the schema 1
-backup under a new ID with that release. This release also restores a schema 1
-backup, upgrading the restored copy.
+The upgrade takes the directory lock, adds what the stored schema lacks and changes
+the schema version in one transaction, and prints the status. Repeating it only
+verifies the state. Publication metadata is unchanged. Objects left by attempts that
+failed before schema 2 were never recorded and are not collected. Keys recorded
+before schema 3 keep no size: `vmtier_catalog_unpublished_objects_unsized` counts
+them until garbage collection forgets them. A release that predates the new schema
+refuses the upgraded directory; to roll back, restore the backup under a new ID with
+that release. This release also restores a schema 1 or 2 backup, upgrading the
+restored copy.
 
 ## Repository behavior
 
 - Explicit initialization, pinned catalog identity, and an exclusive state-directory
   lock. Missing, corrupt, wrong-ID, and unsupported-schema state are rejected.
-- SQLite schema 2 with WAL, FULL synchronization, foreign keys, and one connection
+- SQLite schema 3 with WAL, FULL synchronization, foreign keys, and one connection
   for short metadata transactions. S3 operations stay outside transactions.
 - An object ledger: keys are recorded before upload, publication consumes their
   records, and garbage collection claims and forgets the records of attempts that

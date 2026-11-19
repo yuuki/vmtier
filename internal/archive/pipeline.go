@@ -28,8 +28,8 @@ import (
 // objects of an attempt that never publishes can be collected.
 func stageVerifiedPacks(ctx context.Context, blobs objectstore.BlobStore, ledger catalog.ObjectLedger, cfg Config, source Source, tenant pack.Tenant, start, end int64) ([]catalog.PackRef, uint64, error) {
 	refs := []catalog.PackRef{}
-	record := func(ctx context.Context, keys []string) error {
-		return ledger.RecordPendingObjects(ctx, tenant.String(), keys)
+	record := func(ctx context.Context, objects []catalog.PendingObject) error {
+		return ledger.RecordPendingObjects(ctx, tenant.String(), objects)
 	}
 	_, total, err := buildVerifiedPacks(ctx, cfg, source, tenant, start, end, func(idx *pack.Index, data []byte) error {
 		ref, err := uploadPack(ctx, blobs, record, cfg, idx, data)
@@ -183,8 +183,9 @@ func verifiedExport(ctx context.Context, cfg Config, source Source, tenant pack.
 }
 
 // A fresh attempt namespace prevents a retry from modifying published objects.
-// A non-nil record runs before the first PUT, outside any catalog transaction.
-func uploadPack(ctx context.Context, blobs objectstore.BlobStore, record func(context.Context, []string) error, cfg Config, idx *pack.Index, data []byte) (catalog.PackRef, error) {
+// A non-nil record runs before the first PUT, outside any catalog transaction,
+// with the exact lengths that the PUTs will store.
+func uploadPack(ctx context.Context, blobs objectstore.BlobStore, record func(context.Context, []catalog.PendingObject) error, cfg Config, idx *pack.Index, data []byte) (catalog.PackRef, error) {
 	var ref catalog.PackRef
 	indexData, err := pack.MarshalIndex(idx, cfg.PackLimits)
 	if err != nil {
@@ -204,7 +205,7 @@ func uploadPack(ctx context.Context, blobs objectstore.BlobStore, record func(co
 		DataBytes: int64(len(data)), IndexBytes: int64(len(indexData)),
 	}
 	if record != nil {
-		if err = record(ctx, []string{ref.DataKey, ref.IndexKey}); err != nil {
+		if err = record(ctx, []catalog.PendingObject{{Key: ref.DataKey, Bytes: ref.DataBytes}, {Key: ref.IndexKey, Bytes: ref.IndexBytes}}); err != nil {
 			return ref, fmt.Errorf("record pending objects: %w", err)
 		}
 	}

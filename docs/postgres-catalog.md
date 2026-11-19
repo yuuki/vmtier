@@ -52,21 +52,23 @@ Already uploaded objects from a losing attempt remain unreferenced until
 archive passes; its claims and every publication are ordered by row locks on the
 object ledger, so a claimed key can never be published by any process.
 
-Schema 2 introduces leases and schema 3 the object ledger and the Cold retention
-columns. The schema upgrade
+Schema 2 introduces leases, schema 3 the object ledger and the Cold retention
+columns, and schema 4 the object sizes of the ledger
+([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)). The schema upgrade
 requires an already compatible VM pin; it does not convert catalogs or packs
 from an older VM pin, such as v1.155.0, to v1.156.0. Stop writers of the older schema before an explicit upgrade,
-which moves schema 1 or 2 to 3 in one transaction:
+which moves schema 1, 2 or 3 to 4 in one transaction:
 
 ```sh
 .bin/vmtier catalog-upgrade -backend postgres -config postgres.json
 ```
 
 The upgrade preserves published metadata and identity, initializes an unowned
-lease when upgrading from schema 1, adds an empty object ledger, and starts every
-stream at the coverage origin. Older binaries
+lease when upgrading from schema 1, adds an empty object ledger and starts every
+stream at the coverage origin when upgrading from schema 1 or 2, and adds the
+ledger's size column. Keys recorded before schema 4 keep no size. Older binaries
 reject the new schema. Back up before upgrading; no automatic schema downgrade is
-provided. Objects of attempts that failed before the upgrade were never recorded
+provided. Objects of attempts that failed before schema 3 were never recorded
 and are not collected.
 
 PostgreSQL inspection and payload verification can run online. Verification checks

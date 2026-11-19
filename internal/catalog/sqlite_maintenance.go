@@ -22,7 +22,8 @@ import (
 const backupMetadataFile = "metadata.json"
 
 // backupMetadataVersion 2 adds the retention fields of Status. Version 1
-// backups, of schema 1 catalogs, remain readable.
+// backups, of schema 1 catalogs, remain readable. Version 2 backups hold schema
+// 2 or 3 catalogs: the metadata did not change with the ledger's object sizes.
 const backupMetadataVersion = 2
 const maxBackupMetadataBytes = 4 << 20
 
@@ -190,17 +191,19 @@ func RestoreSQLite(ctx context.Context, backupDir, destDir, newID string) (*SQLi
 		return nil, err
 	}
 	expected := meta.Status
-	if expected.SchemaVersion == 1 {
-		// A backup taken before the object ledger existed is upgraded in the
-		// staging copy after its checksum was verified; the backup is unchanged.
+	if expected.SchemaVersion < SQLiteSchemaVersion {
+		// A backup of an older schema is upgraded in the staging copy after
+		// its checksum was verified; the backup is unchanged.
 		if _, err := UpgradeSQLite(ctx, stage, expected.ID); err != nil {
-			return nil, fmt.Errorf("upgrade schema 1 backup: %w", err)
+			return nil, fmt.Errorf("upgrade schema %d backup: %w", expected.SchemaVersion, err)
+		}
+		if expected.SchemaVersion == 1 {
+			expected.Coverage = append([]StreamCoverage(nil), expected.Coverage...)
+			for i := range expected.Coverage {
+				expected.Coverage[i].Start = expected.Contract.CoverageStart
+			}
 		}
 		expected.SchemaVersion = SQLiteSchemaVersion
-		expected.Coverage = append([]StreamCoverage(nil), expected.Coverage...)
-		for i := range expected.Coverage {
-			expected.Coverage[i].Start = expected.Contract.CoverageStart
-		}
 	}
 	s, err := OpenSQLite(ctx, stage, meta.Status.ID)
 	if err != nil {
@@ -254,7 +257,7 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 // unpublished key of a configured tenant, so that garbage collection of the
 // restored catalog can never delete a published object.
 func checkRestoredLedger(ctx context.Context, tx *sql.Tx, status SQLiteStatus) error {
-	rows, err := tx.QueryContext(ctx, `SELECT object_key, created_ms, state FROM pending_objects ORDER BY object_key`)
+	rows, err := tx.QueryContext(ctx, `SELECT object_key, created_ms, state, object_bytes FROM pending_objects ORDER BY object_key`)
 	if err != nil {
 		return err
 	}
@@ -262,10 +265,11 @@ func checkRestoredLedger(ctx context.Context, tx *sql.Tx, status SQLiteStatus) e
 	for rows.Next() {
 		var key, state string
 		var created int64
-		if err := rows.Scan(&key, &created, &state); err != nil {
+		var size sql.NullInt64
+		if err := rows.Scan(&key, &created, &state, &size); err != nil {
 			return err
 		}
-		if !validLedgerState(state) || created < 0 || checkClaimedKey(status.Contract, key) != nil {
+		if !validLedgerState(state) || created < 0 || !validLedgerSize(size) || checkClaimedKey(status.Contract, key) != nil {
 			return errors.New("backup contains an invalid object ledger record")
 		}
 		var published bool

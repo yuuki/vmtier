@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,6 +19,20 @@ import (
 )
 
 // storedObjects lists the object keys under a local blob directory.
+// storedBytes sums the sizes of stored objects.
+func storedBytes(t *testing.T, dir string, keys []string) int64 {
+	t.Helper()
+	var total int64
+	for _, key := range keys {
+		info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(key)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += info.Size()
+	}
+	return total
+}
+
 func storedObjects(t *testing.T, dir string) []string {
 	t.Helper()
 	var keys []string
@@ -182,8 +197,14 @@ func failedAttempt(t *testing.T) (*Archiver, string) {
 	if _, err := a.RunPass(context.Background(), testNow); err == nil {
 		t.Fatal("failed attempt succeeded")
 	}
-	if objects := storedObjects(t, blobDir); len(objects) != 6 {
+	objects := storedObjects(t, blobDir)
+	if len(objects) != 6 {
 		t.Fatalf("orphans: %v", objects)
+	}
+	// The attempt recorded each key with the exact length it then stored.
+	want := catalog.UnpublishedObjectCounts{Pending: 6, Bytes: catalog.LedgerStateValues{Pending: storedBytes(t, blobDir, objects)}}
+	if counts, err := a.Catalog.UnpublishedObjects(context.Background()); err != nil || counts != want {
+		t.Fatalf("recorded orphans: %+v %v, want %+v", counts, err, want)
 	}
 	time.Sleep(5 * time.Millisecond)
 	return a, blobDir
@@ -200,8 +221,10 @@ func TestCollectorDefersKeysThatFailToDelete(t *testing.T) {
 	if err == nil || result.Deleted != 5 {
 		t.Fatalf("failed deletion: %+v %v", result, err)
 	}
-	if counts, err := a.Catalog.UnpublishedObjects(ctx); err != nil || counts != (catalog.UnpublishedObjectCounts{Deleting: 1}) {
-		t.Fatalf("ledger after failed deletion: %+v %v", counts, err)
+	// The ledger still measures the object whose deletion failed.
+	left := storedObjects(t, blobDir)
+	if counts, err := a.Catalog.UnpublishedObjects(ctx); err != nil || len(left) != 1 || counts != (catalog.UnpublishedObjectCounts{Deleting: 1, Bytes: catalog.LedgerStateValues{Deleting: storedBytes(t, blobDir, left)}}) {
+		t.Fatalf("ledger after failed deletion: %+v %v, stored %v", counts, err, left)
 	}
 	result = collectAll(t, a.Store, a.Catalog)
 	if result.Deleted != 1 {
@@ -233,7 +256,7 @@ func TestCollectorIsNotWedgedByAnUndeletableKey(t *testing.T) {
 	if len(objects) != 1 || objects[0] != stuck.key {
 		t.Fatalf("collection wedged behind %s: %v", stuck.key, objects)
 	}
-	if counts, err := a.Catalog.UnpublishedObjects(ctx); err != nil || counts != (catalog.UnpublishedObjectCounts{Deleting: 1}) {
+	if counts, err := a.Catalog.UnpublishedObjects(ctx); err != nil || counts != (catalog.UnpublishedObjectCounts{Deleting: 1, Bytes: catalog.LedgerStateValues{Deleting: storedBytes(t, blobDir, objects)}}) {
 		t.Fatalf("ledger: %+v %v", counts, err)
 	}
 }

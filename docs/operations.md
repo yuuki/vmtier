@@ -109,16 +109,20 @@ for its storage usage. These observations do not list the blob backend:
 | `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
 | `vmtier_query_limit_refusals_total{reason=...}` | Resource refusals with a fixed reason vocabulary: `memory_admission`, `shared_reads`, `read_bytes`, `decoded_bytes`, `catalog_plan`, `blocks`, `series`, or `response_bytes`. Other backend failures and cancellations do not masquerade as limit refusals. |
 | `vmtier_archive_failed_windows_total{tenant=...,source=...,reason=...}` | Errored attempts for configured tenant/source pairs only; reasons are `error`, `timeout`, and `canceled`. A retry increments again; skipped/backoff windows do not. Shutdown cancellation is counted if a window was attempted. No timestamp or error-message labels are used. |
-| `vmtier_catalog_unpublished_objects{state="pending\|retired\|deleting\|foreign"}` | Object ledger records no window references: pending keys of running or failed attempts, keys of windows retired by Cold retention, keys claimed by garbage collection whose deletion has not finished, and (PostgreSQL) pending keys of another database incarnation, which are never collected. Counts objects, not bytes. Omitted when the catalog cannot be read. |
+| `vmtier_catalog_unpublished_objects{state="pending\|retired\|deleting\|foreign"}` | Object ledger records no window references: pending keys of running or failed attempts, keys of windows retired by Cold retention, keys claimed by garbage collection whose deletion has not finished, and (PostgreSQL) pending keys of another database incarnation, which are never collected. Counts objects. Omitted when the catalog cannot be read. |
+| `vmtier_catalog_unpublished_object_bytes{state}`, `vmtier_catalog_unpublished_objects_unsized{state}` | Sum of the object sizes recorded for those keys, and the keys without a size (recorded before SQLite schema 3 or PostgreSQL schema 4). A size is recorded before the upload, so a key whose PUT never ran or whose object is already deleted still counts until garbage collection forgets it. While a state has unsized keys, its byte sum is a lower bound. Omitted with the counts. |
 | `vmtier_orphan_gc_*`, `vmtier_object_delete_requests_total` | [Garbage collection](serve.md#garbage-collection) passes, failures, claimed and deleted objects, last success, and DELETE attempts. |
 
 Attempt/refusal counters and cache/admission state start over on process restart;
 committed totals are read afresh from the catalog. An errored attempt is not necessarily
 a new missing window: failure after commit acknowledgement can leave the window
-committed, so interpret failures together with coverage and lag. The service does
-not estimate orphan bytes. Garbage collection is opt-in and does not cover objects
-left before the ledger existed. Use provider accounting for actual bucket growth and
-host monitoring for disk availability and peak RSS. A steadily growing `pending`
+committed, so interpret failures together with coverage and lag. The ledger's byte
+gauges cover only keys vmtier recorded: objects left before the ledger existed or
+written by other software are not counted. Garbage collection is opt-in and does
+not cover objects left before the ledger existed. Use provider accounting for actual bucket growth and
+host monitoring for disk availability and peak RSS. Provider bucket usage minus
+the committed and unpublished byte gauges approximates objects vmtier does not
+know (other catalogs, older versions, objects left before the ledger). A steadily growing `pending`
 count with garbage collection enabled means attempts fail faster than they are
 collected, or that collection fails; check `vmtier_orphan_gc_failed_passes_total`.
 Each capacity scrape aggregates the complete `packs` and `windows` tables: on
@@ -175,7 +179,7 @@ If Hot still holds the entire history, removing the Cold node restores a Hot-onl
 
 [Garbage collection](serve.md#garbage-collection), when enabled, deletes only the objects of attempts that never published and that the catalog recorded before their upload. It never deletes a published object, so readers holding older query plans are unaffected. It needs `DeleteObject` permission on the prefix; on a versioned bucket, also a lifecycle rule that expires noncurrent versions. With PostgreSQL, every replica may enable it; only the archiver lease holder collects. Garbage collection never deletes an object another catalog sharing the bucket references, and a restored or copied PostgreSQL catalog never collects the original's pending keys (they show as `foreign`); see [garbage collection](serve.md#garbage-collection) for the one kind of copy this cannot detect. Cold retention, by contrast, deletes the objects of retired windows that a catalog kept for rollback may still reference.
 
-[Cold retention](serve.md#cold-retention), when `cold_retention` is set, retires whole windows older than the retention from the catalog and lets garbage collection delete their objects after `service.orphan_gc_min_age`. Without it the catalog keeps every published window and storage grows with the archived data. Retired data cannot be recovered from a catalog backup. Orphans from before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1) are not collected. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
+[Cold retention](serve.md#cold-retention), when `cold_retention` is set, retires whole windows older than the retention from the catalog and lets garbage collection delete their objects after `service.orphan_gc_min_age`. Without it the catalog keeps every published window and storage grows with the archived data. Retired data cannot be recovered from a catalog backup. Orphans from before the [schema upgrade](sqlite-catalog.md#upgrade-an-earlier-schema) are not collected. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
 
 Retirement accounts for readers that may still hold old references through the minimum age; do not approximate it with an arbitrary lifecycle expiration.
 
