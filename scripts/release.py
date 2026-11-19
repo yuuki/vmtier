@@ -716,7 +716,7 @@ def notes(args):
     print(f"""## vmtier {build_record['version']}
 
 Static `linux/amd64` build of commit `{build_record['commit']}` for
-VictoriaMetrics OSS `v1.155.0-cluster` only. Read the
+VictoriaMetrics OSS `v1.156.0-cluster` only. Read the
 [support scope]({docs}/releasing.md#support-scope) before deploying: it lists the
 qualified deployments, their [evidence]({docs}/evidence.md), and the unqualified and
 excluded areas.{stage} To install, follow

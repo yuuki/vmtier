@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Shared pin for the unmodified stock cluster used by the differential tests.
-vm_version=v1.155.0-cluster
-vm_revision=cab3d5fbeeedd5d0374c1dabde93939af4c2499c
-vm_archive_sha256=536d1c62eb98e5a67776a501fc4d0ec8cf6a41b8dc57a7bf4ef69f29456a6e9d
+vm_version=v1.156.0-cluster
+vm_revision=02bcbd7e56a1d341b31dfb74d96d631e8df323f7
+vm_archive_sha256=da08df2db5dd360cf0c3fbc90dc00ffc9f074cb6afbc995be5601cb4ce06db48
 vm_source_dir=${VM_SOURCE_DIR:-"$repo_dir/.deps/VictoriaMetrics-$vm_revision"}
 
 prepare_vm_source() (

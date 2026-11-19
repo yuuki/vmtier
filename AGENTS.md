@@ -15,7 +15,7 @@
 - Record material format, protocol or operational decisions in an ADR (`docs/adr/`).
 
 ## Compatibility contracts
-- VM pin `v1.155.0-cluster`: `go.mod`, `pack.VMVersion`/`pack.VMRevision`, `scripts/vm-source.sh` change together; upgrade as `docs/compatibility.md` says.
+- VM pin `v1.156.0-cluster`: `go.mod`, `pack.VMVersion`/`pack.VMRevision`, `scripts/vm-source.sh` change together; upgrade as `docs/compatibility.md` says.
 - Never relabel old packs or regenerate an old fixture to make a new decoder pass; pack and index format v1: `internal/pack`.
 - Catalog schemas (SQLite 2, PostgreSQL 3, JSON v2): `internal/catalog`; object keys: `internal/archive/pipeline.go`, `validObjectKey`, `validKey`.
 - CLI commands, flags and `vmtier_*` metrics (`cmd/vmtier`); configuration keys (`internal/config`); refusal reasons (`internal/querylimit`).

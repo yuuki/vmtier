@@ -6,7 +6,7 @@ The repository's existing Apache-2.0 `LICENSE` is preserved. vmtier is an indepe
 
 | Module | Pinned version | License / notice source |
 | --- | --- | --- |
-| `github.com/VictoriaMetrics/VictoriaMetrics` | `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c` | [Apache-2.0 LICENSE](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/cab3d5fbeeedd5d0374c1dabde93939af4c2499c/LICENSE), including Copyright 2019-2026 VictoriaMetrics, Inc. No root NOTICE file was present in the inspected archive. |
+| `github.com/VictoriaMetrics/VictoriaMetrics` | `v1.156.0-cluster`, commit `02bcbd7e56a1d341b31dfb74d96d631e8df323f7` | [Apache-2.0 LICENSE](https://github.com/VictoriaMetrics/VictoriaMetrics/blob/02bcbd7e56a1d341b31dfb74d96d631e8df323f7/LICENSE), including Copyright 2019-2026 VictoriaMetrics, Inc. No root NOTICE file was present in the inspected archive. |
 | `github.com/aws/aws-sdk-go-v2` | `v1.48.0` | Generated `vendor/github.com/aws/aws-sdk-go-v2/LICENSE.txt` and `NOTICE.txt`, Apache-2.0; `internal/sync/singleflight/LICENSE`, BSD-3-Clause. |
 | `github.com/aws/aws-sdk-go-v2/credentials` | `v1.21.0` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
 | `github.com/aws/aws-sdk-go-v2/service/s3` | `v1.114.10` | AWS SDK Apache-2.0 license and notices retained in generated vendor. |
@@ -22,8 +22,8 @@ The repository's existing Apache-2.0 `LICENSE` is preserved. vmtier is an indepe
 `scripts/vm-source.sh` supplies the shared pin used by bootstrap and the stock VM build. The source archive is:
 
 ```text
-https://codeload.github.com/VictoriaMetrics/VictoriaMetrics/tar.gz/cab3d5fbeeedd5d0374c1dabde93939af4c2499c
-SHA-256 536d1c62eb98e5a67776a501fc4d0ec8cf6a41b8dc57a7bf4ef69f29456a6e9d
+https://codeload.github.com/VictoriaMetrics/VictoriaMetrics/tar.gz/02bcbd7e56a1d341b31dfb74d96d631e8df323f7
+SHA-256 da08df2db5dd360cf0c3fbc90dc00ffc9f074cb6afbc995be5601cb4ce06db48
 ```
 
 TLS and the archive checksum are verified. The stock VM source is extracted into a revision-specific directory under `.deps/`, retaining its original vendor tree and license material for the independent E2E binaries. No upstream implementation files are patched.
@@ -58,7 +58,7 @@ The gateway uses the public `vmselectapi.API`, `NewServer`, storage and encoding
 
 ## Transitive dependencies and redistribution
 
-Go vendoring retains license and notice files for the included dependencies. The exact vmtier module/version inventory is generated `vendor/modules.txt`. The stock VM binaries have a separate inventory in `.deps/VictoriaMetrics-cab3d5fbeeedd5d0374c1dabde93939af4c2499c/vendor/modules.txt`; their upstream dependency versions can differ from vmtier's. The downloaded upstream source and its license/NOTICE files remain intact. Do not delete a retained license on the assumption that one selected binary does not link that package.
+Go vendoring retains license and notice files for the included dependencies. The exact vmtier module/version inventory is generated `vendor/modules.txt`. The stock VM binaries have a separate inventory in `.deps/VictoriaMetrics-02bcbd7e56a1d341b31dfb74d96d631e8df323f7/vendor/modules.txt`; their upstream dependency versions can differ from vmtier's. The downloaded upstream source and its license/NOTICE files remain intact. Do not delete a retained license on the assumption that one selected binary does not link that package.
 
 For a binary distribution, record its actual linked module set with `go version -m <binary>` and package the corresponding full license texts and required notices, including the Go runtime license. For distribution of the entire generated source tree or upstream test binaries, preserve all included licenses and notices. The release tooling below does this for the published binary archive; it does not replace legal review of a new dependency.
 

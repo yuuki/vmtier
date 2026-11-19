@@ -48,8 +48,8 @@ a claim of tested Sakura compatibility or a throughput guarantee.
 ## Evidence and required changes
 
 Keep native pack/index v1 and the vmstorage-compatible read gateway. The current
-pinned OSS VM release is `v1.155.0-cluster`, commit
-`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. Existing catalogs with an older VM
+pinned OSS VM release is `v1.156.0-cluster`, commit
+`02bcbd7e56a1d341b31dfb74d96d631e8df323f7`. Existing catalogs with an older VM
 pin require the [upgrade procedure](compatibility.md#codec-and-upgrades).
 
 The historical local and restricted-Moto suites against `v1.128.0-cluster`, commit

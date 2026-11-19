@@ -101,19 +101,23 @@ func nativeSeeds() [][]byte {
 }
 
 // portableSeeds returns the portable blocks of the seeds and of the captured
-// v1.155.0 HTTP response, read from the native framing.
+// v1.155.0 and v1.156.0 HTTP responses, read from the native framing.
 func portableSeeds(tb testing.TB) [][]byte {
 	tb.Helper()
-	hexData, err := os.ReadFile("testdata/native-v1.155.0.hex")
-	if err != nil {
-		tb.Fatal(err)
-	}
-	captured, err := hex.DecodeString(strings.TrimSpace(string(hexData)))
-	if err != nil {
-		tb.Fatal(err)
+	natives := nativeSeeds()
+	for _, path := range []string{"testdata/native-v1.155.0.hex", "testdata/native-v1.156.0.hex"} {
+		hexData, err := os.ReadFile(path)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		captured, err := hex.DecodeString(strings.TrimSpace(string(hexData)))
+		if err != nil {
+			tb.Fatal(err)
+		}
+		natives = append(natives, captured)
 	}
 	var out [][]byte
-	for _, native := range append(nativeSeeds(), captured) {
+	for _, native := range natives {
 		src := native[16:]
 		for len(src) >= 4 {
 			n := int(binary.BigEndian.Uint32(src))

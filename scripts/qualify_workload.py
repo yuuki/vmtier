@@ -252,7 +252,7 @@ def run(work, args):
     source = None
     report = {'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'hardware': hardware(), 'runtime': procs.runtime, 'backend': 'local',
-              'vm_revision': 'cab3d5fbeeedd5d0374c1dabde93939af4c2499c',
+              'vm_revision': '02bcbd7e56a1d341b31dfb74d96d631e8df323f7',
               'comparison': 'exact timestamps, labels and numeric strings; no tolerance',
               'measurements': [], 'checks': [], 'scope':
               'Disposable loopback local filesystem. No real provider, natural retention, external ingress enforcement, or universal latency SLO.'}

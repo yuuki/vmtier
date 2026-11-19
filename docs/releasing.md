@@ -19,7 +19,7 @@ checksums. Each release's notes must state the support scope below.
 | Area | Released artifact |
 | --- | --- |
 | Platform | Linux on x86-64 (`GOAMD64=v1`), statically linked against musl; no glibc version requirement |
-| VictoriaMetrics | OSS `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c` only ([compatibility](compatibility.md)) |
+| VictoriaMetrics | OSS `v1.156.0-cluster`, commit `02bcbd7e56a1d341b31dfb74d96d631e8df323f7` only ([compatibility](compatibility.md)) |
 | Runtime | `vmtier serve` with one SQLite owner, or with a PostgreSQL catalog, multiple Cold read gateways, and one leased archiver ([limits](limits.md), [HA deployment](ha-deployment.md)) |
 | Evidence | Local differential, recovery, workload, catalog, and PostgreSQL HA reports in the [evidence index](evidence.md), hosted CI and reproducibility runs in [release validation](release-validation.md), plus the release run's `release-e2e-evidence` artifact |
 

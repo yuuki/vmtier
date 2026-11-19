@@ -54,8 +54,8 @@ object ledger, so a claimed key can never be published by any process.
 
 Schema 2 introduces leases and schema 3 the object ledger and the Cold retention
 columns. The schema upgrade
-requires an already compatible VM pin; it does not convert v1.128.0 catalogs or
-packs to v1.155.0. Stop writers of the older schema before an explicit upgrade,
+requires an already compatible VM pin; it does not convert catalogs or packs
+from an older VM pin, such as v1.155.0, to v1.156.0. Stop writers of the older schema before an explicit upgrade,
 which moves schema 1 or 2 to 3 in one transaction:
 
 ```sh
