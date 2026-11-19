@@ -11,7 +11,7 @@ func TestSQLiteCapacityCountsCommittedObjectsAndSurvivesRestart(t *testing.T) {
 	ctx := context.Background()
 	s := sqliteTestStore(t, contract())
 	initial, err := s.Capacity(ctx)
-	if err != nil || initial.Packs != 0 || initial.Windows != 0 || initial.DatabaseBytes <= 0 || initial.CommittedDataBytes != 0 || initial.CommittedIndexBytes != 0 {
+	if err != nil || initial.Packs != 0 || initial.Windows != 0 || initial.Files == nil || initial.Files.DatabaseBytes <= 0 || initial.CommittedDataBytes != 0 || initial.CommittedIndexBytes != 0 {
 		t.Fatalf("initial capacity=%+v err=%v", initial, err)
 	}
 	first := sqlitePublication("1:2", "a", 100, 2)
@@ -32,10 +32,10 @@ func TestSQLiteCapacityCountsCommittedObjectsAndSurvivesRestart(t *testing.T) {
 	check := func(s *SQLite) {
 		t.Helper()
 		capacity, err := s.Capacity(ctx)
-		if err != nil || capacity.Windows != 2 || capacity.Packs != 2 || capacity.CommittedDataBytes != 20 || capacity.CommittedIndexBytes != 40 {
+		if err != nil || capacity.Files == nil || capacity.Windows != 2 || capacity.Packs != 2 || capacity.CommittedDataBytes != 20 || capacity.CommittedIndexBytes != 40 {
 			t.Fatalf("capacity=%+v err=%v", capacity, err)
 		}
-		for suffix, got := range map[string]int64{"": capacity.DatabaseBytes, "-wal": capacity.WALBytes, "-shm": capacity.SharedMemoryBytes} {
+		for suffix, got := range map[string]int64{"": capacity.Files.DatabaseBytes, "-wal": capacity.Files.WALBytes, "-shm": capacity.Files.SharedMemoryBytes} {
 			info, err := os.Stat(filepath.Join(s.dir, SQLiteFile+suffix))
 			if err != nil || got != info.Size() {
 				t.Fatalf("file %q bytes=%d info=%v err=%v", suffix, got, info, err)

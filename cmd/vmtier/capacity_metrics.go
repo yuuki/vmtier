@@ -101,11 +101,9 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 	if unpublished, err := reader.Repository.UnpublishedObjects(ctx); err == nil {
 		fmt.Fprintf(w, "vmtier_catalog_unpublished_objects{state=\"pending\"} %d\nvmtier_catalog_unpublished_objects{state=\"retired\"} %d\nvmtier_catalog_unpublished_objects{state=\"deleting\"} %d\nvmtier_catalog_unpublished_objects{state=\"foreign\"} %d\n", unpublished.Pending, unpublished.Retired, unpublished.Deleting, unpublished.Foreign)
 	}
-	// Local file capacity is a SQLite capability, not a requirement on the
-	// backend-neutral publication repository. Other backends omit these gauges.
-	capacityReader, ok := reader.Repository.(interface {
-		Capacity(context.Context) (catalog.SQLiteCapacity, error)
-	})
+	// Capacity is an optional capability of the service backends, not a
+	// requirement on the publication repository; the JSON v2 path omits it.
+	capacityReader, ok := reader.Repository.(catalog.CapacityReader)
 	if !ok {
 		fmt.Fprintln(w, "vmtier_catalog_capacity_available 0")
 		return
@@ -117,7 +115,11 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 		return
 	}
 	fmt.Fprintln(w, "vmtier_catalog_capacity_available 1")
-	fmt.Fprintf(w, "vmtier_catalog_file_bytes{file=\"database\"} %d\nvmtier_catalog_file_bytes{file=\"wal\"} %d\nvmtier_catalog_file_bytes{file=\"shared_memory\"} %d\n", capacity.DatabaseBytes, capacity.WALBytes, capacity.SharedMemoryBytes)
+	// Only SQLite has local catalog files; PostgreSQL storage is monitored
+	// with PostgreSQL's own tools.
+	if files := capacity.Files; files != nil {
+		fmt.Fprintf(w, "vmtier_catalog_file_bytes{file=\"database\"} %d\nvmtier_catalog_file_bytes{file=\"wal\"} %d\nvmtier_catalog_file_bytes{file=\"shared_memory\"} %d\n", files.DatabaseBytes, files.WALBytes, files.SharedMemoryBytes)
+	}
 	fmt.Fprintf(w, "vmtier_catalog_committed_object_bytes{kind=\"data\"} %d\nvmtier_catalog_committed_object_bytes{kind=\"index\"} %d\nvmtier_catalog_windows %d\nvmtier_catalog_packs %d\n", capacity.CommittedDataBytes, capacity.CommittedIndexBytes, capacity.Windows, capacity.Packs)
 }
 

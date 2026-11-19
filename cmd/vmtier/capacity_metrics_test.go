@@ -135,3 +135,54 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 		t.Fatalf("unavailable catalog published false or stale capacity: %s", output)
 	}
 }
+
+func TestPostgresCapacityMetricsOmitOnlyLocalFiles(t *testing.T) {
+	ctx, c, _, dsn := postgresCLIConfig(t)
+	blob, err := c.BlobLocator()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := catalog.CreatePostgres(ctx, dsn, c.Catalog.ID, c.ArchiveContract(), blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store, err := c.OpenBlobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := c.RepositoryReader(store, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats serviceStats
+	stats.windowFailures.init(&c)
+	mux := serveMux(&c, reader, gateway.New(metricsLimitBackend{}, gateway.Limits{}), store, &stats)
+	scrape := func() string {
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		if recorder.Code != 200 {
+			t.Fatalf("scrape status=%d", recorder.Code)
+		}
+		return recorder.Body.String()
+	}
+	output := scrape()
+	for _, want := range []string{
+		"vmtier_catalog_capacity_available 1\n", "vmtier_catalog_committed_object_bytes{kind=\"data\"} 0\n",
+		"vmtier_catalog_committed_object_bytes{kind=\"index\"} 0\n", "vmtier_catalog_windows 0\n", "vmtier_catalog_packs 0\n",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("missing %q in %s", want, output)
+		}
+	}
+	if strings.Contains(output, "vmtier_catalog_file_bytes") {
+		t.Fatalf("PostgreSQL reported local SQLite files: %s", output)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output = scrape()
+	if !strings.Contains(output, "vmtier_catalog_capacity_available 0\n") || strings.Contains(output, "vmtier_catalog_committed_object_bytes") || strings.Contains(output, "vmtier_catalog_windows") {
+		t.Fatalf("unavailable catalog published false or stale capacity: %s", output)
+	}
+}

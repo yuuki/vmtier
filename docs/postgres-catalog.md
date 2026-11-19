@@ -115,7 +115,11 @@ Cold retention locks the catalog state row like publication, removes the oldest
 windows with their packs and key reservations, records their keys as retired, and
 advances each stream's start, all in one transaction.
 
-Read-only repeatable-read transactions provide a consistent status or query plan.
+Read-only repeatable-read transactions provide a consistent status, query plan, or
+[capacity observation](operations.md#service-capacity-and-failure-accounting). A
+capacity scrape aggregates the whole `packs` and `windows` tables, on every
+replica that is scraped; it reports committed descriptor lengths, not bucket or
+database storage usage.
 Selection uses the existing window, pack, and descriptor-byte caps. Object I/O takes
 place after the transaction ends. Published objects remain immutable and are never
 deleted. Database failure is an error, even if object data is cached.

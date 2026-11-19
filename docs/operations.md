@@ -94,15 +94,14 @@ Retention headroom is the finite time until the oldest unarchived sample can no 
 
 ### Service capacity and failure accounting
 
-Both service backends expose cache, query admission, and failed-window signals.
-Catalog size/count/committed-byte observations below are implemented for SQLite
-only; PostgreSQL reports `vmtier_catalog_capacity_available=0` and omits those
-unavailable catalog gauges. Use PostgreSQL monitoring for its storage usage.
-These observations do not list the blob backend:
+Both service backends expose cache, query admission, failed-window, and
+committed-object signals. Local catalog file lengths exist for SQLite only: a
+PostgreSQL catalog omits `vmtier_catalog_file_bytes`; use PostgreSQL monitoring
+for its storage usage. These observations do not list the blob backend:
 
 | Metric | Accounting |
 | --- | --- |
-| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
+| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | SQLite only. Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
 | `vmtier_catalog_committed_object_bytes{kind="data\|index"}` | Sum of byte lengths in committed pack descriptors, retained across restart. Excludes unreferenced/failed attempts, other prefixes, provider versions, and provider overhead; this is **not measured bucket usage**. |
 | `vmtier_catalog_windows`, `vmtier_catalog_packs` | Committed logical windows (including empty windows) and immutable pack references. |
 | `vmtier_catalog_capacity_available` | One only when the current bounded observation succeeds. Capacity gauges are omitted on failure, rather than reporting stale values or false zeroes. |
@@ -114,7 +113,7 @@ These observations do not list the blob backend:
 | `vmtier_orphan_gc_*`, `vmtier_object_delete_requests_total` | [Garbage collection](serve.md#garbage-collection) passes, failures, claimed and deleted objects, last success, and DELETE attempts. |
 
 Attempt/refusal counters and cache/admission state start over on process restart;
-committed totals are read afresh from SQLite. An errored attempt is not necessarily
+committed totals are read afresh from the catalog. An errored attempt is not necessarily
 a new missing window: failure after commit acknowledgement can leave the window
 committed, so interpret failures together with coverage and lag. The service does
 not estimate orphan bytes. Garbage collection is opt-in and does not cover objects
@@ -122,11 +121,13 @@ left before the ledger existed. Use provider accounting for actual bucket growth
 host monitoring for disk availability and peak RSS. A steadily growing `pending`
 count with garbage collection enabled means attempts fail faster than they are
 collected, or that collection fails; check `vmtier_orphan_gc_failed_passes_total`.
-Each capacity scrape aggregates the complete `packs` and `windows` tables on
-the catalog's single SQLite connection. The shared five-second scrape context
-bounds the observation time, not the number of rows scanned. Large catalogs or
-frequent scrapes can therefore contend with publication and query selection;
-include scrape load when sizing the deployment. The
+Each capacity scrape aggregates the complete `packs` and `windows` tables: on
+the catalog's single SQLite connection, or in a read-only snapshot of the shared
+PostgreSQL database, once for every replica that is scraped. The shared
+five-second scrape context bounds the observation time, not the number of rows
+scanned. Large catalogs or frequent scrapes can therefore contend with
+publication and query selection; include scrape load (and, for PostgreSQL, the
+number of scraped replicas) when sizing the deployment. The
 [catalog-capacity report](catalog-capacity-validation.md) records scan and
 selection contention for its 87,600-window fixture at the reported revision.
 Compare rising failed-window/refusal rates with declining retention headroom
@@ -134,8 +135,9 @@ before increasing workloads or resource limits. These signals do not extend the
 time available to recover an unarchived suffix.
 
 Cache and query-admission/refusal metrics are also available in the retained
-JSON v2 gateway. Catalog capacity totals describe SQLite only; failed-window
-metrics also describe the active PostgreSQL archiver. The SQL capacity totals use
+JSON v2 gateway. Catalog capacity totals describe both service backends but not
+the JSON v2 gateway; failed-window metrics also describe the active PostgreSQL
+archiver. The SQL capacity totals use
 a constant-memory scan of committed descriptors under the scrape timeout; they
 do not add an in-memory catalog mirror.
 
