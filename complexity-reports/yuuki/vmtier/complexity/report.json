@@ -1,9 +1,9 @@
 {
   "repository": "yuuki/vmtier/complexity",
   "ref": "refs/heads/main",
-  "commit": "cc0b2c0db7b15e40fb225519aaa4e7f5b933e639",
+  "commit": "cb37954fef6092fdee42e42305967ea8eecdc988",
   "base_ref": "refs/heads/main",
-  "timestamp": "2026-11-19T05:39:45.097987224Z",
+  "timestamp": "2026-11-19T14:15:31.302569215Z",
   "custom_metrics": [
     {
       "key": "code_complexity",
@@ -12,12 +12,12 @@
         {
           "key": "function_count",
           "name": "Function count",
-          "value": 524
+          "value": 536
         },
         {
           "key": "cognitive_sum",
           "name": "Cognitive: total",
-          "value": 2854
+          "value": 2914
         },
         {
           "key": "cognitive_max",
@@ -37,7 +37,7 @@
         {
           "key": "cyclomatic_sum",
           "name": "Cyclomatic: total",
-          "value": 3092
+          "value": 3150
         },
         {
           "key": "cyclomatic_max",
