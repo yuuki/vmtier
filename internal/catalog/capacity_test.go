@@ -121,20 +121,27 @@ func TestStreamTotalsFollowPublicationAndRetention(t *testing.T) {
 	c.Tenants = append(c.Tenants, "3:4")
 	c.Sources = append(c.Sources, Source{ID: "b", Fingerprint: strings.Repeat("b", 64)})
 	for name, fixture := range map[string]func(*testing.T, Contract) ledgerFixture{"sqlite": sqliteLedgerFixtureFor, "postgres": postgresLedgerFixtureFor} {
-		t.Run(name, func(t *testing.T) {
-			f := fixture(t, c)
-			coverage, windows, packs := "coverage", "windows", "packs"
-			if p, ok := f.repo.(*Postgres); ok {
-				coverage, windows, packs = p.table("coverage"), p.table("windows"), p.table("packs")
-			}
-			testStreamTotals(t, f, streamTotalsMismatchSQL(coverage, windows, packs))
-		})
+		for seed := uint64(1); seed <= 6; seed++ {
+			t.Run(fmt.Sprintf("%s/seed-%d", name, seed), func(t *testing.T) {
+				f := fixture(t, c)
+				coverage, windows, packs := "coverage", "windows", "packs"
+				count := `SELECT count(*) FROM windows WHERE tenant=? AND source_id=?`
+				if p, ok := f.repo.(*Postgres); ok {
+					coverage, windows, packs = p.table("coverage"), p.table("windows"), p.table("packs")
+					count = `SELECT count(*) FROM ` + windows + ` WHERE tenant=$1 AND source_id=$2`
+				}
+				testStreamTotals(t, f, seed, streamTotalsMismatchSQL(coverage, windows, packs), count)
+			})
+		}
 	}
 }
 
-func testStreamTotals(t *testing.T, f ledgerFixture, mismatch string) {
+// testStreamTotals publishes, replays and retires at random and checks after
+// each step that every stream's totals equal its packs and that its derived
+// window count equals its window rows. count reads one stream's window rows.
+func testStreamTotals(t *testing.T, f ledgerFixture, seed uint64, mismatch, count string) {
 	ctx := context.Background()
-	rng := rand.New(rand.NewPCG(1, 2))
+	rng := rand.New(rand.NewPCG(seed, 2))
 	streams := [][2]string{{"1:2", "a"}, {"1:2", "b"}, {"3:4", "a"}, {"3:4", "b"}}
 	next := map[[2]string]int64{}
 	var published []Publication
@@ -145,17 +152,20 @@ func testStreamTotals(t *testing.T, f ledgerFixture, mismatch string) {
 		if err != nil {
 			t.Fatalf("%s: %v", step, err)
 		}
-		var windows int64
 		for _, s := range got.Streams {
-			windows += s.Windows
-		}
-		if windows != got.Windows {
-			t.Fatalf("%s: stream windows %d, total %d", step, windows, got.Windows)
+			var rows int64
+			if err := f.queryRow(count, s.Tenant, s.SourceID).Scan(&rows); err != nil {
+				t.Fatal(err)
+			}
+			if rows != s.Windows {
+				t.Fatalf("%s: stream %s/%s reports %d windows, has %d", step, s.Tenant, s.SourceID, s.Windows, rows)
+			}
 		}
 		if err := checkStreamTotals(ctx, queryRower{f}, mismatch); err != nil {
 			t.Fatalf("%s: %v", step, err)
 		}
 	}
+	retired := 0
 	for step := 0; step < 40; step++ {
 		stream := streams[rng.IntN(len(streams))]
 		hour := 1 + next[stream]
@@ -170,19 +180,51 @@ func testStreamTotals(t *testing.T, f ledgerFixture, mismatch string) {
 		}
 		next[stream] = hour
 		published = append(published, p)
-		// A replay of a committed window changes nothing.
+		// A replay of a committed window that is still retained changes
+		// nothing; a retired window cannot be replayed at all.
 		if step%5 == 0 {
-			if _, err := f.publish(generation, published[rng.IntN(len(published))]); err != nil {
-				t.Fatal(err)
+			if replay, ok := retainedPublication(t, f, rng, published); ok {
+				if _, err := f.publish(generation, replay); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}
 		if step%10 == 9 {
-			if _, err := f.repo.RetireWindows(ctx, retentionEnding(f.now(), 1+next[stream]/2), 1+rng.IntN(5)); err != nil {
+			n, err := f.repo.RetireWindows(ctx, retentionEnding(f.now(), 1+next[stream]/2), 1+rng.IntN(5))
+			if err != nil {
 				t.Fatal(err)
 			}
+			retired += n
 		}
 		check(fmt.Sprintf("step %d", step))
 	}
+	if retired == 0 {
+		t.Fatal("the sequence retired no window")
+	}
+}
+
+// retainedPublication picks a published window that Cold retention has not
+// retired.
+func retainedPublication(t *testing.T, f ledgerFixture, rng *rand.Rand, published []Publication) (Publication, bool) {
+	t.Helper()
+	state, err := f.repo.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts := map[[2]string]int64{}
+	for _, stream := range state.Coverage {
+		starts[[2]string{stream.Tenant, stream.SourceID}] = stream.Start
+	}
+	var retained []Publication
+	for _, p := range published {
+		if p.Start >= starts[[2]string{p.Tenant, p.SourceID}] {
+			retained = append(retained, p)
+		}
+	}
+	if len(retained) == 0 {
+		return Publication{}, false
+	}
+	return retained[rng.IntN(len(retained))], true
 }
 
 // streamTotalsMismatchSQL counts the streams whose totals differ from the
@@ -218,12 +260,12 @@ func (q queryRower) QueryRowContext(ctx context.Context, query string, args ...a
 func TestSQLiteDriftedStreamTotalsBlockNothing(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
-	s, err := CreateSQLite(ctx, root+"/state", "test", hourContract(), BlobLocator{Type: "s3", Bucket: "test"})
+	s, err := CreateSQLite(ctx, root+"/state", "test", twoTenantHourContract(), BlobLocator{Type: "s3", Bucket: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	for i, p := range []Publication{hourPublication("1:2", "a", 1, 2), hourPublication("1:2", "a", 2, 1)} {
+	for i, p := range driftFixturePublications() {
 		recordPublication(t, s, p)
 		if _, err := s.PublishWindow(ctx, uint64(i), p); err != nil {
 			t.Fatal(err)
@@ -232,7 +274,7 @@ func TestSQLiteDriftedStreamTotalsBlockNothing(t *testing.T) {
 	if _, err := s.db.ExecContext(ctx, `UPDATE coverage SET committed_packs=0, committed_data_bytes=committed_data_bytes+1`); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := s.RetireWindows(ctx, retentionEnding(time.Now().UnixMilli(), 2), 10); err != nil || n != 1 {
+	if n, err := s.RetireWindows(ctx, retentionEnding(time.Now().UnixMilli(), 2), 10); err != nil || n != 2 {
 		t.Fatalf("retirement with drifted totals: %d %v", n, err)
 	}
 	if got, err := s.Capacity(ctx); err == nil || !strings.Contains(err.Error(), "catalog-upgrade") {
@@ -245,7 +287,7 @@ func TestSQLiteDriftedStreamTotalsBlockNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20}}
+	want := driftFixtureRemainder()
 	if got, err := restored.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, want) {
 		t.Fatalf("restored totals: %+v %v", got.Streams, err)
 	}
@@ -264,7 +306,7 @@ func TestSQLiteDriftedStreamTotalsBlockNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer repaired.Close()
-	if after := sqliteStatus(t, repaired); !reflect.DeepEqual(after, before) || after.Generation != 2 {
+	if after := sqliteStatus(t, repaired); !reflect.DeepEqual(after, before) || after.Generation != 4 {
 		t.Fatalf("catalog-upgrade changed the state: %+v %+v", before, after)
 	}
 	if got, err := repaired.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, want) {
@@ -273,8 +315,8 @@ func TestSQLiteDriftedStreamTotalsBlockNothing(t *testing.T) {
 }
 
 func TestPostgresDriftedStreamTotalsBlockNothing(t *testing.T) {
-	ctx, dsn, db, p := postgresTestStore(t, hourContract())
-	for i, publication := range []Publication{hourPublication("1:2", "a", 1, 2), hourPublication("1:2", "a", 2, 1)} {
+	ctx, dsn, db, p := postgresTestStore(t, twoTenantHourContract())
+	for i, publication := range driftFixturePublications() {
 		recordPublication(t, p, publication)
 		if _, err := publishPostgresTest(ctx, p, uint64(i), publication); err != nil {
 			t.Fatal(err)
@@ -287,7 +329,7 @@ func TestPostgresDriftedStreamTotalsBlockNothing(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT `+postgresNowMS).Scan(&now); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := p.RetireWindows(ctx, retentionEnding(now, 2), 10); err != nil || n != 1 {
+	if n, err := p.RetireWindows(ctx, retentionEnding(now, 2), 10); err != nil || n != 2 {
 		t.Fatalf("retirement with drifted totals: %d %v", n, err)
 	}
 	if got, err := p.Capacity(ctx); err == nil || !strings.Contains(err.Error(), "catalog-upgrade") {
@@ -300,10 +342,29 @@ func TestPostgresDriftedStreamTotalsBlockNothing(t *testing.T) {
 	if after := postgresStatus(t, ctx, p); !reflect.DeepEqual(after, before) {
 		t.Fatalf("catalog-upgrade changed the state: %+v %+v", before, after)
 	}
-	want := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20}}
-	if got, err := p.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, want) {
+	if got, err := p.Capacity(ctx); err != nil || !reflect.DeepEqual(got.Streams, driftFixtureRemainder()) {
 		t.Fatalf("repaired totals: %+v %v", got.Streams, err)
 	}
+}
+
+// twoTenantHourContract is hourContract with a second tenant.
+func twoTenantHourContract() Contract {
+	c := hourContract()
+	c.Tenants = append(c.Tenants, "3:4")
+	return c
+}
+
+// driftFixturePublications publishes hours 1 and 2 of two streams with
+// different pack counts, so that recomputed totals must group by stream.
+func driftFixturePublications() []Publication {
+	return []Publication{hourPublication("1:2", "a", 1, 2), hourPublication("3:4", "a", 1, 1),
+		hourPublication("1:2", "a", 2, 1), hourPublication("3:4", "a", 2, 3)}
+}
+
+// driftFixtureRemainder is the correct totals after hour 1 is retired.
+func driftFixtureRemainder() []StreamCapacity {
+	return []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20},
+		{Tenant: "3:4", SourceID: "a", Windows: 1, Packs: 3, CommittedDataBytes: 30, CommittedIndexBytes: 60}}
 }
 
 // The PostgreSQL import computes the destination's totals from the copied
