@@ -17,8 +17,8 @@ import urllib.error
 import urllib.parse
 from pathlib import Path
 
-from e2e import (ROOT, HTTP, Cluster, Processes, api, compare, fixture, free_port,
-                 positive_int, remote_write, request, start_select)
+from e2e import (ROOT, HTTP, Cluster, Processes, api, assert_stream_totals, compare, coverage_ranges,
+                 fixture, free_port, positive_int, remote_write, request, start_select)
 from e2e_serve import expressions, provenance, snapshot, wait_ready
 
 
@@ -289,7 +289,10 @@ def run(work, args):
             'readiness_error': missing_ready_error}
         process, rpc, http = start_serve('serve-restored-catchup', restored_config)
         recovered = snapshot(restored_dir / 'catalog.db')
-        assert recovered['coverage'] == advanced['coverage']
+        # The catch-up re-archives the missing window from Hot; its packs, and
+        # so its stream's totals, need not repeat the first archive's bytes.
+        assert coverage_ranges(recovered['coverage']) == coverage_ranges(advanced['coverage'])
+        assert_stream_totals(recovered['coverage'], recovered['windows'], recovered['packs'])
         assert recovered['state']['generation'] == 8
         published = {row[field] for row in recovered['packs'] for field in ('data_key', 'index_key')}
         assert not published.intersection(orphan_keys)

@@ -26,8 +26,9 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from e2e import (ROOT, HTTP, Cluster, Processes, api, check_metadata, compare, fixture,
-                 fixture_horizon, free_port, metrics, positive_int, remote_write, request)
+from e2e import (ROOT, HTTP, Cluster, Processes, api, assert_stream_totals, check_metadata, compare,
+                 coverage_ranges, fixture, fixture_horizon, free_port, metrics, positive_int, remote_write,
+                 request)
 from e2e_serve import ControlledSource, expressions, provenance, snapshot, start_tiered_select, wait_ready
 from s3_compat_proxy import S3CompatibilityProxy
 from blob_outage import assert_running_blob_failure
@@ -326,6 +327,8 @@ def run(work, args):
             return json.loads(sql("SELECT json_build_object('generation',(SELECT generation FROM catalog_state),"
                                   "'coverage',(SELECT json_agg(c ORDER BY tenant,source_id) FROM coverage c),"
                                   "'window_layout',(SELECT json_agg(w ORDER BY generation) FROM windows w),"
+                                  "'pack_sizes',(SELECT json_agg(json_build_object('window_id',window_id,"
+                                  "'data_bytes',data_bytes,'index_bytes',index_bytes)) FROM packs),"
                                   "'windows',(SELECT count(*) FROM windows),'packs',(SELECT count(*) FROM packs))"))
 
         services.extend(start_service(i) for i in range(2))
@@ -340,7 +343,8 @@ def run(work, args):
                               horizon['window_ms'], tenants[:1], empty_tenant, bool(args.pack_max_blocks))
         # No Cold retention is configured, so every stream starts at the coverage origin.
         compare([{'tenant': tenant, 'source_id': 'hot', 'start_ms': start, 'end_ms': boundary if i == 0 else start}
-                 for i, tenant in enumerate(tenants)], before['coverage'], 'partial stream coverage')
+                 for i, tenant in enumerate(tenants)], coverage_ranges(before['coverage']), 'partial stream coverage')
+        assert_stream_totals(before['coverage'], before['window_layout'], before['pack_sizes'])
         began = time.monotonic()
         services[active].kill()
         services[active].wait(timeout=5)
@@ -363,7 +367,9 @@ def run(work, args):
         report['pack_layout'] = assert_fixture_layout(stable['window_layout'], stable['packs'], start, boundary,
                                                       horizon['window_ms'], tenants, empty_tenant, bool(args.pack_max_blocks))
         compare([{'tenant': tenant, 'source_id': 'hot', 'start_ms': start, 'end_ms': boundary} for tenant in tenants],
-                stable['coverage'], 'complete stream coverage')
+                coverage_ranges(stable['coverage']), 'complete stream coverage')
+        # Totals kept across the failover and the second archiver equal the packs.
+        assert_stream_totals(stable['coverage'], stable['window_layout'], stable['pack_sizes'])
 
         # Separate HAProxy processes give one logical Cold node to vmselect.
         edge_ports, edge_processes, edge_stats = [free_port(), free_port()], [], []
