@@ -31,7 +31,7 @@ work is tracked in the [first-release design](design.md).
 | Scrub every referenced index and payload | `verify -config FILE` | Required |
 | Migrate a stopped local JSON v2 catalog | `catalog-import` | Required to validate indexes |
 | Create or restore a consistent backup | `catalog-backup`, `catalog-restore` | None |
-| Upgrade schema 1 or 2 state of an earlier release | [`catalog-upgrade`](#upgrade-an-earlier-schema) | None |
+| Upgrade schema 1 or 2 state with the same VM pin | [`catalog-upgrade`](#upgrade-an-earlier-schema) | None |
 | Add tenants or sources | [`catalog-add-streams -config FILE`](serve.md#add-tenants-or-sources) | None |
 | Migrate stopped SQLite state to PostgreSQL | [`catalog-import-postgres`](postgres-migration.md) | None; metadata-only import |
 
@@ -213,7 +213,11 @@ and the stream starts and retired-window count used by [Cold retention](serve.md
 Schema 3 adds the object sizes of the ledger ([ADR 0011](adr/0011-object-sizes-in-the-ledger.md))
 and the stream totals that capacity metrics read ([ADR 0012](adr/0012-stream-totals.md)).
 `serve` and the offline commands, `catalog-backup` included, refuse a schema 1 or 2
-directory until it is upgraded explicitly. Stop the service and take a backup with
+directory until it is upgraded explicitly. The upgrade keeps the catalog's VM pin
+and refuses a catalog, or a backup, with another pin, such as those that
+`v0.1.0-rc.3` created with `v1.155.0-cluster`; for those, follow
+[upgrading from v1.155.0-cluster](compatibility.md#upgrading-from-v11550-cluster)
+instead. Stop the service and take a backup with
 the release that wrote the catalog (`old-vmtier` below) before installing this one,
 then upgrade in place:
 
@@ -232,8 +236,8 @@ failed before schema 2 were never recorded and are not collected. Keys recorded
 before schema 3 keep no size: `vmtier_catalog_unpublished_objects_unsized` counts
 them until garbage collection forgets them. A release that predates the new schema
 refuses the upgraded directory; to roll back, restore the backup under a new ID with
-that release. This release also restores a schema 1 or 2 backup, upgrading the
-restored copy.
+that release. This release also restores a schema 1 or 2 backup with the same VM pin,
+upgrading the restored copy.
 
 ## Repository behavior
 

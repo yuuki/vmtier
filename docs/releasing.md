@@ -36,15 +36,21 @@ but no stock-VM differential suite exercises them yet. HA, backfill, other VM
 versions, and other platforms are outside the first-release scope. PostgreSQL
 database HA and old-primary fencing remain operator responsibilities.
 
-Releases after `v0.1.0-rc.3` use SQLite catalog schema 3 and PostgreSQL catalog
-schema 4, which record object sizes in the object ledger
-([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)) and committed totals per
-stream ([ADR 0012](adr/0012-stream-totals.md)). They refuse a catalog that
-`v0.1.0-rc.3` or an earlier release created until `catalog-upgrade` upgrades it,
-and those releases refuse an upgraded catalog. Take a backup first, then follow
-[upgrade an earlier schema](sqlite-catalog.md#upgrade-an-earlier-schema) or the
-[PostgreSQL upgrade](postgres-catalog.md#configuration-and-lifecycle).
-`v0.1.0-rc.3` used SQLite schema 2 and PostgreSQL schema 3.
+Releases after `v0.1.0-rc.3` pin VictoriaMetrics `v1.156.0-cluster` and use
+SQLite catalog schema 3 and PostgreSQL catalog schema 4, which record object
+sizes in the object ledger ([ADR 0011](adr/0011-object-sizes-in-the-ledger.md))
+and committed totals per stream ([ADR 0012](adr/0012-stream-totals.md)).
+`v0.1.0-rc.3` pinned `v1.155.0-cluster` and used SQLite schema 2 and PostgreSQL
+schema 3. A later release refuses the catalogs, backups, and packs that
+`v0.1.0-rc.3` or an earlier release created, and `catalog-upgrade` cannot convert
+them: it keeps the catalog's VM pin and refuses another one. Keep the old
+deployment and its objects, initialize a new catalog ID, and archive again into a
+separate state directory and object prefix, as
+[upgrading from v1.155.0-cluster](compatibility.md#upgrading-from-v11550-cluster)
+describes. `catalog-upgrade`
+([SQLite](sqlite-catalog.md#upgrade-an-earlier-schema),
+[PostgreSQL](postgres-catalog.md#configuration-and-lifecycle)) upgrades only an
+older schema that already has the `v1.156.0-cluster` pin.
 
 ## Release contents
 
