@@ -184,7 +184,8 @@ func (s *SQLite) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCount
 // UpgradeSQLite explicitly upgrades an offline schema 1 or 2 catalog to
 // schema 3 and returns the upgraded status. Schema 2 added the object ledger
 // and the retention columns; schema 3 adds the ledger's object sizes, which
-// keys recorded earlier do not get. It holds the directory lock throughout, so a live service
+// keys recorded earlier do not get, and the stream totals, which the upgrade
+// fills from the committed packs. It holds the directory lock throughout, so a live service
 // refuses it; take a backup first. A file that fails SQLite's integrity check
 // is refused before anything is written. Repeating a completed upgrade only
 // verifies the current state.
@@ -241,6 +242,12 @@ func (s *SQLite) upgrade(ctx context.Context) error {
 	} else if _, err = tx.ExecContext(ctx, sqliteObjectBytesUpgrade); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, sqliteStreamTotalsUpgrade); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, streamTotalsBackfillSQL("coverage", "windows", "packs")); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE catalog_state SET schema_version=? WHERE singleton=1`, SQLiteSchemaVersion); err != nil {
 		return err
 	}
@@ -277,14 +284,22 @@ func (s *SQLite) RetireWindows(ctx context.Context, retention time.Duration, lim
 	if err != nil {
 		return 0, err
 	}
+	removed := make(map[string]streamTotals, len(starts))
 	for _, w := range windows {
-		if err = s.retireWindow(ctx, tx, w.id, now); err != nil {
+		totals, err := s.retireWindow(ctx, tx, w.id, now)
+		if err != nil {
 			return 0, err
 		}
+		key := w.tenant + "\x00" + w.sourceID
+		sum := removed[key]
+		sum.add(totals)
+		removed[key] = sum
 	}
 	for key, start := range starts {
 		tenant, source, _ := strings.Cut(key, "\x00")
-		if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=? WHERE tenant=? AND source_id=?`, start, tenant, source); err != nil {
+		r := removed[key]
+		if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=?, committed_packs=committed_packs-?, committed_data_bytes=committed_data_bytes-?, committed_index_bytes=committed_index_bytes-? WHERE tenant=? AND source_id=?`,
+			start, r.packs, r.dataBytes, r.indexBytes, tenant, source); err != nil {
 			return 0, err
 		}
 	}
@@ -320,17 +335,21 @@ func sqliteRetiredWindows(ctx context.Context, tx *sql.Tx, last int64, limit int
 }
 
 // retireWindow moves a window's object keys, with the sizes of their pack
-// descriptors, to the ledger and removes the window.
-func (s *SQLite) retireWindow(ctx context.Context, tx *sql.Tx, id, created int64) error {
+// descriptors, to the ledger, removes the window and returns its totals.
+func (s *SQLite) retireWindow(ctx context.Context, tx *sql.Tx, id, created int64) (streamTotals, error) {
+	var totals streamTotals
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(data_bytes),0),coalesce(sum(index_bytes),0) FROM packs WHERE window_id=?`, id).Scan(&totals.packs, &totals.dataBytes, &totals.indexBytes); err != nil {
+		return totals, err
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO pending_objects(object_key,created_ms,state,object_bytes)
  SELECT data_key,?,?,data_bytes FROM packs WHERE window_id=? UNION ALL SELECT index_key,?,?,index_bytes FROM packs WHERE window_id=?`, created, retiredState, id, created, retiredState, id); err != nil {
-		return fmt.Errorf("record retired objects: %w", err)
+		return totals, fmt.Errorf("record retired objects: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM packs WHERE window_id=?`, id); err != nil {
-		return err
+		return totals, err
 	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM windows WHERE id=?`, id)
-	return err
+	return totals, err
 }
 
 var _ StreamAdder = (*SQLite)(nil)

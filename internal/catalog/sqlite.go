@@ -50,6 +50,9 @@ CREATE TABLE coverage (
  source_id TEXT NOT NULL,
  end_ms INTEGER NOT NULL CHECK (end_ms >= 0),
  start_ms INTEGER NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
+ committed_packs INTEGER NOT NULL DEFAULT 0 CHECK (committed_packs >= 0),
+ committed_data_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0),
+ committed_index_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0),
  PRIMARY KEY (tenant, source_id)
 ) WITHOUT ROWID;
 CREATE TABLE windows (
@@ -97,6 +100,14 @@ const sqliteObjectBytesColumn = `object_bytes INTEGER CHECK (object_bytes IS NUL
 // sqliteObjectBytesUpgrade adds the object sizes of schema 3 to a schema 2
 // ledger; existing keys keep no size.
 const sqliteObjectBytesUpgrade = `ALTER TABLE pending_objects ADD COLUMN ` + sqliteObjectBytesColumn + `;`
+
+// sqliteStreamTotalsUpgrade adds the stream totals of schema 3 to the
+// coverage of an older schema; the upgrade then fills them from the packs.
+const sqliteStreamTotalsUpgrade = `
+ALTER TABLE coverage ADD COLUMN committed_packs INTEGER NOT NULL DEFAULT 0 CHECK (committed_packs >= 0);
+ALTER TABLE coverage ADD COLUMN committed_data_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0);
+ALTER TABLE coverage ADD COLUMN committed_index_bytes INTEGER NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0);
+`
 
 // sqliteRetentionUpgrade adds the retention columns of schema 2 to a schema 1
 // catalog: every stream starts at the coverage origin and nothing is retired.
@@ -497,7 +508,9 @@ func (s *SQLite) publish(ctx context.Context, expected uint64, p Publication, co
 			return 0, err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE coverage SET end_ms=? WHERE tenant=? AND source_id=?`, p.End, p.Tenant, p.SourceID); err != nil {
+	added := publicationTotals(p.Packs)
+	if _, err = tx.ExecContext(ctx, `UPDATE coverage SET end_ms=?, committed_packs=committed_packs+?, committed_data_bytes=committed_data_bytes+?, committed_index_bytes=committed_index_bytes+? WHERE tenant=? AND source_id=?`,
+		p.End, added.packs, added.dataBytes, added.indexBytes, p.Tenant, p.SourceID); err != nil {
 		return 0, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE catalog_state SET generation=? WHERE singleton=1`, next); err != nil {

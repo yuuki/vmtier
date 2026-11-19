@@ -377,6 +377,7 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_cold_retired_windows_total` | Windows this process retired |
 | `vmtier_cold_retention_seconds` | `cold_retention` as this process is configured; zero keeps Cold data forever. Alert when the replicas of one catalog report different values |
 | `vmtier_catalog_retired_windows`, `vmtier_stream_coverage_start_ms{tenant,source}` | Windows retired over the catalog's lifetime, and each stream's retained start |
+| `vmtier_stream_committed_object_bytes{tenant,source,kind}`, `vmtier_stream_windows{tenant,source}`, `vmtier_stream_packs{tenant,source}` | Committed objects per stream, with the catalog totals in [capacity accounting](operations.md#service-capacity-and-failure-accounting); omitted when the catalog cannot be read |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
 RPC endpoints on a trusted network with suitable access controls/TLS termination.

@@ -38,7 +38,8 @@ database HA and old-primary fencing remain operator responsibilities.
 
 Releases after `v0.1.0-rc.3` use SQLite catalog schema 3 and PostgreSQL catalog
 schema 4, which record object sizes in the object ledger
-([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)). They refuse a catalog that
+([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)) and committed totals per
+stream ([ADR 0012](adr/0012-stream-totals.md)). They refuse a catalog that
 `v0.1.0-rc.3` or an earlier release created until `catalog-upgrade` upgrades it,
 and those releases refuse an upgraded catalog. Take a backup first, then follow
 [upgrade an earlier schema](sqlite-catalog.md#upgrade-an-earlier-schema) or the

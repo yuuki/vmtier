@@ -209,7 +209,8 @@ are rejected.
 
 Schema 2 adds the object ledger used by [garbage collection](serve.md#garbage-collection)
 and the stream starts and retired-window count used by [Cold retention](serve.md#cold-retention).
-Schema 3 adds the object sizes of the ledger ([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)).
+Schema 3 adds the object sizes of the ledger ([ADR 0011](adr/0011-object-sizes-in-the-ledger.md))
+and the stream totals that capacity metrics read ([ADR 0012](adr/0012-stream-totals.md)).
 `serve` and the offline commands, `catalog-backup` included, refuse a schema 1 or 2
 directory until it is upgraded explicitly. Stop the service and take a backup with
 the release that wrote the catalog (`old-vmtier` below) before installing this one,
@@ -223,7 +224,8 @@ old-vmtier catalog-backup -path .state/catalog-sqlite -id sakura-serve-001 \
 
 The upgrade takes the directory lock, adds what the stored schema lacks and changes
 the schema version in one transaction, and prints the status. Repeating it only
-verifies the state. Publication metadata is unchanged. Objects left by attempts that
+verifies the state. Publication metadata is unchanged; the stream totals are filled
+from the committed packs. Objects left by attempts that
 failed before schema 2 were never recorded and are not collected. Keys recorded
 before schema 3 keep no size: `vmtier_catalog_unpublished_objects_unsized` counts
 them until garbage collection forgets them. A release that predates the new schema

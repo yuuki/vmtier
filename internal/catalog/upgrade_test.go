@@ -132,6 +132,7 @@ func TestSQLiteUpgradeOfReleasedSchema1(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	checkReleasedStreamTotals(t, s)
 	next := hourPublication("1:2", "a", 2, 1)
 	recordPublication(t, s, next)
 	if _, err := s.PublishWindow(ctx, 1, next); err != nil {
@@ -461,6 +462,7 @@ func TestSQLiteUpgradeOfReleasedSchema2(t *testing.T) {
 func testUpgradedLedger(t *testing.T, repo Repository, publish func(uint64, Publication) (uint64, error)) {
 	t.Helper()
 	ctx := context.Background()
+	checkReleasedStreamTotals(t, repo)
 	if counts, err := repo.UnpublishedObjects(ctx); err != nil || counts != releasedLedgerCounts {
 		t.Fatalf("upgraded ledger: %+v %v", counts, err)
 	}
@@ -492,6 +494,17 @@ func testUpgradedLedger(t *testing.T, repo Repository, publish func(uint64, Publ
 	}
 	if counts, err := repo.UnpublishedObjects(ctx); err != nil || counts.Unsized.Pending != 0 || counts.Unsized.Deleting != 0 {
 		t.Fatalf("unsized keys were not collected: %+v %v", counts, err)
+	}
+}
+
+// checkReleasedStreamTotals requires the stream totals that an upgrade fills
+// from the one released window of one pack.
+func checkReleasedStreamTotals(t *testing.T, repo Repository) {
+	t.Helper()
+	got, err := repo.(CapacityReader).Capacity(context.Background())
+	want := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20}}
+	if err != nil || !reflect.DeepEqual(got.Streams, want) {
+		t.Fatalf("upgraded stream totals: %+v %v", got.Streams, err)
 	}
 }
 

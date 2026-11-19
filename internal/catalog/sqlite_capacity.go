@@ -11,23 +11,25 @@ import (
 
 var _ CapacityReader = (*SQLite)(nil)
 
-// Capacity reads committed counts in one transaction and adds the apparent
+// Capacity reads the stream totals in one transaction and adds the apparent
 // lengths of the local SQLite files. No checkpoint, catalog write, or
 // object-store operation is performed.
 func (s *SQLite) Capacity(ctx context.Context) (Capacity, error) {
-	var out Capacity
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return out, err
-	}
-	defer tx.Rollback()
-	if _, err = readSQLiteStatus(ctx, tx, s.id); err != nil {
-		return out, err
-	}
-	if err = tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(data_bytes),0),coalesce(sum(index_bytes),0) FROM packs`).Scan(&out.Packs, &out.CommittedDataBytes, &out.CommittedIndexBytes); err != nil {
 		return Capacity{}, err
 	}
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM windows`).Scan(&out.Windows); err != nil {
+	defer tx.Rollback()
+	state, err := readSQLiteStatus(ctx, tx, s.id)
+	if err != nil {
+		return Capacity{}, err
+	}
+	totals, err := readStreamTotals(ctx, tx, "coverage")
+	if err != nil {
+		return Capacity{}, err
+	}
+	out, err := capacityFromCoverage(state, totals)
+	if err != nil {
 		return Capacity{}, err
 	}
 	files := &SQLiteFiles{}

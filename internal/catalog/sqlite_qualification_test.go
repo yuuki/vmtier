@@ -162,8 +162,13 @@ func TestSQLiteCatalogCapacityQualification(t *testing.T) {
 			before := time.Now()
 			capacity, err := s.Capacity(ctx)
 			capacityMS = append(capacityMS, elapsedMS(before))
-			if err != nil || capacity.Windows != int64(publishedHours*tenants) || capacity.Packs != capacity.Windows || capacity.CommittedDataBytes != capacity.Windows*1048576 || capacity.CommittedIndexBytes != capacity.Windows*4096 {
+			if err != nil || capacity.Windows != int64(publishedHours*tenants) || capacity.Packs != capacity.Windows || capacity.CommittedDataBytes != capacity.Windows*1048576 || capacity.CommittedIndexBytes != capacity.Windows*4096 || len(capacity.Streams) != tenants {
 				t.Fatalf("capacity count mismatch: %+v, %v", capacity, err)
+			}
+			for _, stream := range capacity.Streams {
+				if stream.Windows != int64(publishedHours) || stream.Packs != stream.Windows || stream.CommittedDataBytes != stream.Windows*1048576 || stream.CommittedIndexBytes != stream.Windows*4096 {
+					t.Fatalf("stream capacity mismatch: %+v", stream)
+				}
 			}
 			stage["capacity"] = capacity
 		}
@@ -189,7 +194,7 @@ func TestSQLiteCatalogCapacityQualification(t *testing.T) {
 	for name, query := range map[string]string{
 		"window_selection": `EXPLAIN QUERY PLAN SELECT id,start_ms,end_ms,generation,pack_count FROM windows WHERE tenant='1:0' AND source_id='hot' AND start_ms>=1735689600000 AND start_ms<=1735772400000 ORDER BY start_ms LIMIT 25`,
 		"pack_selection":   `EXPLAIN QUERY PLAN SELECT ordinal,data_key,index_key,data_sha256,index_sha256,data_bytes,index_bytes FROM packs WHERE window_id=1 ORDER BY ordinal`,
-		"capacity_sum":     `EXPLAIN QUERY PLAN SELECT count(*),coalesce(sum(data_bytes),0),coalesce(sum(index_bytes),0) FROM packs`,
+		"capacity_streams": `EXPLAIN QUERY PLAN ` + streamTotalsSQL + `coverage`,
 	} {
 		rows, err := s.db.QueryContext(ctx, query)
 		if err != nil {

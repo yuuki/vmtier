@@ -46,6 +46,9 @@ CREATE TABLE %[1]s.coverage (
  source_id TEXT NOT NULL,
  end_ms BIGINT NOT NULL CHECK (end_ms >= 0),
  start_ms BIGINT NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
+ committed_packs BIGINT NOT NULL DEFAULT 0 CHECK (committed_packs >= 0),
+ committed_data_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0),
+ committed_index_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0),
  PRIMARY KEY (tenant, source_id)
 );
 CREATE TABLE %[1]s.windows (
@@ -103,6 +106,15 @@ const postgresObjectBytesColumn = `object_bytes BIGINT CHECK (object_bytes IS NU
 // ledger; existing keys keep no size. Adding a nullable column without a
 // default rewrites no rows.
 const postgresObjectBytesUpgrade = `ALTER TABLE %[1]s.pending_objects ADD COLUMN ` + postgresObjectBytesColumn + `;`
+
+// postgresStreamTotalsUpgrade adds the stream totals of schema 4 to the
+// coverage of an older schema; the upgrade then fills them from the packs.
+// Columns with a constant default rewrite no rows.
+const postgresStreamTotalsUpgrade = `
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_packs BIGINT NOT NULL DEFAULT 0 CHECK (committed_packs >= 0);
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_data_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_data_bytes >= 0);
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_index_bytes BIGINT NOT NULL DEFAULT 0 CHECK (committed_index_bytes >= 0);
+`
 
 // postgresRetentionUpgrade adds the retention columns of schema 3 to an older
 // catalog: every stream starts at the coverage origin and nothing is retired.
@@ -479,7 +491,9 @@ func (p *Postgres) writePublication(ctx context.Context, tx *sql.Tx, publication
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET end_ms=$1 WHERE tenant=$2 AND source_id=$3`, publication.End, publication.Tenant, publication.SourceID); err != nil {
+	added := publicationTotals(publication.Packs)
+	if _, err := tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET end_ms=$1, committed_packs=committed_packs+$4, committed_data_bytes=committed_data_bytes+$5, committed_index_bytes=committed_index_bytes+$6 WHERE tenant=$2 AND source_id=$3`,
+		publication.End, publication.Tenant, publication.SourceID, added.packs, added.dataBytes, added.indexBytes); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET generation=$1 WHERE singleton=1`, next)

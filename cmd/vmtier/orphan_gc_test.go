@@ -113,7 +113,7 @@ func TestSQLiteCLIUpgradeAddsObjectLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`); err != nil {
+	if _, err := db.Exec(`DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; ALTER TABLE coverage DROP COLUMN committed_packs; ALTER TABLE coverage DROP COLUMN committed_data_bytes; ALTER TABLE coverage DROP COLUMN committed_index_bytes; UPDATE catalog_state SET schema_version=1`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

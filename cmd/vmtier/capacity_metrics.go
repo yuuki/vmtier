@@ -125,6 +125,12 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 		fmt.Fprintf(w, "vmtier_catalog_file_bytes{file=\"database\"} %d\nvmtier_catalog_file_bytes{file=\"wal\"} %d\nvmtier_catalog_file_bytes{file=\"shared_memory\"} %d\n", files.DatabaseBytes, files.WALBytes, files.SharedMemoryBytes)
 	}
 	fmt.Fprintf(w, "vmtier_catalog_committed_object_bytes{kind=\"data\"} %d\nvmtier_catalog_committed_object_bytes{kind=\"index\"} %d\nvmtier_catalog_windows %d\nvmtier_catalog_packs %d\n", capacity.CommittedDataBytes, capacity.CommittedIndexBytes, capacity.Windows, capacity.Packs)
+	// Label values come only from the catalog's coverage rows, so the series
+	// are bounded by the contract's tenants and sources.
+	for _, s := range capacity.Streams {
+		fmt.Fprintf(w, "vmtier_stream_committed_object_bytes{tenant=%q,source=%q,kind=\"data\"} %d\nvmtier_stream_committed_object_bytes{tenant=%q,source=%q,kind=\"index\"} %d\nvmtier_stream_windows{tenant=%q,source=%q} %d\nvmtier_stream_packs{tenant=%q,source=%q} %d\n",
+			s.Tenant, s.SourceID, s.CommittedDataBytes, s.Tenant, s.SourceID, s.CommittedIndexBytes, s.Tenant, s.SourceID, s.Windows, s.Tenant, s.SourceID, s.Packs)
+	}
 }
 
 // writeLedgerStates writes one gauge per object ledger state.

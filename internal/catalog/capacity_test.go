@@ -2,13 +2,35 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"math/rand/v2"
+	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestCommittedCapacity(t *testing.T) {
+	c := hourContract()
+	c.Tenants = append(c.Tenants, "3:4")
+	c.Sources = append(c.Sources, Source{ID: "b", Fingerprint: strings.Repeat("b", 64)})
 	for name, fixture := range map[string]func(*testing.T, Contract) ledgerFixture{"sqlite": sqliteLedgerFixtureFor, "postgres": postgresLedgerFixtureFor} {
-		t.Run(name, func(t *testing.T) { testCommittedCapacity(t, fixture(t, hourContract())) })
+		t.Run(name, func(t *testing.T) { testCommittedCapacity(t, fixture(t, c)) })
 	}
+}
+
+// streamCapacities lists every stream of the four-stream contract, with the
+// values given for some of them.
+func streamCapacities(values ...StreamCapacity) []StreamCapacity {
+	out := []StreamCapacity{{Tenant: "1:2", SourceID: "a"}, {Tenant: "1:2", SourceID: "b"}, {Tenant: "3:4", SourceID: "a"}, {Tenant: "3:4", SourceID: "b"}}
+	for _, v := range values {
+		for i := range out {
+			if out[i].Tenant == v.Tenant && out[i].SourceID == v.SourceID {
+				out[i] = v
+			}
+		}
+	}
+	return out
 }
 
 func testCommittedCapacity(t *testing.T, f ledgerFixture) {
@@ -18,29 +40,30 @@ func testCommittedCapacity(t *testing.T, f ledgerFixture) {
 		t.Fatal("service backend does not report capacity")
 	}
 	_, local := f.repo.(*SQLite)
-	observe := func() Capacity {
+	check := func(want Capacity) {
 		t.Helper()
-		capacity, err := reader.Capacity(ctx)
+		got, err := reader.Capacity(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		// Only SQLite has local catalog files.
-		if (capacity.Files != nil) != local || (local && capacity.Files.DatabaseBytes <= 0) {
-			t.Fatalf("catalog files: %+v", capacity.Files)
+		if (got.Files != nil) != local || (local && got.Files.DatabaseBytes <= 0) {
+			t.Fatalf("catalog files: %+v", got.Files)
 		}
-		capacity.Files = nil
-		return capacity
+		got.Files = nil
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("capacity:\n got %+v\nwant %+v", got, want)
+		}
 	}
-	if got := observe(); got != (Capacity{}) {
-		t.Fatalf("initial capacity: %+v", got)
-	}
-	first := hourPublication("1:2", "a", 1, 2)
-	recordPublication(t, f.repo, first)
-	if _, err := f.publish(0, first); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.publish(1, hourPublication("1:2", "a", 2, 0)); err != nil {
-		t.Fatal(err)
+	// A stream without windows is a known zero, not an omitted stream.
+	check(Capacity{Streams: streamCapacities()})
+	generation := uint64(0)
+	for _, p := range []Publication{hourPublication("1:2", "a", 1, 2), hourPublication("1:2", "a", 2, 0), hourPublication("3:4", "b", 1, 1)} {
+		recordPublication(t, f.repo, p)
+		var err error
+		if generation, err = f.publish(generation, p); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Recorded keys and failed publications are not committed objects.
 	stale := hourPublication("1:2", "a", 3, 1)
@@ -48,16 +71,16 @@ func testCommittedCapacity(t *testing.T, f ledgerFixture) {
 	if _, err := f.publish(0, stale); err == nil {
 		t.Fatal("stale generation unexpectedly published")
 	}
-	if got := observe(); got != (Capacity{Windows: 2, Packs: 2, CommittedDataBytes: 20, CommittedIndexBytes: 40}) {
-		t.Fatalf("published capacity: %+v", got)
+	check(Capacity{Windows: 3, Packs: 3, CommittedDataBytes: 30, CommittedIndexBytes: 60, Streams: streamCapacities(
+		StreamCapacity{Tenant: "1:2", SourceID: "a", Windows: 2, Packs: 2, CommittedDataBytes: 20, CommittedIndexBytes: 40},
+		StreamCapacity{Tenant: "3:4", SourceID: "b", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20},
+	)})
+	// Cold retention removes the windows and their packs from the stream and
+	// the totals.
+	if n, err := f.repo.RetireWindows(ctx, retentionEnding(f.now(), 2), 10); err != nil || n != 2 {
+		t.Fatalf("retire first windows: %d %v", n, err)
 	}
-	// Cold retention removes the window and its packs from the totals.
-	if n, err := f.repo.RetireWindows(ctx, retentionEnding(f.now(), 2), 10); err != nil || n != 1 {
-		t.Fatalf("retire first window: %d %v", n, err)
-	}
-	if got := observe(); got != (Capacity{Windows: 1}) {
-		t.Fatalf("capacity after retention: %+v", got)
-	}
+	check(Capacity{Windows: 1, Streams: streamCapacities(StreamCapacity{Tenant: "1:2", SourceID: "a", Windows: 1})})
 }
 
 func TestPostgresCapacitySurvivesReconnectAndRejectsUnavailableAuthority(t *testing.T) {
@@ -72,8 +95,8 @@ func TestPostgresCapacitySurvivesReconnectAndRejectsUnavailableAuthority(t *test
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	want := Capacity{Windows: 1, Packs: 2, CommittedDataBytes: 20, CommittedIndexBytes: 40}
-	if got, err := reopened.Capacity(ctx); err != nil || got != want {
+	want := Capacity{Windows: 1, Packs: 2, CommittedDataBytes: 20, CommittedIndexBytes: 40, Streams: []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 2, CommittedDataBytes: 20, CommittedIndexBytes: 40}}}
+	if got, err := reopened.Capacity(ctx); err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("capacity after reconnect: %+v %v", got, err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
@@ -87,5 +110,108 @@ func TestPostgresCapacitySurvivesReconnectAndRejectsUnavailableAuthority(t *test
 	}
 	if got, err := reopened.Capacity(ctx); err == nil {
 		t.Fatalf("unsupported schema observed: %+v", got)
+	}
+}
+
+// Publications, replays and retirements in any order keep every stream's
+// totals equal to its committed packs, on both backends.
+func TestStreamTotalsFollowPublicationAndRetention(t *testing.T) {
+	c := hourContract()
+	c.Tenants = append(c.Tenants, "3:4")
+	c.Sources = append(c.Sources, Source{ID: "b", Fingerprint: strings.Repeat("b", 64)})
+	for name, fixture := range map[string]func(*testing.T, Contract) ledgerFixture{"sqlite": sqliteLedgerFixtureFor, "postgres": postgresLedgerFixtureFor} {
+		t.Run(name, func(t *testing.T) {
+			f := fixture(t, c)
+			coverage, windows, packs := "coverage", "windows", "packs"
+			if p, ok := f.repo.(*Postgres); ok {
+				coverage, windows, packs = p.table("coverage"), p.table("windows"), p.table("packs")
+			}
+			testStreamTotals(t, f, streamTotalsMismatchSQL(coverage, windows, packs))
+		})
+	}
+}
+
+func testStreamTotals(t *testing.T, f ledgerFixture, mismatch string) {
+	ctx := context.Background()
+	rng := rand.New(rand.NewPCG(1, 2))
+	streams := [][2]string{{"1:2", "a"}, {"1:2", "b"}, {"3:4", "a"}, {"3:4", "b"}}
+	next := map[[2]string]int64{}
+	var published []Publication
+	generation := uint64(0)
+	check := func(step string) {
+		t.Helper()
+		got, err := f.repo.(CapacityReader).Capacity(ctx)
+		if err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+		var windows int64
+		for _, s := range got.Streams {
+			windows += s.Windows
+		}
+		if windows != got.Windows {
+			t.Fatalf("%s: stream windows %d, total %d", step, windows, got.Windows)
+		}
+		if err := checkStreamTotals(ctx, queryRower{f}, mismatch); err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+	}
+	for step := 0; step < 40; step++ {
+		stream := streams[rng.IntN(len(streams))]
+		hour := 1 + next[stream]
+		p := hourPublication(stream[0], stream[1], hour, rng.IntN(4))
+		for i := range p.Packs {
+			p.Packs[i].DataBytes, p.Packs[i].IndexBytes = rng.Int64N(1000), 1+rng.Int64N(1000)
+		}
+		recordPublication(t, f.repo, p)
+		var err error
+		if generation, err = f.publish(generation, p); err != nil {
+			t.Fatal(err)
+		}
+		next[stream] = hour
+		published = append(published, p)
+		// A replay of a committed window changes nothing.
+		if step%5 == 0 {
+			if _, err := f.publish(generation, published[rng.IntN(len(published))]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if step%10 == 9 {
+			if _, err := f.repo.RetireWindows(ctx, retentionEnding(f.now(), 1+next[stream]/2), 1+rng.IntN(5)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		check(fmt.Sprintf("step %d", step))
+	}
+}
+
+// queryRower runs a fixture's queries through its raw SQL connection.
+type queryRower struct{ f ledgerFixture }
+
+func (q queryRower) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return q.f.queryRow(query, args...)
+}
+
+// Restore refuses a backup whose stream totals differ from its packs, so a
+// restored catalog never reports them.
+func TestSQLiteRestoreRefusesWrongStreamTotals(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	s := sqliteTestStore(t, contract())
+	first := sqlitePublication("1:2", "a", 100, 2)
+	recordPublication(t, s, first)
+	if _, err := s.PublishWindow(ctx, 0, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE coverage SET committed_data_bytes=committed_data_bytes+1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Backup(ctx, root+"/backup"); err != nil {
+		t.Fatal(err)
+	}
+	if restored, err := RestoreSQLite(ctx, root+"/backup", root+"/restored", "restored"); err == nil || !strings.Contains(err.Error(), "stream totals") {
+		if restored != nil {
+			restored.Close()
+		}
+		t.Fatalf("restore accepted wrong stream totals: %v", err)
 	}
 }

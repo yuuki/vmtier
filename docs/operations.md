@@ -104,6 +104,7 @@ for its storage usage. These observations do not list the blob backend:
 | `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | SQLite only. Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
 | `vmtier_catalog_committed_object_bytes{kind="data\|index"}` | Sum of byte lengths in committed pack descriptors, retained across restart. Excludes unreferenced/failed attempts, other prefixes, provider versions, and provider overhead; this is **not measured bucket usage**. |
 | `vmtier_catalog_windows`, `vmtier_catalog_packs` | Committed logical windows (including empty windows) and immutable pack references. |
+| `vmtier_stream_committed_object_bytes{tenant,source,kind="data\|index"}`, `vmtier_stream_windows{tenant,source}`, `vmtier_stream_packs{tenant,source}` | The same accounting per stream of the catalog's coverage; the totals above are their sums. A stream without windows reports zero. Use them to see which tenant or source makes the Cold tier grow. Label values come only from the stored contract, so the series are bounded by its tenants and sources. |
 | `vmtier_catalog_capacity_available` | One only when the current bounded observation succeeds. Capacity gauges are omitted on failure, rather than reporting stale values or false zeroes. |
 | `vmtier_cache_used_bytes`, `vmtier_cache_limit_bytes`, `vmtier_cache_entries`, `vmtier_cache_inflight_reads` | Retained immutable raw bytes plus keys and a conservative per-entry bookkeeping allowance; excludes allocator/GC overhead, transient parsed indexes and active-query allocations. In-flight shared reads are bounded separately. |
 | `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
@@ -125,15 +126,16 @@ the committed and unpublished byte gauges approximates objects vmtier does not
 know (other catalogs, older versions, objects left before the ledger). A steadily growing `pending`
 count with garbage collection enabled means attempts fail faster than they are
 collected, or that collection fails; check `vmtier_orphan_gc_failed_passes_total`.
-Each capacity scrape aggregates the complete `packs` and `windows` tables: on
-the catalog's single SQLite connection, or in a read-only snapshot of the shared
-PostgreSQL database, once for every replica that is scraped. The shared
-five-second scrape context bounds the observation time, not the number of rows
-scanned. Large catalogs or frequent scrapes can therefore contend with
-publication and query selection; include scrape load (and, for PostgreSQL, the
-number of scraped replicas) when sizing the deployment. The
-[catalog-capacity report](catalog-capacity-validation.md) records scan and
-selection contention for its 87,600-window fixture at the reported revision.
+Each capacity scrape reads the catalog status and one coverage row per stream,
+which holds the stream's committed pack count and lengths
+([ADR 0012](adr/0012-stream-totals.md)); a stream's window count follows from its
+coverage range. The cost therefore grows with the number of streams, not with the
+archived history. Publication and Cold retention update these totals in the
+transaction that changes the windows; restore and the PostgreSQL import check
+them against the packs. The shared five-second scrape context bounds the
+observation time. With PostgreSQL, every scraped replica reads the shared
+database. The [catalog-capacity report](catalog-capacity-validation.md) records
+scrape latency and selection contention for its 87,600-window fixture.
 Compare rising failed-window/refusal rates with declining retention headroom
 before increasing workloads or resource limits. These signals do not extend the
 time available to recover an unarchived suffix.
@@ -141,9 +143,8 @@ time available to recover an unarchived suffix.
 Cache and query-admission/refusal metrics are also available in the retained
 JSON v2 gateway. Catalog capacity totals describe both service backends but not
 the JSON v2 gateway; failed-window metrics also describe the active PostgreSQL
-archiver. The SQL capacity totals use
-a constant-memory scan of committed descriptors under the scrape timeout; they
-do not add an in-memory catalog mirror.
+archiver. The capacity totals are stored in the catalog itself; they do not add
+an in-memory catalog mirror.
 
 ## Failure and restart behavior
 

@@ -25,6 +25,8 @@ type ledgerFixture struct {
 	now func() int64
 	// exec runs raw SQL against the catalog's tables.
 	exec func(string, ...any) error
+	// queryRow reads one row with raw SQL.
+	queryRow func(string, ...any) *sql.Row
 }
 
 func sqliteLedgerFixture(t *testing.T) ledgerFixture { return sqliteLedgerFixtureFor(t, contract()) }
@@ -51,6 +53,7 @@ func sqliteLedgerFixtureFor(t *testing.T, c Contract) ledgerFixture {
 			_, err := s.db.Exec(query, args...)
 			return err
 		},
+		queryRow: func(query string, args ...any) *sql.Row { return s.db.QueryRow(query, args...) },
 	}
 }
 
@@ -80,6 +83,7 @@ func postgresLedgerFixtureFor(t *testing.T, c Contract) ledgerFixture {
 			_, err := db.ExecContext(ctx, query, args...)
 			return err
 		},
+		queryRow: func(query string, args ...any) *sql.Row { return db.QueryRowContext(ctx, query, args...) },
 	}
 }
 
@@ -347,7 +351,7 @@ func TestPostgresUpgradeAddsObjectLedger(t *testing.T) {
 	if err := p.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=2`); err != nil {
+	if _, err := db.ExecContext(ctx, `DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; ALTER TABLE coverage DROP COLUMN committed_packs; ALTER TABLE coverage DROP COLUMN committed_data_bytes; ALTER TABLE coverage DROP COLUMN committed_index_bytes; UPDATE catalog_state SET schema_version=2`); err != nil {
 		t.Fatal(err)
 	}
 	if old, err := OpenPostgres(ctx, dsn, "test"); err == nil {
@@ -448,7 +452,7 @@ func TestSQLiteUpgradeAddsObjectLedger(t *testing.T) {
 }
 
 // sqliteDowngrade turns a schema 2 catalog into the schema 1 shape.
-const sqliteDowngrade = `DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; UPDATE catalog_state SET schema_version=1`
+const sqliteDowngrade = `DROP TABLE pending_objects; DROP INDEX windows_start; ALTER TABLE catalog_state DROP COLUMN retired_windows; ALTER TABLE coverage DROP COLUMN start_ms; ALTER TABLE coverage DROP COLUMN committed_packs; ALTER TABLE coverage DROP COLUMN committed_data_bytes; ALTER TABLE coverage DROP COLUMN committed_index_bytes; UPDATE catalog_state SET schema_version=1`
 
 // downgradeSQLite closes s and turns its file into the schema 1 shape.
 func downgradeSQLite(t *testing.T, s *SQLite) {

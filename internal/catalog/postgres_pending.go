@@ -275,14 +275,22 @@ func (p *Postgres) RetireWindows(ctx context.Context, retention time.Duration, l
 	if err != nil {
 		return 0, err
 	}
+	removed := make(map[string]streamTotals, len(starts))
 	for _, w := range windows {
-		if err = p.retireWindow(ctx, tx, w.id, incarnation); err != nil {
+		totals, err := p.retireWindow(ctx, tx, w.id, incarnation)
+		if err != nil {
 			return 0, err
 		}
+		key := w.tenant + "\x00" + w.sourceID
+		sum := removed[key]
+		sum.add(totals)
+		removed[key] = sum
 	}
 	for key, start := range starts {
 		tenant, source, _ := strings.Cut(key, "\x00")
-		if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET start_ms=$1 WHERE tenant=$2 AND source_id=$3`, start, tenant, source); err != nil {
+		r := removed[key]
+		if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET start_ms=$1, committed_packs=committed_packs-$4, committed_data_bytes=committed_data_bytes-$5, committed_index_bytes=committed_index_bytes-$6 WHERE tenant=$2 AND source_id=$3`,
+			start, tenant, source, r.packs, r.dataBytes, r.indexBytes); err != nil {
 			return 0, err
 		}
 	}
@@ -318,22 +326,26 @@ func (p *Postgres) retiredWindows(ctx context.Context, tx *sql.Tx, last int64, l
 }
 
 // retireWindow moves a window's object keys, with the sizes of their pack
-// descriptors, to the ledger and removes the window with its packs and key
-// reservations.
-func (p *Postgres) retireWindow(ctx context.Context, tx *sql.Tx, id int64, incarnation string) error {
+// descriptors, to the ledger, removes the window with its packs and key
+// reservations, and returns its totals.
+func (p *Postgres) retireWindow(ctx context.Context, tx *sql.Tx, id int64, incarnation string) (streamTotals, error) {
+	var totals streamTotals
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(data_bytes),0)::bigint,coalesce(sum(index_bytes),0)::bigint FROM `+p.table("packs")+` WHERE window_id=$1`, id).Scan(&totals.packs, &totals.dataBytes, &totals.indexBytes); err != nil {
+		return totals, err
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+`(object_key,created_ms,state,incarnation,object_bytes)
  SELECT k.object_key, `+postgresNowMS+`, $2, ($3)::text, coalesce(d.data_bytes, i.index_bytes) FROM `+p.table("object_keys")+` k
  LEFT JOIN `+p.table("packs")+` d ON d.data_key=k.object_key LEFT JOIN `+p.table("packs")+` i ON i.index_key=k.object_key
  WHERE k.window_id=$1`, id, retiredState, incarnation); err != nil {
-		return fmt.Errorf("record retired objects: %w", err)
+		return totals, fmt.Errorf("record retired objects: %w", err)
 	}
 	for _, table := range []string{"packs", "object_keys"} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+p.table(table)+` WHERE window_id=$1`, id); err != nil {
-			return err
+			return totals, err
 		}
 	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM `+p.table("windows")+` WHERE id=$1`, id)
-	return err
+	return totals, err
 }
 
 var _ StreamAdder = (*Postgres)(nil)

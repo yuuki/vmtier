@@ -250,6 +250,9 @@ func validateRestoredReferences(ctx context.Context, s *SQLite, status SQLiteSta
 	if err := checkRestoredLedger(ctx, tx, status); err != nil {
 		return err
 	}
+	if err := checkStreamTotals(ctx, tx, streamTotalsMismatchSQL("coverage", "windows", "packs")); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
