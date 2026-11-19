@@ -20,7 +20,7 @@ Raw artifacts remain under [`results/`](results/) at their existing paths.
 | [reader-validation.md](reader-validation.md) | Cache, shared reads, and range coalescing |
 | [metadata-validation.md](metadata-validation.md) | Metadata comparisons and deadline measurements |
 | [workload-validation.md](workload-validation.md) | Workload and combined memory measurements |
-| [catalog-capacity-validation.md](catalog-capacity-validation.md) | Historical catalog scale |
+| [catalog-capacity-validation.md](catalog-capacity-validation.md) | Historical catalog scale; capacity observation cost before and after stream totals |
 | [recovery-validation.md](recovery-validation.md) | Offline recovery and JSON v2 cutover |
 | [foundation-validation.md](foundation-validation.md) | Foundation checks |
 | [ci-evidence-validation.md](ci-evidence-validation.md) | CI evidence packaging |

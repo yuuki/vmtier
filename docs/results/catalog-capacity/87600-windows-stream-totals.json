@@ -1,0 +1,462 @@
+{
+  "binary_sha256": "94cb143f476d9d05c967cab9ac89733279dedc03dd149122ef492749b88fd677",
+  "build_command": [
+    "go",
+    "test",
+    "-mod=vendor",
+    "-p",
+    "2",
+    "-c",
+    "-o",
+    "/tmp/claude-0/-home-user/bd24b608-8123-5292-9235-3050d229c185/scratchpad/capacity/totals-work/catalog-capacity.test",
+    "./internal/catalog"
+  ],
+  "command": [
+    "/tmp/claude-0/-home-user/bd24b608-8123-5292-9235-3050d229c185/scratchpad/capacity/totals-work/catalog-capacity.test",
+    "-test.run=^TestSQLiteCatalogCapacityQualification$",
+    "-test.count=1",
+    "-test.timeout=10m",
+    "-test.v"
+  ],
+  "elapsed_seconds_including_build": 121.24843072700014,
+  "exit_code": 0,
+  "hardware": {
+    "cgroup_cpu_max": null,
+    "cgroup_memory_max": null,
+    "cpu_affinity_count": 4,
+    "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "logical_cpus": 4,
+    "mem_total": "MemTotal:       16473756 kB",
+    "platform": "Linux-6.18.44-fc-v653-x86_64-with-glibc2.39"
+  },
+  "log": "=== RUN   TestSQLiteCatalogCapacityQualification\n    sqlite_qualification_test.go:177: qualified 8760 logical windows\n    sqlite_qualification_test.go:177: qualified 87600 logical windows\n--- PASS: TestSQLiteCatalogCapacityQualification (117.71s)\nPASS\n",
+  "measurement": {
+    "concurrent_selection_and_capacity": {
+      "capacity_latency_ms": {
+        "count": 20,
+        "max": 1.39929,
+        "mean": 0.85507485,
+        "p50": 0.811376,
+        "p95": 1.147417,
+        "p99": 1.39929
+      },
+      "schedule": "one sequential selection worker and one sequential capacity worker, started together without sleeps",
+      "select_24h_latency_ms": {
+        "count": 100,
+        "max": 1.907941,
+        "mean": 0.8271311500000003,
+        "p50": 0.733879,
+        "p95": 1.338455,
+        "p99": 1.478091
+      }
+    },
+    "finished_at": "2026-11-19T11:25:14.164877499Z",
+    "fixture": {
+      "blob_objects_written": 0,
+      "descriptor_data_bytes": 1048576,
+      "descriptor_index_bytes": 4096,
+      "hours_per_tenant": 8760,
+      "packs_per_window": 1,
+      "publication_path": "SQLite.PublishWindow, one FULL-synchronous WAL transaction per window",
+      "selection_repeats_per_tenant_position_duration": 10,
+      "sources": 1,
+      "tenants": 10,
+      "window_ms": 3600000
+    },
+    "passed": true,
+    "process_usage": {
+      "peak_rss_bytes_linux": 38625280,
+      "system_cpu_seconds": 22.799412,
+      "user_cpu_seconds": 65.553438
+    },
+    "publication_and_checkpoint_wall_seconds": 117.53249331,
+    "publication_call_seconds": 67.64187930800108,
+    "publication_calls_per_second": 1295.0556799452813,
+    "publication_latency_ms": {
+      "count": 87600,
+      "max": 29.698196,
+      "mean": 0.7721675720091374,
+      "p50": 0.695918,
+      "p95": 1.137468,
+      "p99": 2.764776
+    },
+    "query_plans": {
+      "capacity_streams": [
+        "SCAN coverage"
+      ],
+      "pack_selection": [
+        "SEARCH packs USING PRIMARY KEY (window_id=?)"
+      ],
+      "window_selection": [
+        "SEARCH windows USING INDEX sqlite_autoindex_windows_2 (tenant=? AND source_id=? AND start_ms>? AND start_ms<?)"
+      ]
+    },
+    "refusals": [
+      {
+        "error": "query catalog plan limit exceeded",
+        "latency_ms": 0.27608,
+        "limits": {
+          "End": 1735776000000,
+          "MaxPacks": 0,
+          "MaxPlanBytes": 0,
+          "MaxWindows": 23,
+          "Start": 1735689600000,
+          "Tenant": "1:0"
+        },
+        "reason": "catalog_plan"
+      },
+      {
+        "error": "query catalog pack limit exceeded",
+        "latency_ms": 0.716174,
+        "limits": {
+          "End": 1735776000000,
+          "MaxPacks": 23,
+          "MaxPlanBytes": 0,
+          "MaxWindows": 0,
+          "Start": 1735689600000,
+          "Tenant": "1:0"
+        },
+        "reason": "catalog_plan"
+      },
+      {
+        "error": "query catalog plan limit exceeded",
+        "latency_ms": 0.120162,
+        "limits": {
+          "End": 1735693200000,
+          "MaxPacks": 0,
+          "MaxPlanBytes": 128,
+          "MaxWindows": 0,
+          "Start": 1735689600000,
+          "Tenant": "1:0"
+        },
+        "reason": "catalog_plan"
+      }
+    ],
+    "reopen_exact_checks": 10,
+    "reopen_including_quick_check_ms": 60.256712,
+    "runtime": {
+      "go_version": "go1.27.4",
+      "goarch": "amd64",
+      "gomaxprocs": 2,
+      "goos": "linux",
+      "num_cpu": 4
+    },
+    "selection_limits": {
+      "max_packs": 24,
+      "max_plan_bytes": 32768,
+      "max_windows": 24
+    },
+    "sqlite": {
+      "journal_mode": "wal",
+      "max_open_connections": 1,
+      "synchronous": 2,
+      "version": "3.54.1"
+    },
+    "stages": [
+      {
+        "capacity": {
+          "CommittedDataBytes": 9185525760,
+          "CommittedIndexBytes": 35880960,
+          "Files": {
+            "DatabaseBytes": 4685824,
+            "SharedMemoryBytes": 32768,
+            "WALBytes": 4206552
+          },
+          "Packs": 8760,
+          "Streams": [
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "10:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "1:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "2:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "3:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "4:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "5:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "6:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "7:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "8:0",
+              "Windows": 876
+            },
+            {
+              "CommittedDataBytes": 918552576,
+              "CommittedIndexBytes": 3588096,
+              "Packs": 876,
+              "SourceID": "hot",
+              "Tenant": "9:0",
+              "Windows": 876
+            }
+          ],
+          "Windows": 8760
+        },
+        "capacity_latency_ms": {
+          "count": 20,
+          "max": 0.634079,
+          "mean": 0.19445645,
+          "p50": 0.145432,
+          "p95": 0.394681,
+          "p99": 0.634079
+        },
+        "logical_windows": 8760,
+        "selections": [
+          {
+            "latency_ms": {
+              "count": 300,
+              "max": 2.648983,
+              "mean": 0.19968038333333338,
+              "p50": 0.180632,
+              "p95": 0.36051,
+              "p99": 0.573537
+            },
+            "positions": [
+              "oldest",
+              "middle",
+              "newest"
+            ],
+            "selected_packs": 1,
+            "selected_windows": 1
+          },
+          {
+            "latency_ms": {
+              "count": 300,
+              "max": 2.173444,
+              "mean": 0.9788676999999998,
+              "p50": 0.936972,
+              "p95": 1.461488,
+              "p99": 1.882434
+            },
+            "positions": [
+              "oldest",
+              "middle",
+              "newest"
+            ],
+            "selected_packs": 24,
+            "selected_windows": 24
+          }
+        ]
+      },
+      {
+        "capacity": {
+          "CommittedDataBytes": 91855257600,
+          "CommittedIndexBytes": 358809600,
+          "Files": {
+            "DatabaseBytes": 46698496,
+            "SharedMemoryBytes": 32768,
+            "WALBytes": 4218912
+          },
+          "Packs": 87600,
+          "Streams": [
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "10:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "1:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "2:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "3:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "4:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "5:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "6:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "7:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "8:0",
+              "Windows": 8760
+            },
+            {
+              "CommittedDataBytes": 9185525760,
+              "CommittedIndexBytes": 35880960,
+              "Packs": 8760,
+              "SourceID": "hot",
+              "Tenant": "9:0",
+              "Windows": 8760
+            }
+          ],
+          "Windows": 87600
+        },
+        "capacity_latency_ms": {
+          "count": 20,
+          "max": 0.232553,
+          "mean": 0.11195925,
+          "p50": 0.105096,
+          "p95": 0.191064,
+          "p99": 0.232553
+        },
+        "logical_windows": 87600,
+        "selections": [
+          {
+            "latency_ms": {
+              "count": 300,
+              "max": 0.648715,
+              "mean": 0.1367234,
+              "p50": 0.126583,
+              "p95": 0.207386,
+              "p99": 0.461897
+            },
+            "positions": [
+              "oldest",
+              "middle",
+              "newest"
+            ],
+            "selected_packs": 1,
+            "selected_windows": 1
+          },
+          {
+            "latency_ms": {
+              "count": 300,
+              "max": 2.273649,
+              "mean": 0.9786382366666664,
+              "p50": 0.974258,
+              "p95": 1.382341,
+              "p99": 1.694753
+            },
+            "positions": [
+              "oldest",
+              "middle",
+              "newest"
+            ],
+            "selected_packs": 24,
+            "selected_windows": 24
+          }
+        ]
+      }
+    ],
+    "started_at": "2026-11-19T11:23:16.459340366Z"
+  },
+  "provenance": {
+    "catalog_sources_and_harness_sha256": "34f29d4684b2442eb4d76bc235e066713adef852097b3f755c64f3cd2b627c1a",
+    "compiler_version": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "git_head": "69fff5846fc9f913085cf4827ca8fb506473b3d2",
+    "git_status": "",
+    "go_environment": {
+      "CC": "gcc",
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOOS": "linux"
+    },
+    "go_version": "go version go1.27.4 linux/amd64"
+  },
+  "purpose": "Historical catalog metadata qualification only; no archived payload, stock VM, or live provider workload.",
+  "schema_version": 1,
+  "settings": {
+    "GOCACHE": "/home/user/vmtier-after/.cache/go-build",
+    "GOMAXPROCS": "2",
+    "hours": 8760,
+    "repeats": 10,
+    "tenants": 10
+  },
+  "workdir": "/tmp/claude-0/-home-user/bd24b608-8123-5292-9235-3050d229c185/scratchpad/capacity/totals-work"
+}

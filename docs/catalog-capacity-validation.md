@@ -36,9 +36,11 @@ not substituted for the query path.
 
 The fixture also times 20 `Capacity` observations at each checkpoint, then runs
 100 sequential 24-hour selections concurrently with 20 sequential observations.
-This intentionally exposes contention on the single connection. `Capacity`
-aggregates committed pack sizes with a full table scan; its cost is not bounded
-by a query's selected interval. Finally, closing and reopening the real catalog
+This intentionally exposes contention on the single connection. Until #58,
+`Capacity` aggregated committed pack sizes with a full table scan, whose cost is
+not bounded by a query's selected interval; it now reads one coverage row per
+stream (see [stream totals](#stream-totals-58)), and the fixture also checks every
+stream's totals. Finally, closing and reopening the real catalog
 runs `quick_check` and verifies exact 24-hour tail selections for every tenant.
 
 ## Reproduction
@@ -96,6 +98,28 @@ back-to-back, much more frequent than the service's five-second observation
 interval. Their table scan explains the observed connection contention and the
 growth in observation cost; indexed selection alone must not be used to claim
 constant-time metrics at arbitrary catalog size.
+
+## Stream totals (#58)
+
+[ADR 0012](adr/0012-stream-totals.md) replaced the table scan of the capacity
+observation with stream totals kept on the coverage rows. On 2026-11-19 the same
+command (87,600 windows, ten tenants, `GOMAXPROCS=2`) ran on three clean
+checkouts, one after the other, in one managed container with four Intel Xeon
+2.10 GHz CPUs, Go 1.27.4 and the vendored SQLite 3.54.1:
+
+| Revision | Capacity observation p50 / p95 / p99 | Contended 24-hour selection p50 / p95 / p99 | Publication p50 / p95 / p99 | Raw report |
+| --- | --- | --- | --- | --- |
+| Full scan, `1b980cb` | 13.355 / 15.456 / 15.797 ms | 1.073 / 18.118 / 18.848 ms | 0.666 / 1.134 / 2.644 ms | [full scan](results/catalog-capacity/87600-windows-full-scan.json) |
+| Scan grouped by stream (discarded revision of this change) | 101.599 / 118.381 / 130.196 ms | 0.701 / 106.254 / 109.928 ms | 0.658 / 1.102 / 2.728 ms | [grouped scan](results/catalog-capacity/87600-windows-grouped-scan.json) |
+| Stream totals, `69fff58` | 0.105 / 0.191 / 0.233 ms | 0.734 / 1.338 / 1.478 ms | 0.696 / 1.137 / 2.765 ms | [stream totals](results/catalog-capacity/87600-windows-stream-totals.json) |
+
+The observation now reads the status and one row per stream, so its cost no
+longer grows with the archived history, and selections no longer wait behind it.
+Publication, which now also updates the stream's totals in its coverage
+statement, stayed within the run-to-run variation of these measurements. The
+grouped scan, which would have given the per-stream values without new columns,
+was rejected on these numbers. The earlier [recorded result](#recorded-result)
+describes the full scan at its own revision.
 
 ## Measurement scope
 
