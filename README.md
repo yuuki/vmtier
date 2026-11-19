@@ -17,8 +17,8 @@ leased, fenced archiver. Local differential, recovery, and HA tests are availabl
 real Sakura Object Storage, natural retention expiry, and release qualification remain open.
 See [validation evidence](docs/evidence.md) for measured scope and provenance.
 
-Compatibility is pinned to **VictoriaMetrics OSS v1.155.0-cluster**, commit
-[`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/cab3d5fbeeedd5d0374c1dabde93939af4c2499c).
+Compatibility is pinned to **VictoriaMetrics OSS v1.156.0-cluster**, commit
+[`02bcbd7e56a1d341b31dfb74d96d631e8df323f7`](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/02bcbd7e56a1d341b31dfb74d96d631e8df323f7).
 Other versions' native codecs and read RPCs are unsupported; single-node VM
 integration is out of scope. Catalogs and packs from the previous VM pin cannot
 be opened by this version. Follow the [upgrade procedure](docs/compatibility.md#codec-and-upgrades)

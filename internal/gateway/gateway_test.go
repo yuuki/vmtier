@@ -84,10 +84,10 @@ func TestMatcherSemantics(t *testing.T) {
 }
 
 // TestMatcherAssertionsFollowStockVM pins zero-width assertions to what stock
-// v1.155.0-cluster vmselect/vmstorage returned for `m{a=~EXPR}` over a="0",
-// "ab" and "x": VM evaluates them after splitting off the literal prefix, so
-// several results differ from a plain anchored Go regexp. Cold must answer as
-// Hot does.
+// v1.155.0-cluster and v1.156.0-cluster vmselect/vmstorage returned for
+// `m{a=~EXPR}` over a="0", "ab" and "x": VM evaluates them after splitting off
+// the literal prefix, so several results differ from a plain anchored Go
+// regexp. Cold must answer as Hot does.
 func TestMatcherAssertionsFollowStockVM(t *testing.T) {
 	values := []string{"0", "ab", "x"}
 	for _, tc := range []struct{ expr, want string }{

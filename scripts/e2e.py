@@ -481,7 +481,7 @@ def run(work, args):
     reports = {'backend': args.backend, 'replicas': args.replicas,
                'architecture': 'v2: independent persistent catalog authority; ordinary PUT/GET/Range blobs',
                'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-               'vm_revision': 'cab3d5fbeeedd5d0374c1dabde93939af4c2499c',
+               'vm_revision': '02bcbd7e56a1d341b31dfb74d96d631e8df323f7',
                'dedup_interval': '1ms', 'vm_result_cache': 'disabled',
                'tiered_vm_labels_api_max_duration': args.labels_api_duration,
                'comparison': 'exact timestamps, labels and numeric strings; no tolerance',

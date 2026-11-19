@@ -16,8 +16,8 @@ current checkout.
 
 ## Pinned environment
 
-The target is **VictoriaMetrics OSS v1.155.0-cluster**, commit
-`cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. No VM patches are applied.
+The target is **VictoriaMetrics OSS v1.156.0-cluster**, commit
+`02bcbd7e56a1d341b31dfb74d96d631e8df323f7`. No VM patches are applied.
 `build-vm.sh` verifies the SHA-256 of a pinned source archive and builds
 vmstorage, vminsert, and vmselect using upstream vendored dependencies.
 The pinned toolchains are Go 1.27.4 and Python 3.15.2. Bootstrap verifies the

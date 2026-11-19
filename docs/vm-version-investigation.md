@@ -1,5 +1,10 @@
 # VictoriaMetrics version compatibility
 
+Since this report, the supported pin has moved to **v1.156.0-cluster**; see the
+[upgrade notes](compatibility.md#upgrading-from-v11550-cluster) and their
+[evidence](results/vm-upgrade-2026-11-19/). The report below is unchanged and
+describes the v1.155.0-cluster contract that applied when it ran.
+
 The oldest OSS cluster release that passed this investigation's end-to-end and
 conflicting-replica checks is **v1.134.0-cluster**. The preceding v1.133.0-cluster
 fails when numeric samples and stale markers share timestamps across storage

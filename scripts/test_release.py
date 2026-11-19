@@ -17,7 +17,7 @@ import release  # noqa: E402
 GO_VERSION_M = """vmtier: go1.27.3
 \tpath\tgithub.com/yuuki/vmtier/cmd/vmtier
 \tmod\tgithub.com/yuuki/vmtier\t(devel)\t
-\tdep\tgithub.com/VictoriaMetrics/VictoriaMetrics\tv1.155.0-cluster\t
+\tdep\tgithub.com/VictoriaMetrics/VictoriaMetrics\tv1.156.0-cluster\t
 \tdep\tgolang.org/x/sys\tv0.49.0\t
 \tbuild\t-tags=netgo,osusergo,musl
 \tbuild\tCGO_ENABLED=1

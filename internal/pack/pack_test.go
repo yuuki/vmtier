@@ -407,7 +407,9 @@ func TestPreviousReleasePackRejected(t *testing.T) {
 	}
 	for _, tc := range []struct{ version, revision string }{
 		{"v1.128.0-cluster", "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"},
+		{"v1.155.0-cluster", "cab3d5fbeeedd5d0374c1dabde93939af4c2499c"},
 		{VMVersion, "9a009c491da4c17531893ab4acb6a5f1b5e0eaf2"},
+		{VMVersion, "cab3d5fbeeedd5d0374c1dabde93939af4c2499c"},
 	} {
 		idx.VMVersion, idx.VMRevision = tc.version, tc.revision
 		if err := ValidateIndex(idx, Limits{}); err == nil {
@@ -420,7 +422,18 @@ func TestPreviousReleasePackRejected(t *testing.T) {
 }
 
 func TestCurrentReleaseHTTPNativeFixture(t *testing.T) {
-	hexData, err := os.ReadFile("testdata/native-v1.155.0.hex")
+	checkCapturedHTTPNativeFixture(t, "testdata/native-v1.156.0.hex", 1795046400000, "fixture_156", []float64{-1.5, 4})
+}
+
+// The v1.155.0 capture still decodes byte for byte; that does not allow
+// opening packs or catalogs recorded with the v1.155.0 identity.
+func TestPreviousReleaseHTTPNativeFixture(t *testing.T) {
+	checkCapturedHTTPNativeFixture(t, "testdata/native-v1.155.0.hex", 1793923200000, "fixture_155", []float64{2, 3.5})
+}
+
+func checkCapturedHTTPNativeFixture(t *testing.T, path string, start int64, metric string, values []float64) {
+	t.Helper()
+	hexData, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,12 +441,11 @@ func TestCurrentReleaseHTTPNativeFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const start int64 = 1793923200000
 	idx, payload, err := Build(bytes.NewReader(data), Tenant{42, 7}, start, start+100, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(idx.Series) != 1 || len(idx.Series[0].Blocks) != 1 || !reflect.DeepEqual(idx.Series[0].Labels, map[string]string{"__name__": "fixture_155", "job": "codec"}) {
+	if len(idx.Series) != 1 || len(idx.Series[0].Blocks) != 1 || !reflect.DeepEqual(idx.Series[0].Labels, map[string]string{"__name__": metric, "job": "codec"}) {
 		t.Fatalf("unexpected fixture index: %+v", idx)
 	}
 	mb, err := LoadBlock(idx, 0, 0, payload)
@@ -444,7 +456,7 @@ func TestCurrentReleaseHTTPNativeFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	ts, vs := mb.Block.AppendRowsWithTimeRangeFilter(nil, nil, storage.TimeRange{MinTimestamp: start, MaxTimestamp: start + 99})
-	if !reflect.DeepEqual(ts, []int64{start + 10, start + 50}) || !reflect.DeepEqual(vs, []float64{2, 3.5}) {
+	if !reflect.DeepEqual(ts, []int64{start + 10, start + 50}) || !reflect.DeepEqual(vs, values) {
 		t.Fatalf("captured HTTP samples changed: %v %v", ts, vs)
 	}
 	var name storage.MetricName

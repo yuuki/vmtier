@@ -3,7 +3,7 @@ module github.com/yuuki/vmtier
 go 1.27.4
 
 require (
-	github.com/VictoriaMetrics/VictoriaMetrics v1.155.0-cluster
+	github.com/VictoriaMetrics/VictoriaMetrics v1.156.0-cluster
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10

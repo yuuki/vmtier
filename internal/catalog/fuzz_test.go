@@ -20,7 +20,7 @@ func FuzzDecodeManifest(f *testing.F) {
 		}
 		f.Add(b)
 	}
-	f.Add([]byte(`{"version":2,"vm_version":"v1.155.0-cluster","id":"x","generation":0,"contract":{},"entries":null}`))
+	f.Add([]byte(`{"version":2,"vm_version":"v1.156.0-cluster","id":"x","generation":0,"contract":{},"entries":null}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		m, err := decode(data)
 		if err != nil {

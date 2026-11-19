@@ -1,0 +1,67 @@
+{
+  "vmtier": "<repo>/.bin/vmtier",
+  "vmtier_version": "vmtier v0.0.0-20261118082442-034d185b0be5 (commit 034d185b0be5829aebcf325024fb800482379126, go1.27.4 linux/amd64); JSON catalog v2; SQLite schema 2; PostgreSQL schema 3; VM v1.155.0-cluster cab3d5fbeeedd5d0374c1dabde93939af4c2499c",
+  "frontend_version": "vmselect-20261106-175521-tags-v1.156.0-cluster-0-g02bcbd7e56",
+  "delay_seconds": 1.5,
+  "steps": [
+    {
+      "step": "warm-up query",
+      "proxy_connections": 1,
+      "markers_sent_by_frontend": 0,
+      "result": {
+        "http_status": 200,
+        "ok": true,
+        "series": 1,
+        "body": null
+      }
+    },
+    {
+      "step": "canceled query, then wait 1.0s",
+      "proxy_connections": 1,
+      "markers_sent_by_frontend": 1,
+      "client": "client disconnected: timed out"
+    },
+    {
+      "step": "next query after 1.0s",
+      "proxy_connections": 2,
+      "markers_sent_by_frontend": 1,
+      "result": {
+        "http_status": 200,
+        "ok": true,
+        "series": 1,
+        "body": null
+      },
+      "same_series_as_baseline": true
+    },
+    {
+      "step": "canceled query, then wait 7.0s",
+      "proxy_connections": 2,
+      "markers_sent_by_frontend": 2,
+      "client": "client disconnected: timed out"
+    },
+    {
+      "step": "next query after 7.0s",
+      "proxy_connections": 3,
+      "markers_sent_by_frontend": 2,
+      "result": {
+        "http_status": 200,
+        "ok": true,
+        "series": 1,
+        "body": null
+      },
+      "same_series_as_baseline": true
+    }
+  ],
+  "frontend_metric_deltas": {
+    "vm_tcpdialer_dials_total{name=\"vmselect\", addr=\"127.0.0.1:45807\"}": 2.0,
+    "vm_tcpdialer_read_bytes_total{name=\"vmselect\", addr=\"127.0.0.1:45807\"}": 312.0,
+    "vm_tcpdialer_read_calls_total{name=\"vmselect\", addr=\"127.0.0.1:45807\"}": 12.0,
+    "vm_tcpdialer_write_calls_total{name=\"vmselect\", addr=\"127.0.0.1:45807\"}": 13.0,
+    "vm_tcpdialer_written_bytes_total{name=\"vmselect\", addr=\"127.0.0.1:45807\"}": 422.0
+  },
+  "gateway_log": [
+    "2026-11-19T03:50:00.397Z\terror\tVictoriaMetrics/lib/vmselectapi/server.go:210\tcannot process vmselect conn 127.0.0.1:52354: cannot process vmselect request: cannot execute \"cancelRequestMarker\": unsupported rpcName: \"cancelRequestMarker\"",
+    "2026-11-19T03:50:07.016Z\terror\tVictoriaMetrics/lib/vmselectapi/server.go:210\tcannot process vmselect conn 127.0.0.1:52360: cannot process vmselect request: cannot read traceEnabled: cannot read bool: cannot read data in 5 seconds: read tcp4 127.0.0.1:50577->127.0.0.1:52360: i/o timeout"
+  ],
+  "frontend_log": []
+}

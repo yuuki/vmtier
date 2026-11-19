@@ -12,7 +12,7 @@ describe the service catalogs' storage or lifecycle. The retained commands share
 current incremental raw verification and reader improvements with both service
 backends, but the JSON v2 writer still emits one pack per window.
 
-vmtier is an independent archiver and read gateway, not an official VictoriaMetrics product. The supported OSS cluster version is pinned to `v1.155.0-cluster`, commit `cab3d5fbeeedd5d0374c1dabde93939af4c2499c`. See the [prior-art comparison](prior-art.md), [native gateway decision](adr/0001-native-gateway.md), and [compatibility reference](compatibility.md).
+vmtier is an independent archiver and read gateway, not an official VictoriaMetrics product. The supported OSS cluster version is pinned to `v1.156.0-cluster`, commit `02bcbd7e56a1d341b31dfb74d96d631e8df323f7`. See the [prior-art comparison](prior-art.md), [native gateway decision](adr/0001-native-gateway.md), and [compatibility reference](compatibility.md).
 
 ## Architecture
 

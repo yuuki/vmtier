@@ -1,0 +1,67 @@
+{
+  "vmtier": "<repo>/.bin/vmtier",
+  "vmtier_version": "vmtier v0.0.0-20261119045943-6c3fdbdaae32+dirty (commit 6c3fdbdaae32c861c5f4ec581a5202b6e58b3240, go1.27.4 linux/amd64); JSON catalog v2; SQLite schema 2; PostgreSQL schema 3; VM v1.156.0-cluster 02bcbd7e56a1d341b31dfb74d96d631e8df323f7",
+  "frontend_version": "v1.155.0-cluster-vmtier-e2e-cab3d5fbeeedd5d0374c1dabde93939af4c2499c",
+  "delay_seconds": 1.5,
+  "steps": [
+    {
+      "step": "warm-up query",
+      "proxy_connections": 1,
+      "markers_sent_by_frontend": 0,
+      "result": {
+        "http_status": 200,
+        "ok": true,
+        "series": 1,
+        "body": null
+      }
+    },
+    {
+      "step": "canceled query, then wait 1.0s",
+      "proxy_connections": 1,
+      "markers_sent_by_frontend": 0,
+      "client": "client disconnected: timed out"
+    },
+    {
+      "step": "next query after 1.0s",
+      "proxy_connections": 2,
+      "markers_sent_by_frontend": 0,
+      "result": {
+        "http_status": 200,
+        "ok": true,
+        "series": 1,
+        "body": null
+      },
+      "same_series_as_baseline": true
+    },
+    {
+      "step": "canceled query, then wait 7.0s",
+      "proxy_connections": 2,
+      "markers_sent_by_frontend": 0,
+      "client": "client disconnected: timed out"
+    },
+    {
+      "step": "next query after 7.0s",
+      "proxy_connections": 3,
+      "markers_sent_by_frontend": 0,
+      "result": {
+        "http_status": 200,
+        "ok": true,
+        "series": 1,
+        "body": null
+      },
+      "same_series_as_baseline": true
+    }
+  ],
+  "frontend_metric_deltas": {
+    "vm_tcpdialer_dials_total{name=\"vmselect\", addr=\"127.0.0.1:42661\"}": 2.0,
+    "vm_tcpdialer_read_bytes_total{name=\"vmselect\", addr=\"127.0.0.1:42661\"}": 308.0,
+    "vm_tcpdialer_read_calls_total{name=\"vmselect\", addr=\"127.0.0.1:42661\"}": 10.0,
+    "vm_tcpdialer_write_calls_total{name=\"vmselect\", addr=\"127.0.0.1:42661\"}": 10.0,
+    "vm_tcpdialer_written_bytes_total{name=\"vmselect\", addr=\"127.0.0.1:42661\"}": 300.0
+  },
+  "gateway_log": [],
+  "frontend_log": [
+    "2026-11-19T05:05:50.586Z\twarn\t<repo>/.deps/VictoriaMetrics-cab3d5fbeeedd5d0374c1dabde93939af4c2499c/app/vmselect/main.go:416\tremoteAddr: \"127.0.0.1:53396\"; requestURI: /select/1:2/prometheus/api/v1/query_range?query=cold_only&start=1795043400.0&end=1795053000.0&step=60s; error when executing query=\"cold_only\" on the time range (start=1795043400000, end=1795053000000, step=60000): cannot evaluate \"cold_only\": error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:42661: cannot execute funcName=\"search_v7\" on vmstorage \"127.0.0.1:42661\": context canceled",
+    "2026-11-19T05:05:54.652Z\twarn\t<repo>/.deps/VictoriaMetrics-cab3d5fbeeedd5d0374c1dabde93939af4c2499c/app/vmselect/main.go:416\tremoteAddr: \"127.0.0.1:38778\"; requestURI: /select/1:2/prometheus/api/v1/query_range?query=cold_only&start=1795043400.0&end=1795053000.0&step=60s; error when executing query=\"cold_only\" on the time range (start=1795043400000, end=1795053000000, step=60000): cannot evaluate \"cold_only\": error occured during search: cannot fetch query results from vmstorage nodes: cannot perform search on vmstorage 127.0.0.1:42661: cannot execute funcName=\"search_v7\" on vmstorage \"127.0.0.1:42661\": context canceled"
+  ]
+}
