@@ -148,6 +148,10 @@ func TestPostgresCapacityMetricsOmitOnlyLocalFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	// The S3 client needs credentials to be created; capacity metrics never
+	// contact the store.
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
 	store, err := c.OpenBlobs()
 	if err != nil {
 		t.Fatal(err)
