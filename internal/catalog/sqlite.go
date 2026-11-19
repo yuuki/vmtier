@@ -50,6 +50,9 @@ CREATE TABLE coverage (
  source_id TEXT NOT NULL,
  end_ms INTEGER NOT NULL CHECK (end_ms >= 0),
  start_ms INTEGER NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
+ committed_packs INTEGER NOT NULL DEFAULT 0,
+ committed_data_bytes INTEGER NOT NULL DEFAULT 0,
+ committed_index_bytes INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY (tenant, source_id)
 ) WITHOUT ROWID;
 CREATE TABLE windows (
@@ -77,15 +80,33 @@ CREATE TABLE packs (
 ) WITHOUT ROWID;
 ` + sqlitePendingSchema
 
-// sqlitePendingSchema is the object ledger added by schema 2.
+// sqlitePendingSchema is the object ledger added by schema 2, with the object
+// sizes of schema 3. A NULL size is a key recorded before schema 3.
 const sqlitePendingSchema = `
 CREATE TABLE pending_objects (
  object_key TEXT PRIMARY KEY CHECK (length(object_key) BETWEEN 1 AND 1024),
  created_ms INTEGER NOT NULL CHECK (created_ms >= 0),
- state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting'))
+ state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting')),
+ ` + sqliteObjectBytesColumn + `
 ) WITHOUT ROWID;
 CREATE INDEX pending_objects_age ON pending_objects (state, created_ms);
 CREATE INDEX windows_start ON windows (start_ms);
+`
+
+// sqliteObjectBytesColumn records the size of a ledger key's object, bounded
+// like a pack descriptor.
+const sqliteObjectBytesColumn = `object_bytes INTEGER CHECK (object_bytes IS NULL OR (object_bytes >= 0 AND object_bytes <= 67108864))`
+
+// sqliteObjectBytesUpgrade adds the object sizes of schema 3 to a schema 2
+// ledger; existing keys keep no size.
+const sqliteObjectBytesUpgrade = `ALTER TABLE pending_objects ADD COLUMN ` + sqliteObjectBytesColumn + `;`
+
+// sqliteStreamTotalsUpgrade adds the stream totals of schema 3 to the
+// coverage of an older schema; the upgrade then fills them from the packs.
+const sqliteStreamTotalsUpgrade = `
+ALTER TABLE coverage ADD COLUMN committed_packs INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE coverage ADD COLUMN committed_data_bytes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE coverage ADD COLUMN committed_index_bytes INTEGER NOT NULL DEFAULT 0;
 `
 
 // sqliteRetentionUpgrade adds the retention columns of schema 2 to a schema 1
@@ -487,7 +508,9 @@ func (s *SQLite) publish(ctx context.Context, expected uint64, p Publication, co
 			return 0, err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE coverage SET end_ms=? WHERE tenant=? AND source_id=?`, p.End, p.Tenant, p.SourceID); err != nil {
+	added := publicationTotals(p.Packs)
+	if _, err = tx.ExecContext(ctx, `UPDATE coverage SET end_ms=?, committed_packs=committed_packs+?, committed_data_bytes=committed_data_bytes+?, committed_index_bytes=committed_index_bytes+? WHERE tenant=? AND source_id=?`,
+		p.End, added.packs, added.dataBytes, added.indexBytes, p.Tenant, p.SourceID); err != nil {
 		return 0, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE catalog_state SET generation=? WHERE singleton=1`, next); err != nil {

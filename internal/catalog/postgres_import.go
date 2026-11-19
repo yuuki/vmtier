@@ -71,7 +71,12 @@ func ImportSQLiteToPostgres(ctx context.Context, source *SQLite, dsn, newID stri
 	}
 	// The source writer is stopped, so its pending keys belong to attempts that
 	// can no longer publish. Copying them lets the new catalog collect them.
-	if imported.ledger, err = p.copySQLiteLedger(ctx, tx, snapshot, state); err != nil {
+	if err = p.copySQLiteLedger(ctx, tx, snapshot, state, &imported); err != nil {
+		return nil, err
+	}
+	// Stream totals are derived: compute them from the copied packs rather
+	// than copy the source's.
+	if _, err = tx.ExecContext(ctx, streamTotalsBackfillSQL(p.table("coverage"), p.table("windows"), p.table("packs"))); err != nil {
 		return nil, err
 	}
 	want := state
@@ -118,46 +123,56 @@ func (p *Postgres) initializeImport(ctx context.Context, tx *sql.Tx, newID strin
 // hashes their encoded references for comparison with the destination.
 type importedWindows struct {
 	windows, packs, ledger uint64
-	hash                   []byte
+	// ledgerBytes sums the copied object sizes; ledgerUnsized counts the
+	// copied keys without a size.
+	ledgerBytes   int64
+	ledgerUnsized uint64
+	hash          []byte
 }
 
 // copySQLiteLedger copies the object ledger of the SQLite snapshot with its
-// states and ages, after the windows, so that published keys are known.
-func (p *Postgres) copySQLiteLedger(ctx context.Context, tx, snapshot *sql.Tx, state Status) (uint64, error) {
+// states, ages and object sizes, after the windows, so that published keys
+// are known. It adds the copied records to imported.
+func (p *Postgres) copySQLiteLedger(ctx context.Context, tx, snapshot *sql.Tx, state Status, imported *importedWindows) error {
 	// The stopped SQLite writer cannot publish its pending keys any more, so
 	// they join the new catalog's incarnation and remain collectable.
 	incarnation, err := p.incarnation(ctx, tx)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	rows, err := snapshot.QueryContext(ctx, `SELECT object_key,created_ms,state FROM pending_objects ORDER BY object_key`)
+	rows, err := snapshot.QueryContext(ctx, `SELECT object_key,created_ms,state,object_bytes FROM pending_objects ORDER BY object_key`)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer rows.Close()
-	var count uint64
 	for rows.Next() {
 		var key, recordState string
 		var created int64
-		if err = rows.Scan(&key, &created, &recordState); err != nil {
-			return 0, err
+		var size sql.NullInt64
+		if err = rows.Scan(&key, &created, &recordState, &size); err != nil {
+			return err
 		}
-		if !validLedgerState(recordState) || created < 0 || checkClaimedKey(state.Contract, key) != nil {
-			return 0, errors.New("SQLite import source has an invalid object ledger record")
+		if !validLedgerState(recordState) || created < 0 || !validLedgerSize(size) || checkClaimedKey(state.Contract, key) != nil {
+			return errors.New("SQLite import source has an invalid object ledger record")
 		}
 		var published bool
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM `+p.table("object_keys")+` WHERE object_key=$1)`, key).Scan(&published); err != nil {
-			return 0, err
+			return err
 		}
 		if published {
-			return 0, errors.New("SQLite import source object ledger records a published object key")
+			return errors.New("SQLite import source object ledger records a published object key")
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+` (object_key,created_ms,state,incarnation) VALUES($1,$2,$3,$4)`, key, created, recordState, incarnation); err != nil {
-			return 0, err
+		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+` (object_key,created_ms,state,incarnation,object_bytes) VALUES($1,$2,$3,$4,$5)`, key, created, recordState, incarnation, size); err != nil {
+			return err
 		}
-		count++
+		imported.ledger++
+		if size.Valid {
+			imported.ledgerBytes += size.Int64
+		} else {
+			imported.ledgerUnsized++
+		}
 	}
-	return count, rows.Err()
+	return rows.Err()
 }
 
 // copySQLiteWindows copies the windows of the SQLite snapshot in generation
@@ -289,6 +304,14 @@ func verifyPostgresImport(ctx context.Context, tx *sql.Tx, p *Postgres, contract
 		if count != item.count {
 			return fmt.Errorf("PostgreSQL import %s count differs from SQLite source", item.table)
 		}
+	}
+	var ledgerBytes int64
+	var ledgerUnsized uint64
+	if err := tx.QueryRowContext(ctx, `SELECT coalesce(sum(object_bytes),0)::bigint, count(*) FILTER (WHERE object_bytes IS NULL) FROM `+p.table("pending_objects")).Scan(&ledgerBytes, &ledgerUnsized); err != nil {
+		return err
+	}
+	if ledgerBytes != imported.ledgerBytes || ledgerUnsized != imported.ledgerUnsized {
+		return errors.New("PostgreSQL import object ledger sizes differ from SQLite source")
 	}
 	// QueryRow consumes its result on Scan before pack reads use the same
 	// PostgreSQL transaction. Memory remains bounded to a single window.

@@ -14,7 +14,7 @@ import (
 	"github.com/yuuki/vmtier/internal/querylimit"
 )
 
-const PostgreSQLSchemaVersion = 3
+const PostgreSQLSchemaVersion = 4
 
 // Postgres stores catalog metadata in an explicitly initialized PostgreSQL
 // schema. It permits independent clients; publication is serialized by a row
@@ -46,6 +46,9 @@ CREATE TABLE %[1]s.coverage (
  source_id TEXT NOT NULL,
  end_ms BIGINT NOT NULL CHECK (end_ms >= 0),
  start_ms BIGINT NOT NULL DEFAULT 0 CHECK (start_ms >= 0 AND start_ms <= end_ms),
+ committed_packs BIGINT NOT NULL DEFAULT 0,
+ committed_data_bytes BIGINT NOT NULL DEFAULT 0,
+ committed_index_bytes BIGINT NOT NULL DEFAULT 0,
  PRIMARY KEY (tenant, source_id)
 );
 CREATE TABLE %[1]s.windows (
@@ -81,16 +84,36 @@ CREATE TABLE %[1]s.packs (
 );
 ` + postgresLeaseSchema + postgresPendingSchema
 
-// postgresPendingSchema is the object ledger added by schema 3.
+// postgresPendingSchema is the object ledger added by schema 3, with the
+// object sizes of schema 4. A NULL size is a key recorded before schema 4.
 const postgresPendingSchema = `
 CREATE TABLE %[1]s.pending_objects (
  object_key TEXT PRIMARY KEY CHECK (octet_length(object_key) BETWEEN 1 AND 1024),
  created_ms BIGINT NOT NULL CHECK (created_ms >= 0),
  state TEXT NOT NULL CHECK (state IN ('pending', 'retired', 'deleting')),
- incarnation TEXT NOT NULL DEFAULT '' CHECK (octet_length(incarnation) <= 256)
+ incarnation TEXT NOT NULL DEFAULT '' CHECK (octet_length(incarnation) <= 256),
+ ` + postgresObjectBytesColumn + `
 );
 CREATE INDEX pending_objects_age ON %[1]s.pending_objects (state, created_ms);
 CREATE INDEX windows_start ON %[1]s.windows (start_ms);
+`
+
+// postgresObjectBytesColumn records the size of a ledger key's object, bounded
+// like a pack descriptor.
+const postgresObjectBytesColumn = `object_bytes BIGINT CHECK (object_bytes IS NULL OR (object_bytes >= 0 AND object_bytes <= 67108864))`
+
+// postgresObjectBytesUpgrade adds the object sizes of schema 4 to a schema 3
+// ledger; existing keys keep no size. Adding a nullable column without a
+// default rewrites no rows.
+const postgresObjectBytesUpgrade = `ALTER TABLE %[1]s.pending_objects ADD COLUMN ` + postgresObjectBytesColumn + `;`
+
+// postgresStreamTotalsUpgrade adds the stream totals of schema 4 to the
+// coverage of an older schema; the upgrade then fills them from the packs.
+// Columns with a constant default rewrite no rows.
+const postgresStreamTotalsUpgrade = `
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_packs BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_data_bytes BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE %[1]s.coverage ADD COLUMN committed_index_bytes BIGINT NOT NULL DEFAULT 0;
 `
 
 // postgresRetentionUpgrade adds the retention columns of schema 3 to an older
@@ -468,7 +491,9 @@ func (p *Postgres) writePublication(ctx context.Context, tx *sql.Tx, publication
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET end_ms=$1 WHERE tenant=$2 AND source_id=$3`, publication.End, publication.Tenant, publication.SourceID); err != nil {
+	added := publicationTotals(publication.Packs)
+	if _, err := tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET end_ms=$1, committed_packs=committed_packs+$4, committed_data_bytes=committed_data_bytes+$5, committed_index_bytes=committed_index_bytes+$6 WHERE tenant=$2 AND source_id=$3`,
+		publication.End, publication.Tenant, publication.SourceID, added.packs, added.dataBytes, added.indexBytes); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE `+p.table("catalog_state")+` SET generation=$1 WHERE singleton=1`, next)

@@ -27,7 +27,7 @@ measurement and release-qualification work. See
 
 | Area | Current implementation |
 | --- | --- |
-| Catalog | SQLite schema 2 or PostgreSQL schema 3; shared repository operations, bounded indexed selection, independent stream coverage, object ledger for garbage collection; backend-specific migration/maintenance |
+| Catalog | SQLite schema 3 or PostgreSQL schema 4; shared repository operations, bounded indexed selection, independent stream coverage, object ledger with object sizes for garbage collection, committed totals per stream; backend-specific migration/maintenance |
 | Service | SQLite directory ownership or PostgreSQL fenced archiver lease; age-based scheduler, read RPC, failure metrics, per-process admission; PostgreSQL static aggregate S3 allocation |
 | Archive | Shared service pack rotation within one logical window, bounded cross-pack verification, incremental raw oracle, read-only capacity preflight; zero packs for verified empty windows |
 | Reader | Repository selection, byte-bounded LRU, bounded shared misses, adjacent Range GETs, logical query work admission |

@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
@@ -41,6 +42,9 @@ func validLedgerState(state string) bool {
 const (
 	// MaxRecordedObjects bounds the keys of one RecordPendingObjects call.
 	MaxRecordedObjects = 2 * MaxPacksPerWindow
+	// MaxRecordedObjectBytes bounds a recorded object size: the largest
+	// payload or index a pack descriptor may reference.
+	MaxRecordedObjectBytes = 64 << 20
 	// MaxClaimedObjects bounds the keys of one claim or forget call.
 	MaxClaimedObjects = 4096
 	// MinPendingObjectAge is the smallest age at which a pending key can be
@@ -62,14 +66,23 @@ func retiredAge(minAge time.Duration) time.Duration { return max(minAge, MinReti
 // already claimed. The attempt must be retried with fresh keys.
 var ErrUnrecordedObject = errors.New("object key is not a pending upload of this catalog")
 
+// PendingObject is an object key and the byte length of the object that will
+// be uploaded under it. The ledger keeps the size until it forgets the key,
+// so that unreferenced objects can be measured without listing the bucket.
+type PendingObject struct {
+	Key   string
+	Bytes int64
+}
+
 // ObjectLedger records the object keys of archive attempts so that the objects
 // of attempts that never publish can be deleted. Only keys recorded by this
 // catalog are ever returned for deletion: published objects, objects of other
 // catalogs sharing the bucket, and objects older than the ledger are not.
 type ObjectLedger interface {
-	// RecordPendingObjects records keys under tenant before they are uploaded.
-	// It never performs object I/O and fails if a key is known already.
-	RecordPendingObjects(ctx context.Context, tenant string, keys []string) error
+	// RecordPendingObjects records keys under tenant, with the sizes of their
+	// objects, before they are uploaded. It never performs object I/O and
+	// fails if a key is known already.
+	RecordPendingObjects(ctx context.Context, tenant string, objects []PendingObject) error
 	// ClaimUnpublishedObjects returns at most limit keys whose objects may be
 	// deleted, oldest first: keys claimed earlier but not yet forgotten, by
 	// their last claim or deferral, pending keys recorded at least minAge ago
@@ -86,7 +99,8 @@ type ObjectLedger interface {
 	// ForgetDeletedObjects removes claimed keys whose objects were deleted.
 	// Keys that are not claimed are left unchanged.
 	ForgetDeletedObjects(ctx context.Context, keys []string) error
-	// UnpublishedObjects counts the recorded keys in each state.
+	// UnpublishedObjects counts the recorded keys in each state and sums
+	// their recorded sizes.
 	UnpublishedObjects(ctx context.Context) (UnpublishedObjectCounts, error)
 }
 
@@ -101,6 +115,40 @@ type UnpublishedObjectCounts struct {
 	// Foreign counts pending keys recorded in another PostgreSQL database
 	// incarnation, before a restore, copy or failover. They are never claimed.
 	Foreign int64 `json:"foreign"`
+	// Bytes sums the recorded object sizes of each state's keys.
+	Bytes LedgerStateValues `json:"bytes"`
+	// Unsized counts each state's keys that have no recorded size: keys
+	// recorded before SQLite schema 3 or PostgreSQL schema 4. While a state
+	// has any, its Bytes value is a lower bound.
+	Unsized LedgerStateValues `json:"unsized"`
+}
+
+// LedgerStateValues holds one value for each state that UnpublishedObjectCounts
+// reports.
+type LedgerStateValues struct {
+	Pending  int64 `json:"pending"`
+	Retired  int64 `json:"retired"`
+	Deleting int64 `json:"deleting"`
+	Foreign  int64 `json:"foreign"`
+}
+
+// validLedgerSize reports whether a stored object size is unknown (a key
+// recorded before sizes were) or one that could be recorded.
+func validLedgerSize(size sql.NullInt64) bool {
+	return !size.Valid || (size.Int64 >= 0 && size.Int64 <= MaxRecordedObjectBytes)
+}
+
+// validatePendingObjects requires distinct object keys of one configured
+// tenant with sizes a pack descriptor could reference.
+func validatePendingObjects(c Contract, tenant string, objects []PendingObject) error {
+	keys := make([]string, len(objects))
+	for i, object := range objects {
+		if object.Bytes < 0 || object.Bytes > MaxRecordedObjectBytes {
+			return fmt.Errorf("%w: invalid pending object size", ErrInvalidPublication)
+		}
+		keys[i] = object.Key
+	}
+	return validatePendingKeys(c, tenant, keys)
 }
 
 // validatePendingKeys requires distinct object keys of one configured tenant.

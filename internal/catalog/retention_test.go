@@ -99,11 +99,12 @@ func testRetireWindows(t *testing.T, f ledgerFixture) {
 	if err != nil || len(plan.Windows) != 2 || plan.Windows[0].Start != 2*hourMS {
 		t.Fatalf("retired window still selected: %+v %v", plan, err)
 	}
-	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Retired: 2}) {
+	// Retirement keeps the sizes of the pack descriptors.
+	if counts, err := f.repo.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Retired: 2, Bytes: LedgerStateValues{Retired: 30}}) {
 		t.Fatalf("retired keys: %+v %v", counts, err)
 	}
 	retiredKey := publications[0].Packs[0].DataKey
-	if err := f.repo.RecordPendingObjects(ctx, "1:2", []string{retiredKey}); !errors.Is(err, ErrInvalidPublication) {
+	if err := f.repo.RecordPendingObjects(ctx, "1:2", pendingObjects(10, retiredKey)); !errors.Is(err, ErrInvalidPublication) {
 		t.Fatalf("retired key recorded again: %v", err)
 	}
 	// Retired windows cannot be published again, even by a replay.

@@ -93,20 +93,31 @@ func FuzzObjectKeyConfinement(f *testing.F) {
 
 // FuzzLedgerKeys checks that the object ledger only accepts, and garbage
 // collection only claims, keys confined to a configured tenant's prefix: a
-// recorded key can never direct a deletion outside the archive namespace.
+// recorded key can never direct a deletion outside the archive namespace. It
+// also checks that a recorded object size is one a pack could have.
 func FuzzLedgerKeys(f *testing.F) {
-	for _, seed := range []struct{ tenant, a, b string }{
-		{"1:2", "tenants/1:2/attempts/00/aa.pack", "tenants/1:2/attempts/00/aa.json"},
-		{"1:2", "tenants/1:2/attempts/00/aa.pack", "tenants/1:2/attempts/00/aa.pack"},
-		{"1:2", "tenants/1:23/x", "tenants/1:2/../1:3/x"},
-		{"3:4", "tenants/3:4/x", "tenants/3:4/.x"},
+	for _, seed := range []struct {
+		tenant, a, b string
+		size         int64
+	}{
+		{"1:2", "tenants/1:2/attempts/00/aa.pack", "tenants/1:2/attempts/00/aa.json", 1},
+		{"1:2", "tenants/1:2/attempts/00/aa.pack", "tenants/1:2/attempts/00/aa.pack", 0},
+		{"1:2", "tenants/1:23/x", "tenants/1:2/../1:3/x", -1},
+		{"3:4", "tenants/3:4/x", "tenants/3:4/.x", MaxRecordedObjectBytes + 1},
 	} {
-		f.Add(seed.tenant, seed.a, seed.b)
+		f.Add(seed.tenant, seed.a, seed.b, seed.size)
 	}
 	c := contract()
 	c.Tenants = append(c.Tenants, "3:4")
-	f.Fuzz(func(t *testing.T, tenant, a, b string) {
-		if validatePendingKeys(c, tenant, []string{a, b}) == nil {
+	f.Fuzz(func(t *testing.T, tenant, a, b string, size int64) {
+		keysValid := validatePendingKeys(c, tenant, []string{a, b}) == nil
+		// A recorded size is one a pack descriptor could reference; the keys
+		// are checked exactly as without a size.
+		recorded := validatePendingObjects(c, tenant, []PendingObject{{Key: a, Bytes: size}, {Key: b, Bytes: 0}}) == nil
+		if recorded != (keysValid && size >= 0 && size <= MaxRecordedObjectBytes) {
+			t.Fatalf("recorded=%v for keys %q, %q (valid %v) of size %d", recorded, a, b, keysValid, size)
+		}
+		if keysValid {
 			if a == b || (tenant != "1:2" && tenant != "3:4") {
 				t.Fatalf("recorded %q, %q for tenant %q", a, b, tenant)
 			}

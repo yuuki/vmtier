@@ -94,50 +94,63 @@ Retention headroom is the finite time until the oldest unarchived sample can no 
 
 ### Service capacity and failure accounting
 
-Both service backends expose cache, query admission, and failed-window signals.
-Catalog size/count/committed-byte observations below are implemented for SQLite
-only; PostgreSQL reports `vmtier_catalog_capacity_available=0` and omits those
-unavailable catalog gauges. Use PostgreSQL monitoring for its storage usage.
-These observations do not list the blob backend:
+Both service backends expose cache, query admission, failed-window, and
+committed-object signals. Local catalog file lengths exist for SQLite only: a
+PostgreSQL catalog omits `vmtier_catalog_file_bytes`; use PostgreSQL monitoring
+for its storage usage. These observations do not list the blob backend:
 
 | Metric | Accounting |
 | --- | --- |
-| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
+| `vmtier_catalog_file_bytes{file="database\|wal\|shared_memory"}` | SQLite only. Apparent local file lengths, including reusable/free pages; not filesystem allocated blocks. WAL and shared-memory files may be absent and then contribute zero. |
 | `vmtier_catalog_committed_object_bytes{kind="data\|index"}` | Sum of byte lengths in committed pack descriptors, retained across restart. Excludes unreferenced/failed attempts, other prefixes, provider versions, and provider overhead; this is **not measured bucket usage**. |
 | `vmtier_catalog_windows`, `vmtier_catalog_packs` | Committed logical windows (including empty windows) and immutable pack references. |
+| `vmtier_stream_committed_object_bytes{tenant,source,kind="data\|index"}`, `vmtier_stream_windows{tenant,source}`, `vmtier_stream_packs{tenant,source}` | The same accounting per stream of the catalog's coverage; the totals above are their sums. A stream without windows reports zero. Use them to see which tenant or source makes the Cold tier grow. Label values come only from the stored contract, so the series are bounded by its tenants and sources. |
 | `vmtier_catalog_capacity_available` | One only when the current bounded observation succeeds. Capacity gauges are omitted on failure, rather than reporting stale values or false zeroes. |
 | `vmtier_cache_used_bytes`, `vmtier_cache_limit_bytes`, `vmtier_cache_entries`, `vmtier_cache_inflight_reads` | Retained immutable raw bytes plus keys and a conservative per-entry bookkeeping allowance; excludes allocator/GC overhead, transient parsed indexes and active-query allocations. In-flight shared reads are bounded separately. |
 | `vmtier_query_memory_limit_bytes`, `vmtier_query_work_bytes`, `vmtier_query_memory_reserved_bytes` | Shared admission allowance, reservation per accepted query, and currently reserved work. These are accounting limits, not measurements of process RSS. |
 | `vmtier_query_limit_refusals_total{reason=...}` | Resource refusals with a fixed reason vocabulary: `memory_admission`, `shared_reads`, `read_bytes`, `decoded_bytes`, `catalog_plan`, `blocks`, `series`, or `response_bytes`. Other backend failures and cancellations do not masquerade as limit refusals. |
 | `vmtier_archive_failed_windows_total{tenant=...,source=...,reason=...}` | Errored attempts for configured tenant/source pairs only; reasons are `error`, `timeout`, and `canceled`. A retry increments again; skipped/backoff windows do not. Shutdown cancellation is counted if a window was attempted. No timestamp or error-message labels are used. |
-| `vmtier_catalog_unpublished_objects{state="pending\|retired\|deleting\|foreign"}` | Object ledger records no window references: pending keys of running or failed attempts, keys of windows retired by Cold retention, keys claimed by garbage collection whose deletion has not finished, and (PostgreSQL) pending keys of another database incarnation, which are never collected. Counts objects, not bytes. Omitted when the catalog cannot be read. |
+| `vmtier_catalog_unpublished_objects{state="pending\|retired\|deleting\|foreign"}` | Object ledger records no window references: pending keys of running or failed attempts, keys of windows retired by Cold retention, keys claimed by garbage collection whose deletion has not finished, and (PostgreSQL) pending keys of another database incarnation, which are never collected. Counts objects. Omitted when the catalog cannot be read. |
+| `vmtier_catalog_unpublished_object_bytes{state}`, `vmtier_catalog_unpublished_objects_unsized{state}` | Sum of the object sizes recorded for those keys, and the keys without a size (recorded before SQLite schema 3 or PostgreSQL schema 4). A size is recorded before the upload, so a key whose PUT never ran or whose object is already deleted still counts until garbage collection forgets it. While a state has unsized keys, its byte sum is a lower bound. Omitted with the counts. |
 | `vmtier_orphan_gc_*`, `vmtier_object_delete_requests_total` | [Garbage collection](serve.md#garbage-collection) passes, failures, claimed and deleted objects, last success, and DELETE attempts. |
 
 Attempt/refusal counters and cache/admission state start over on process restart;
-committed totals are read afresh from SQLite. An errored attempt is not necessarily
+committed totals are read afresh from the catalog. An errored attempt is not necessarily
 a new missing window: failure after commit acknowledgement can leave the window
-committed, so interpret failures together with coverage and lag. The service does
-not estimate orphan bytes. Garbage collection is opt-in and does not cover objects
-left before the ledger existed. Use provider accounting for actual bucket growth and
-host monitoring for disk availability and peak RSS. A steadily growing `pending`
+committed, so interpret failures together with coverage and lag. The ledger's byte
+gauges cover only keys vmtier recorded: objects left before the ledger existed or
+written by other software are not counted. Garbage collection is opt-in and does
+not cover objects left before the ledger existed. Use provider accounting for actual bucket growth and
+host monitoring for disk availability and peak RSS. Provider bucket usage minus
+the committed and unpublished byte gauges approximates the objects vmtier does
+not know (other catalogs, older versions, objects left before the ledger) plus
+the unpublished keys without a recorded size. The ledger gauges and the capacity
+gauges come from separate read-only transactions: a retirement between them can
+leave one scrape counting a window's objects in neither. A steadily growing `pending`
 count with garbage collection enabled means attempts fail faster than they are
 collected, or that collection fails; check `vmtier_orphan_gc_failed_passes_total`.
-Each capacity scrape aggregates the complete `packs` and `windows` tables on
-the catalog's single SQLite connection. The shared five-second scrape context
-bounds the observation time, not the number of rows scanned. Large catalogs or
-frequent scrapes can therefore contend with publication and query selection;
-include scrape load when sizing the deployment. The
-[catalog-capacity report](catalog-capacity-validation.md) records scan and
-selection contention for its 87,600-window fixture at the reported revision.
+Each capacity scrape reads the catalog status and one coverage row per stream,
+which holds the stream's committed pack count and lengths
+([ADR 0012](adr/0012-stream-totals.md)); a stream's window count follows from its
+coverage range. The cost therefore grows with the number of streams, not with the
+archived history. Publication and Cold retention update these totals in the
+transaction that changes the windows; restore and the PostgreSQL import
+recompute them from the packs. The totals never block publication, retention or
+a restore. A negative total can only come from a drift; it makes the capacity
+gauges unavailable (`vmtier_catalog_capacity_available 0`) until
+`catalog-upgrade`, run on the current catalog, recomputes the totals in place. The shared five-second scrape context bounds the
+observation time. With PostgreSQL, every scraped replica reads the shared
+database. The [catalog-capacity report](catalog-capacity-validation.md) records
+scrape latency and selection contention for its 87,600-window fixture.
 Compare rising failed-window/refusal rates with declining retention headroom
 before increasing workloads or resource limits. These signals do not extend the
 time available to recover an unarchived suffix.
 
 Cache and query-admission/refusal metrics are also available in the retained
-JSON v2 gateway. Catalog capacity totals describe SQLite only; failed-window
-metrics also describe the active PostgreSQL archiver. The SQL capacity totals use
-a constant-memory scan of committed descriptors under the scrape timeout; they
-do not add an in-memory catalog mirror.
+JSON v2 gateway. Catalog capacity totals describe both service backends but not
+the JSON v2 gateway; failed-window metrics also describe the active PostgreSQL
+archiver. The capacity totals are stored in the catalog itself; they do not add
+an in-memory catalog mirror.
 
 ## Failure and restart behavior
 
@@ -173,7 +186,7 @@ If Hot still holds the entire history, removing the Cold node restores a Hot-onl
 
 [Garbage collection](serve.md#garbage-collection), when enabled, deletes only the objects of attempts that never published and that the catalog recorded before their upload. It never deletes a published object, so readers holding older query plans are unaffected. It needs `DeleteObject` permission on the prefix; on a versioned bucket, also a lifecycle rule that expires noncurrent versions. With PostgreSQL, every replica may enable it; only the archiver lease holder collects. Garbage collection never deletes an object another catalog sharing the bucket references, and a restored or copied PostgreSQL catalog never collects the original's pending keys (they show as `foreign`); see [garbage collection](serve.md#garbage-collection) for the one kind of copy this cannot detect. Cold retention, by contrast, deletes the objects of retired windows that a catalog kept for rollback may still reference.
 
-[Cold retention](serve.md#cold-retention), when `cold_retention` is set, retires whole windows older than the retention from the catalog and lets garbage collection delete their objects after `service.orphan_gc_min_age`. Without it the catalog keeps every published window and storage grows with the archived data. Retired data cannot be recovered from a catalog backup. Orphans from before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1) are not collected. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
+[Cold retention](serve.md#cold-retention), when `cold_retention` is set, retires whole windows older than the retention from the catalog and lets garbage collection delete their objects after `service.orphan_gc_min_age`. Without it the catalog keeps every published window and storage grows with the archived data. Retired data cannot be recovered from a catalog backup. Orphans from before the [schema upgrade](sqlite-catalog.md#upgrade-an-earlier-schema) are not collected. An `inspect` result alone is not permission to delete an object, and an S3 lifecycle rule must not delete objects referenced by the current catalog. Durable catalog backups and an active query's in-memory snapshot serve different purposes.
 
 Retirement accounts for readers that may still hold old references through the minimum age; do not approximate it with an arbitrary lifecycle expiration.
 

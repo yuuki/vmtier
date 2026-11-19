@@ -12,8 +12,9 @@ import (
 
 var _ ObjectLedger = (*SQLite)(nil)
 
-// RecordPendingObjects records keys before their upload in a short transaction.
-func (s *SQLite) RecordPendingObjects(ctx context.Context, tenant string, keys []string) error {
+// RecordPendingObjects records keys and object sizes before their upload in a
+// short transaction.
+func (s *SQLite) RecordPendingObjects(ctx context.Context, tenant string, objects []PendingObject) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -23,22 +24,22 @@ func (s *SQLite) RecordPendingObjects(ctx context.Context, tenant string, keys [
 	if err != nil {
 		return err
 	}
-	if err = validatePendingKeys(state.Contract, tenant, keys); err != nil {
+	if err = validatePendingObjects(state.Contract, tenant, objects); err != nil {
 		return err
 	}
 	created := s.now().UnixMilli()
 	if created < 0 {
 		return errors.New("catalog clock is before the Unix epoch")
 	}
-	for _, key := range keys {
+	for _, object := range objects {
 		var known bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM packs WHERE data_key=? OR index_key=?) OR EXISTS(SELECT 1 FROM pending_objects WHERE object_key=?)`, key, key, key).Scan(&known); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM packs WHERE data_key=? OR index_key=?) OR EXISTS(SELECT 1 FROM pending_objects WHERE object_key=?)`, object.Key, object.Key, object.Key).Scan(&known); err != nil {
 			return err
 		}
 		if known {
 			return fmt.Errorf("%w: object key is already recorded", ErrInvalidPublication)
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO pending_objects(object_key,created_ms,state) VALUES(?,?,?)`, key, created, pendingState); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO pending_objects(object_key,created_ms,state,object_bytes) VALUES(?,?,?,?)`, object.Key, created, pendingState, object.Bytes); err != nil {
 			return err
 		}
 	}
@@ -159,7 +160,8 @@ func (s *SQLite) DeferClaimedObjects(ctx context.Context, keys []string) error {
 	return tx.Commit()
 }
 
-// UnpublishedObjects counts the ledger's records in each state.
+// UnpublishedObjects counts the ledger's records in each state and sums their
+// recorded sizes.
 func (s *SQLite) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCounts, error) {
 	var out UnpublishedObjectCounts
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -170,19 +172,30 @@ func (s *SQLite) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCount
 	if _, err = readSQLiteStatus(ctx, tx, s.id); err != nil {
 		return out, err
 	}
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE state='pending'), count(*) FILTER (WHERE state='retired'), count(*) FILTER (WHERE state='deleting') FROM pending_objects`).Scan(&out.Pending, &out.Retired, &out.Deleting); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE state='pending'), count(*) FILTER (WHERE state='retired'), count(*) FILTER (WHERE state='deleting'),
+ coalesce(sum(object_bytes) FILTER (WHERE state='pending'),0), coalesce(sum(object_bytes) FILTER (WHERE state='retired'),0), coalesce(sum(object_bytes) FILTER (WHERE state='deleting'),0),
+ count(*) FILTER (WHERE state='pending' AND object_bytes IS NULL), count(*) FILTER (WHERE state='retired' AND object_bytes IS NULL), count(*) FILTER (WHERE state='deleting' AND object_bytes IS NULL)
+ FROM pending_objects`).Scan(&out.Pending, &out.Retired, &out.Deleting, &out.Bytes.Pending, &out.Bytes.Retired, &out.Bytes.Deleting, &out.Unsized.Pending, &out.Unsized.Retired, &out.Unsized.Deleting); err != nil {
 		return UnpublishedObjectCounts{}, err
 	}
 	return out, tx.Commit()
 }
 
-// UpgradeSQLite explicitly upgrades an offline schema 1 catalog to schema 2 by
-// adding the object ledger and the retention columns, and returns the
-// upgraded status. It holds the directory lock throughout, so a live service
+// UpgradeSQLite explicitly upgrades an offline schema 1 or 2 catalog to
+// schema 3 and returns the upgraded status. Schema 2 added the object ledger
+// and the retention columns; schema 3 adds the ledger's object sizes, which
+// keys recorded earlier do not get, and the stream totals, which the upgrade
+// fills from the committed packs. It holds the directory lock throughout, so a live service
 // refuses it; take a backup first. A file that fails SQLite's integrity check
-// is refused before anything is written. Repeating a completed upgrade only
-// verifies the current state.
+// is refused before anything is written. Repeating a completed upgrade
+// verifies the current state and recomputes the stream totals.
 func UpgradeSQLite(ctx context.Context, dir, id string) (Status, error) {
+	return upgradeSQLite(ctx, dir, id, 0)
+}
+
+// upgradeSQLite is UpgradeSQLite; a nonzero from requires the stored schema
+// to be from, as a restore requires it to be the one its metadata records.
+func upgradeSQLite(ctx context.Context, dir, id string, from int) (Status, error) {
 	s, err := openSQLiteFile(ctx, dir, id)
 	if err != nil {
 		return Status{}, err
@@ -191,7 +204,7 @@ func UpgradeSQLite(ctx context.Context, dir, id string) (Status, error) {
 	if err = s.quickCheck(ctx); err != nil {
 		return Status{}, err
 	}
-	if err = s.upgrade(ctx); err != nil {
+	if err = s.upgrade(ctx, from); err != nil {
 		return Status{}, err
 	}
 	status, err := s.Status(ctx)
@@ -201,8 +214,9 @@ func UpgradeSQLite(ctx context.Context, dir, id string) (Status, error) {
 	return status, s.Close()
 }
 
-// upgrade applies the schema 1 to 2 change in one transaction.
-func (s *SQLite) upgrade(ctx context.Context) error {
+// upgrade applies the changes from schema 1 or 2 in one transaction. A
+// nonzero from requires the stored schema to be from.
+func (s *SQLite) upgrade(ctx context.Context, from int) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -212,22 +226,44 @@ func (s *SQLite) upgrade(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT schema_version FROM catalog_state WHERE singleton=1`).Scan(&version); err != nil {
 		return fmt.Errorf("read initialized SQLite catalog: %w", err)
 	}
+	if from != 0 && version != from {
+		return fmt.Errorf("stored catalog schema %d differs from the expected schema %d", version, from)
+	}
 	switch {
 	case version == SQLiteSchemaVersion:
-		return nil
+		// A current catalog keeps its state; only its derived stream totals
+		// are recomputed, which repairs any drift.
+		if _, err = readSQLiteStatus(ctx, tx, s.id); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, streamTotalsBackfillSQL("coverage", "windows", "packs")); err != nil {
+			return err
+		}
+		return tx.Commit()
 	case version > SQLiteSchemaVersion:
 		return schemaVersionError(version, SQLiteSchemaVersion)
-	case version != 1:
+	case version != 1 && version != 2:
 		return errors.New("unsupported SQLite catalog upgrade source schema")
 	}
-	old, err := readSQLiteStatusVersion(ctx, tx, s.id, 1)
+	old, err := readSQLiteStatusVersion(ctx, tx, s.id, version)
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, sqlitePendingSchema+sqliteRetentionUpgrade); err != nil {
+	if version == 1 {
+		// The ledger is created with its schema 3 columns.
+		if _, err = tx.ExecContext(ctx, sqlitePendingSchema+sqliteRetentionUpgrade); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=?`, old.Contract.CoverageStart); err != nil {
+			return err
+		}
+	} else if _, err = tx.ExecContext(ctx, sqliteObjectBytesUpgrade); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=?`, old.Contract.CoverageStart); err != nil {
+	if _, err = tx.ExecContext(ctx, sqliteStreamTotalsUpgrade); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, streamTotalsBackfillSQL("coverage", "windows", "packs")); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE catalog_state SET schema_version=? WHERE singleton=1`, SQLiteSchemaVersion); err != nil {
@@ -266,14 +302,22 @@ func (s *SQLite) RetireWindows(ctx context.Context, retention time.Duration, lim
 	if err != nil {
 		return 0, err
 	}
+	removed := make(map[string]streamTotals, len(starts))
 	for _, w := range windows {
-		if err = s.retireWindow(ctx, tx, w.id, now); err != nil {
+		totals, err := s.retireWindow(ctx, tx, w.id, now)
+		if err != nil {
 			return 0, err
 		}
+		key := w.tenant + "\x00" + w.sourceID
+		sum := removed[key]
+		sum.add(totals)
+		removed[key] = sum
 	}
 	for key, start := range starts {
 		tenant, source, _ := strings.Cut(key, "\x00")
-		if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=? WHERE tenant=? AND source_id=?`, start, tenant, source); err != nil {
+		r := removed[key]
+		if _, err = tx.ExecContext(ctx, `UPDATE coverage SET start_ms=?, committed_packs=committed_packs-?, committed_data_bytes=committed_data_bytes-?, committed_index_bytes=committed_index_bytes-? WHERE tenant=? AND source_id=?`,
+			start, r.packs, r.dataBytes, r.indexBytes, tenant, source); err != nil {
 			return 0, err
 		}
 	}
@@ -308,22 +352,22 @@ func sqliteRetiredWindows(ctx context.Context, tx *sql.Tx, last int64, limit int
 	return out, rows.Err()
 }
 
-// retireWindow moves a window's object keys to the ledger and removes it.
-func (s *SQLite) retireWindow(ctx context.Context, tx *sql.Tx, id, created int64) error {
-	keys, err := sqliteLedgerKeys(ctx, tx, `SELECT data_key FROM packs WHERE window_id=? UNION ALL SELECT index_key FROM packs WHERE window_id=?`, id, id)
-	if err != nil {
-		return err
+// retireWindow moves a window's object keys, with the sizes of their pack
+// descriptors, to the ledger, removes the window and returns its totals.
+func (s *SQLite) retireWindow(ctx context.Context, tx *sql.Tx, id, created int64) (streamTotals, error) {
+	var totals streamTotals
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(data_bytes),0),coalesce(sum(index_bytes),0) FROM packs WHERE window_id=?`, id).Scan(&totals.packs, &totals.dataBytes, &totals.indexBytes); err != nil {
+		return totals, err
 	}
-	for _, key := range keys {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO pending_objects(object_key,created_ms,state) VALUES(?,?,?)`, key, created, retiredState); err != nil {
-			return fmt.Errorf("record retired object: %w", err)
-		}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO pending_objects(object_key,created_ms,state,object_bytes)
+ SELECT data_key,?,?,data_bytes FROM packs WHERE window_id=? UNION ALL SELECT index_key,?,?,index_bytes FROM packs WHERE window_id=?`, created, retiredState, id, created, retiredState, id); err != nil {
+		return totals, fmt.Errorf("record retired objects: %w", err)
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM packs WHERE window_id=?`, id); err != nil {
-		return err
+	if _, err := tx.ExecContext(ctx, `DELETE FROM packs WHERE window_id=?`, id); err != nil {
+		return totals, err
 	}
-	_, err = tx.ExecContext(ctx, `DELETE FROM windows WHERE id=?`, id)
-	return err
+	_, err := tx.ExecContext(ctx, `DELETE FROM windows WHERE id=?`, id)
+	return totals, err
 }
 
 var _ StreamAdder = (*SQLite)(nil)

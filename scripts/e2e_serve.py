@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from e2e import (ROOT, HTTP, Cluster, Processes, api, check_metadata, compare,
+from e2e import (ROOT, HTTP, Cluster, Processes, api, assert_stream_totals, check_metadata, compare,
                  fixture, fixture_horizon, free_port, metrics, positive_int, remote_write, request,
                  start_select, test_s3_request, timed)
 from s3_compat_proxy import S3CompatibilityProxy
@@ -382,6 +382,7 @@ def run(work, args):
             assert len(stable['packs']) == 6
         assert all(row['end_ms'] == boundary for row in stable['coverage'])
         assert all(row['end_ms'] <= boundary for row in stable['windows'])
+        assert_stream_totals(stable['coverage'], stable['windows'], stable['packs'])
         report['archive_metrics'] = metrics(http_port)
         assert report['archive_metrics']['vmtier_archive_committed_windows_total'] == 6
         assert report['archive_metrics']['vmtier_archive_samples_total'] > 0

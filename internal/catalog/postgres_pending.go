@@ -42,9 +42,10 @@ func (p *Postgres) incarnation(ctx context.Context, tx *sql.Tx) (string, error) 
 	return out.String, nil
 }
 
-// RecordPendingObjects records keys before their upload. It needs no lease:
-// recording grants nothing, and publication still checks the lease.
-func (p *Postgres) RecordPendingObjects(ctx context.Context, tenant string, keys []string) error {
+// RecordPendingObjects records keys and object sizes before their upload. It
+// needs no lease: recording grants nothing, and publication still checks the
+// lease.
+func (p *Postgres) RecordPendingObjects(ctx context.Context, tenant string, objects []PendingObject) error {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
@@ -57,22 +58,22 @@ func (p *Postgres) RecordPendingObjects(ctx context.Context, tenant string, keys
 	if err != nil {
 		return err
 	}
-	if err = validatePendingKeys(state.Contract, tenant, keys); err != nil {
+	if err = validatePendingObjects(state.Contract, tenant, objects); err != nil {
 		return err
 	}
 	incarnation, err := p.incarnation(ctx, tx)
 	if err != nil {
 		return err
 	}
-	for _, key := range keys {
+	for _, object := range objects {
 		var published bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM `+p.table("object_keys")+` WHERE object_key=$1)`, key).Scan(&published); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM `+p.table("object_keys")+` WHERE object_key=$1)`, object.Key).Scan(&published); err != nil {
 			return err
 		}
 		if published {
 			return fmt.Errorf("%w: object key is already recorded", ErrInvalidPublication)
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+`(object_key,created_ms,state,incarnation) VALUES($1,`+postgresNowMS+`,$2,$3)`, key, pendingState, incarnation); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+`(object_key,created_ms,state,incarnation,object_bytes) VALUES($1,`+postgresNowMS+`,$2,$3,$4)`, object.Key, pendingState, incarnation, object.Bytes); err != nil {
 			var pgErr *pq.Error
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 				return fmt.Errorf("%w: object key is already recorded", ErrInvalidPublication)
@@ -198,7 +199,8 @@ func (p *Postgres) DeferClaimedObjects(ctx context.Context, keys []string) error
 	return tx.Commit()
 }
 
-// UnpublishedObjects counts the ledger's records in each state.
+// UnpublishedObjects counts the ledger's records in each state and sums their
+// recorded sizes.
 func (p *Postgres) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCounts, error) {
 	var out UnpublishedObjectCounts
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
@@ -213,7 +215,18 @@ func (p *Postgres) UnpublishedObjects(ctx context.Context) (UnpublishedObjectCou
 	if err != nil {
 		return out, err
 	}
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE state='pending' AND incarnation=$1), count(*) FILTER (WHERE state='retired'), count(*) FILTER (WHERE state='deleting'), count(*) FILTER (WHERE state='pending' AND incarnation<>$1) FROM `+p.table("pending_objects"), incarnation).Scan(&out.Pending, &out.Retired, &out.Deleting, &out.Foreign); err != nil {
+	// sum(bigint) is numeric; the bounded sizes and key counts keep every sum
+	// far below the int64 range.
+	if err = tx.QueryRowContext(ctx, `WITH ledger AS (
+ SELECT CASE WHEN state=$2 AND incarnation<>$1 THEN 'foreign' ELSE state END AS state, object_bytes FROM `+p.table("pending_objects")+`)
+SELECT count(*) FILTER (WHERE state=$2), count(*) FILTER (WHERE state=$3), count(*) FILTER (WHERE state=$4), count(*) FILTER (WHERE state='foreign'),
+ coalesce(sum(object_bytes) FILTER (WHERE state=$2),0)::bigint, coalesce(sum(object_bytes) FILTER (WHERE state=$3),0)::bigint,
+ coalesce(sum(object_bytes) FILTER (WHERE state=$4),0)::bigint, coalesce(sum(object_bytes) FILTER (WHERE state='foreign'),0)::bigint,
+ count(*) FILTER (WHERE state=$2 AND object_bytes IS NULL), count(*) FILTER (WHERE state=$3 AND object_bytes IS NULL),
+ count(*) FILTER (WHERE state=$4 AND object_bytes IS NULL), count(*) FILTER (WHERE state='foreign' AND object_bytes IS NULL)
+ FROM ledger`, incarnation, pendingState, retiredState, deletingState).Scan(&out.Pending, &out.Retired, &out.Deleting, &out.Foreign,
+		&out.Bytes.Pending, &out.Bytes.Retired, &out.Bytes.Deleting, &out.Bytes.Foreign,
+		&out.Unsized.Pending, &out.Unsized.Retired, &out.Unsized.Deleting, &out.Unsized.Foreign); err != nil {
 		return UnpublishedObjectCounts{}, err
 	}
 	return out, tx.Commit()
@@ -262,14 +275,22 @@ func (p *Postgres) RetireWindows(ctx context.Context, retention time.Duration, l
 	if err != nil {
 		return 0, err
 	}
+	removed := make(map[string]streamTotals, len(starts))
 	for _, w := range windows {
-		if err = p.retireWindow(ctx, tx, w.id, incarnation); err != nil {
+		totals, err := p.retireWindow(ctx, tx, w.id, incarnation)
+		if err != nil {
 			return 0, err
 		}
+		key := w.tenant + "\x00" + w.sourceID
+		sum := removed[key]
+		sum.add(totals)
+		removed[key] = sum
 	}
 	for key, start := range starts {
 		tenant, source, _ := strings.Cut(key, "\x00")
-		if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET start_ms=$1 WHERE tenant=$2 AND source_id=$3`, start, tenant, source); err != nil {
+		r := removed[key]
+		if _, err = tx.ExecContext(ctx, `UPDATE `+p.table("coverage")+` SET start_ms=$1, committed_packs=committed_packs-$4, committed_data_bytes=committed_data_bytes-$5, committed_index_bytes=committed_index_bytes-$6 WHERE tenant=$2 AND source_id=$3`,
+			start, tenant, source, r.packs, r.dataBytes, r.indexBytes); err != nil {
 			return 0, err
 		}
 	}
@@ -304,19 +325,27 @@ func (p *Postgres) retiredWindows(ctx context.Context, tx *sql.Tx, last int64, l
 	return out, rows.Err()
 }
 
-// retireWindow moves a window's object keys to the ledger and removes the
-// window with its packs and key reservations.
-func (p *Postgres) retireWindow(ctx context.Context, tx *sql.Tx, id int64, incarnation string) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+`(object_key,created_ms,state,incarnation) SELECT object_key, `+postgresNowMS+`, $2, ($3)::text FROM `+p.table("object_keys")+` WHERE window_id=$1`, id, retiredState, incarnation); err != nil {
-		return fmt.Errorf("record retired objects: %w", err)
+// retireWindow moves a window's object keys, with the sizes of their pack
+// descriptors, to the ledger, removes the window with its packs and key
+// reservations, and returns its totals.
+func (p *Postgres) retireWindow(ctx context.Context, tx *sql.Tx, id int64, incarnation string) (streamTotals, error) {
+	var totals streamTotals
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(data_bytes),0)::bigint,coalesce(sum(index_bytes),0)::bigint FROM `+p.table("packs")+` WHERE window_id=$1`, id).Scan(&totals.packs, &totals.dataBytes, &totals.indexBytes); err != nil {
+		return totals, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO `+p.table("pending_objects")+`(object_key,created_ms,state,incarnation,object_bytes)
+ SELECT k.object_key, `+postgresNowMS+`, $2, ($3)::text, coalesce(d.data_bytes, i.index_bytes) FROM `+p.table("object_keys")+` k
+ LEFT JOIN `+p.table("packs")+` d ON d.data_key=k.object_key LEFT JOIN `+p.table("packs")+` i ON i.index_key=k.object_key
+ WHERE k.window_id=$1`, id, retiredState, incarnation); err != nil {
+		return totals, fmt.Errorf("record retired objects: %w", err)
 	}
 	for _, table := range []string{"packs", "object_keys"} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+p.table(table)+` WHERE window_id=$1`, id); err != nil {
-			return err
+			return totals, err
 		}
 	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM `+p.table("windows")+` WHERE id=$1`, id)
-	return err
+	return totals, err
 }
 
 var _ StreamAdder = (*Postgres)(nil)

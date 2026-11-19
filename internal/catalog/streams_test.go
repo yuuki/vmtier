@@ -95,6 +95,13 @@ func testAddStreams(t *testing.T, f ledgerFixture) {
 	if _, err := adder.AddStreams(ctx, next); err == nil {
 		t.Fatal("repeated addition accepted")
 	}
+	// New streams have no windows yet; the existing one keeps its totals.
+	capacity, err := f.repo.(CapacityReader).Capacity(ctx)
+	wantStreams := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20},
+		{Tenant: "1:2", SourceID: "b"}, {Tenant: "3:4", SourceID: "a"}, {Tenant: "3:4", SourceID: "b"}}
+	if err != nil || !reflect.DeepEqual(capacity.Streams, wantStreams) {
+		t.Fatalf("stream totals after addition: %+v %v", capacity.Streams, err)
+	}
 	// The existing stream keeps its windows; a new stream starts at its origin.
 	hour := origin / hourMS
 	if _, err := f.publish(after.Generation, hourPublication("3:4", "a", hour-1, 0)); err == nil {

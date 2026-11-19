@@ -52,21 +52,28 @@ Already uploaded objects from a losing attempt remain unreferenced until
 archive passes; its claims and every publication are ordered by row locks on the
 object ledger, so a claimed key can never be published by any process.
 
-Schema 2 introduces leases and schema 3 the object ledger and the Cold retention
-columns. The schema upgrade
+Schema 2 introduces leases, schema 3 the object ledger and the Cold retention
+columns, and schema 4 the object sizes of the ledger
+([ADR 0011](adr/0011-object-sizes-in-the-ledger.md)) and the stream totals
+([ADR 0012](adr/0012-stream-totals.md)). The schema upgrade
 requires an already compatible VM pin; it does not convert catalogs or packs
 from an older VM pin, such as v1.155.0, to v1.156.0. Stop writers of the older schema before an explicit upgrade,
-which moves schema 1 or 2 to 3 in one transaction:
+which moves schema 1, 2 or 3 to 4 in one transaction:
 
 ```sh
 .bin/vmtier catalog-upgrade -backend postgres -config postgres.json
 ```
 
 The upgrade preserves published metadata and identity, initializes an unowned
-lease when upgrading from schema 1, adds an empty object ledger, and starts every
-stream at the coverage origin. Older binaries
+lease when upgrading from schema 1, adds an empty object ledger and starts every
+stream at the coverage origin when upgrading from schema 1 or 2, adds the
+ledger's size column, and fills the new stream totals from the committed packs.
+Keys recorded before schema 4 keep no size. Repeating the upgrade on a current
+catalog recomputes the stream totals from the packs; it holds the catalog state
+and coverage locks while it scans them, which pauses publication and status reads
+for that time. Older binaries
 reject the new schema. Back up before upgrading; no automatic schema downgrade is
-provided. Objects of attempts that failed before the upgrade were never recorded
+provided. Objects of attempts that failed before schema 3 were never recorded
 and are not collected.
 
 PostgreSQL inspection and payload verification can run online. Verification checks
@@ -115,7 +122,11 @@ Cold retention locks the catalog state row like publication, removes the oldest
 windows with their packs and key reservations, records their keys as retired, and
 advances each stream's start, all in one transaction.
 
-Read-only repeatable-read transactions provide a consistent status or query plan.
+Read-only repeatable-read transactions provide a consistent status, query plan, or
+[capacity observation](operations.md#service-capacity-and-failure-accounting). A
+capacity scrape reads one coverage row per stream on every replica that is
+scraped; it reports committed descriptor lengths, not bucket or database
+storage usage.
 Selection uses the existing window, pack, and descriptor-byte caps. Object I/O takes
 place after the transaction ends. Published objects remain immutable and are never
 deleted. Database failure is an error, even if object data is cached.

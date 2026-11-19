@@ -365,6 +365,33 @@ def normalize(value):
     return value
 
 
+# The coverage columns that hold a stream's range. The others are committed
+# totals derived from the packs (ADR 0012), which a re-archived window may
+# change, so range comparisons leave them out.
+COVERAGE_RANGE_COLUMNS = ('tenant', 'source_id', 'start_ms', 'end_ms')
+
+
+def coverage_ranges(rows):
+    """Return each stream's coverage range without its committed totals."""
+    return [{key: row[key] for key in COVERAGE_RANGE_COLUMNS} for row in rows or []]
+
+
+def assert_stream_totals(coverage, windows, packs):
+    """Require each stream's committed totals to equal the packs of its windows."""
+    stream_of = {window['id']: (window['tenant'], window['source_id']) for window in windows or []}
+    expected = {(row['tenant'], row['source_id']): [0, 0, 0] for row in coverage or []}
+    for ref in packs or []:
+        totals = expected[stream_of[ref['window_id']]]
+        totals[0] += 1
+        totals[1] += ref['data_bytes']
+        totals[2] += ref['index_bytes']
+    actual = {(row['tenant'], row['source_id']):
+              [row['committed_packs'], row['committed_data_bytes'], row['committed_index_bytes']]
+              for row in coverage or []}
+    if actual != expected:
+        raise AssertionError(f'stream totals differ from the committed packs: {actual} != {expected}')
+
+
 def compare(expected, actual, context):
     # Identical codec and stock evaluator: no float tolerance is justified.
     expected, actual = normalize(expected), normalize(actual)

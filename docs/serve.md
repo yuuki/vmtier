@@ -202,7 +202,7 @@ by the catalog, so an attempt whose keys were claimed fails and retries with fre
 keys. Safety therefore depends on neither clocks nor object listings. The minimum
 age only keeps garbage collection from discarding attempts that are still running.
 Only keys this catalog recorded are deleted: never a published object, never an
-orphan created before the [schema upgrade](sqlite-catalog.md#upgrade-schema-1).
+orphan created before the [schema upgrade](sqlite-catalog.md#upgrade-an-earlier-schema).
 Another catalog sharing the bucket, such as the one kept for rollback after a
 restore, loses nothing to garbage collection, but [Cold retention](#cold-retention)
 deletes the objects of retired windows that both catalogs reference.
@@ -373,9 +373,11 @@ vmselect fans out to both storage nodes and partial responses are disabled.
 | `vmtier_orphan_gc_claimed_objects_total`, `vmtier_orphan_gc_deleted_objects_total` | Keys claimed (including retried claims) and objects deleted |
 | `vmtier_orphan_gc_last_success_timestamp_seconds` | Last pass without an error; zero before one |
 | `vmtier_catalog_unpublished_objects{state}` | Ledger records: `pending` (running or failed attempts), `retired` (windows removed by Cold retention), `deleting` (claimed, deletion unfinished) and, for PostgreSQL, `foreign` (pending keys of another database incarnation, never collected); omitted when the catalog cannot be read |
+| `vmtier_catalog_unpublished_object_bytes{state}`, `vmtier_catalog_unpublished_objects_unsized{state}` | Recorded object sizes of those keys and the keys recorded without a size before the schema upgrade; see [capacity accounting](operations.md#service-capacity-and-failure-accounting) |
 | `vmtier_cold_retired_windows_total` | Windows this process retired |
 | `vmtier_cold_retention_seconds` | `cold_retention` as this process is configured; zero keeps Cold data forever. Alert when the replicas of one catalog report different values |
 | `vmtier_catalog_retired_windows`, `vmtier_stream_coverage_start_ms{tenant,source}` | Windows retired over the catalog's lifetime, and each stream's retained start |
+| `vmtier_stream_committed_object_bytes{tenant,source,kind}`, `vmtier_stream_windows{tenant,source}`, `vmtier_stream_packs{tenant,source}` | Committed objects per stream, with the catalog totals in [capacity accounting](operations.md#service-capacity-and-failure-accounting); omitted when the catalog cannot be read |
 
 Counters reset on process restart; persisted coverage does not. Keep these HTTP and
 RPC endpoints on a trusted network with suitable access controls/TLS termination.

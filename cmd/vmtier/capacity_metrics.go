@@ -99,13 +99,15 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 	}
 	// Omit unknown gauges rather than presenting false zeroes.
 	if unpublished, err := reader.Repository.UnpublishedObjects(ctx); err == nil {
-		fmt.Fprintf(w, "vmtier_catalog_unpublished_objects{state=\"pending\"} %d\nvmtier_catalog_unpublished_objects{state=\"retired\"} %d\nvmtier_catalog_unpublished_objects{state=\"deleting\"} %d\nvmtier_catalog_unpublished_objects{state=\"foreign\"} %d\n", unpublished.Pending, unpublished.Retired, unpublished.Deleting, unpublished.Foreign)
+		writeLedgerStates(w, "vmtier_catalog_unpublished_objects", catalog.LedgerStateValues{Pending: unpublished.Pending, Retired: unpublished.Retired, Deleting: unpublished.Deleting, Foreign: unpublished.Foreign})
+		// Keys recorded before the ledger kept sizes have none: while any are
+		// counted as unsized, the byte sum of their state is a lower bound.
+		writeLedgerStates(w, "vmtier_catalog_unpublished_object_bytes", unpublished.Bytes)
+		writeLedgerStates(w, "vmtier_catalog_unpublished_objects_unsized", unpublished.Unsized)
 	}
-	// Local file capacity is a SQLite capability, not a requirement on the
-	// backend-neutral publication repository. Other backends omit these gauges.
-	capacityReader, ok := reader.Repository.(interface {
-		Capacity(context.Context) (catalog.SQLiteCapacity, error)
-	})
+	// Capacity is an optional capability of the service backends, not a
+	// requirement on the publication repository; the JSON v2 path omits it.
+	capacityReader, ok := reader.Repository.(catalog.CapacityReader)
 	if !ok {
 		fmt.Fprintln(w, "vmtier_catalog_capacity_available 0")
 		return
@@ -117,8 +119,23 @@ func writeCapacityMetrics(ctx context.Context, w io.Writer, reader *cold.Reader,
 		return
 	}
 	fmt.Fprintln(w, "vmtier_catalog_capacity_available 1")
-	fmt.Fprintf(w, "vmtier_catalog_file_bytes{file=\"database\"} %d\nvmtier_catalog_file_bytes{file=\"wal\"} %d\nvmtier_catalog_file_bytes{file=\"shared_memory\"} %d\n", capacity.DatabaseBytes, capacity.WALBytes, capacity.SharedMemoryBytes)
+	// Only SQLite has local catalog files; PostgreSQL storage is monitored
+	// with PostgreSQL's own tools.
+	if files := capacity.Files; files != nil {
+		fmt.Fprintf(w, "vmtier_catalog_file_bytes{file=\"database\"} %d\nvmtier_catalog_file_bytes{file=\"wal\"} %d\nvmtier_catalog_file_bytes{file=\"shared_memory\"} %d\n", files.DatabaseBytes, files.WALBytes, files.SharedMemoryBytes)
+	}
 	fmt.Fprintf(w, "vmtier_catalog_committed_object_bytes{kind=\"data\"} %d\nvmtier_catalog_committed_object_bytes{kind=\"index\"} %d\nvmtier_catalog_windows %d\nvmtier_catalog_packs %d\n", capacity.CommittedDataBytes, capacity.CommittedIndexBytes, capacity.Windows, capacity.Packs)
+	// Label values come only from the catalog's coverage rows, so the series
+	// are bounded by the contract's tenants and sources.
+	for _, s := range capacity.Streams {
+		fmt.Fprintf(w, "vmtier_stream_committed_object_bytes{tenant=%q,source=%q,kind=\"data\"} %d\nvmtier_stream_committed_object_bytes{tenant=%q,source=%q,kind=\"index\"} %d\nvmtier_stream_windows{tenant=%q,source=%q} %d\nvmtier_stream_packs{tenant=%q,source=%q} %d\n",
+			s.Tenant, s.SourceID, s.CommittedDataBytes, s.Tenant, s.SourceID, s.CommittedIndexBytes, s.Tenant, s.SourceID, s.Windows, s.Tenant, s.SourceID, s.Packs)
+	}
+}
+
+// writeLedgerStates writes one gauge per object ledger state.
+func writeLedgerStates(w io.Writer, name string, v catalog.LedgerStateValues) {
+	fmt.Fprintf(w, "%[1]s{state=\"pending\"} %[2]d\n%[1]s{state=\"retired\"} %[3]d\n%[1]s{state=\"deleting\"} %[4]d\n%[1]s{state=\"foreign\"} %[5]d\n", name, v.Pending, v.Retired, v.Deleting, v.Foreign)
 }
 
 // Runtime counters complement component accounting. Go runtime memory excludes

@@ -108,6 +108,7 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 	for _, want := range []string{
 		"vmtier_catalog_capacity_available 1\n", "vmtier_catalog_file_bytes{file=\"database\"}",
 		"vmtier_catalog_committed_object_bytes{kind=\"data\"} 0\n", "vmtier_cache_used_bytes 0\n",
+		"vmtier_stream_windows{tenant=\"1:2\",source=\"hot\"} 0\n",
 		"vmtier_query_memory_reserved_bytes 0\n", "vmtier_query_limit_refusals_total{reason=\"read_bytes\"} 1\n",
 		"vmtier_archive_failed_windows_total{tenant=\"1:2\",source=\"hot\",reason=\"timeout\"} 1\n",
 		"vmtier_go_heap_objects_bytes ", "vmtier_go_heap_alloc_bytes_total ",
@@ -123,7 +124,7 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 	// query service; it must not emit invented SQLite file or object gauges.
 	reader.Repository = struct{ catalog.Repository }{db}
 	output = scrape()
-	if !strings.Contains(output, "vmtier_catalog_capacity_available 0\n") || strings.Contains(output, "vmtier_catalog_committed_object_bytes") || strings.Contains(output, "vmtier_catalog_file_bytes") || !strings.Contains(output, "vmtier_catalog_generation 0\n") {
+	if !strings.Contains(output, "vmtier_catalog_capacity_available 0\n") || strings.Contains(output, "vmtier_catalog_committed_object_bytes") || strings.Contains(output, "vmtier_stream_windows") || strings.Contains(output, "vmtier_catalog_file_bytes") || !strings.Contains(output, "vmtier_catalog_generation 0\n") {
 		t.Fatalf("unsupported capacity was not separated from catalog status: %s", output)
 	}
 	reader.Repository = db
@@ -131,7 +132,65 @@ func TestCapacityMetricsObserveAuthorityAndQueryRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	output = scrape()
-	if !strings.Contains(output, "vmtier_catalog_capacity_available 0\n") || strings.Contains(output, "vmtier_catalog_committed_object_bytes") || strings.Contains(output, "vmtier_catalog_file_bytes") {
+	if !strings.Contains(output, "vmtier_catalog_capacity_available 0\n") || strings.Contains(output, "vmtier_catalog_committed_object_bytes") || strings.Contains(output, "vmtier_stream_windows") || strings.Contains(output, "vmtier_catalog_file_bytes") {
+		t.Fatalf("unavailable catalog published false or stale capacity: %s", output)
+	}
+}
+
+func TestPostgresCapacityMetricsOmitOnlyLocalFiles(t *testing.T) {
+	ctx, c, _, dsn := postgresCLIConfig(t)
+	blob, err := c.BlobLocator()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := catalog.CreatePostgres(ctx, dsn, c.Catalog.ID, c.ArchiveContract(), blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// The S3 client needs credentials to be created; capacity metrics never
+	// contact the store.
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	store, err := c.OpenBlobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := c.RepositoryReader(store, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats serviceStats
+	stats.windowFailures.init(&c)
+	mux := serveMux(&c, reader, gateway.New(metricsLimitBackend{}, gateway.Limits{}), store, &stats)
+	scrape := func() string {
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		if recorder.Code != 200 {
+			t.Fatalf("scrape status=%d", recorder.Code)
+		}
+		return recorder.Body.String()
+	}
+	output := scrape()
+	for _, want := range []string{
+		"vmtier_catalog_capacity_available 1\n", "vmtier_catalog_committed_object_bytes{kind=\"data\"} 0\n",
+		"vmtier_catalog_committed_object_bytes{kind=\"index\"} 0\n", "vmtier_catalog_windows 0\n", "vmtier_catalog_packs 0\n",
+		"vmtier_stream_committed_object_bytes{tenant=\"1:2\",source=\"hot\",kind=\"data\"} 0\n",
+		"vmtier_stream_committed_object_bytes{tenant=\"1:2\",source=\"hot\",kind=\"index\"} 0\n",
+		"vmtier_stream_windows{tenant=\"1:2\",source=\"hot\"} 0\n", "vmtier_stream_packs{tenant=\"1:2\",source=\"hot\"} 0\n",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("missing %q in %s", want, output)
+		}
+	}
+	if strings.Contains(output, "vmtier_catalog_file_bytes") {
+		t.Fatalf("PostgreSQL reported local SQLite files: %s", output)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output = scrape()
+	if !strings.Contains(output, "vmtier_catalog_capacity_available 0\n") || strings.Contains(output, "vmtier_catalog_committed_object_bytes") || strings.Contains(output, "vmtier_catalog_windows") || strings.Contains(output, "vmtier_stream_committed_object_bytes") || strings.Contains(output, "vmtier_stream_windows") {
 		t.Fatalf("unavailable catalog published false or stale capacity: %s", output)
 	}
 }

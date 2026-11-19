@@ -8,7 +8,34 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from e2e import Processes, fixture_horizon
+from e2e import Processes, assert_stream_totals, coverage_ranges, fixture_horizon
+
+
+class CoverageTotalsTest(unittest.TestCase):
+    coverage = [
+        {'tenant': '1:2', 'source_id': 'hot', 'end_ms': 3, 'start_ms': 1,
+         'committed_packs': 2, 'committed_data_bytes': 30, 'committed_index_bytes': 7},
+        {'tenant': '3:4', 'source_id': 'hot', 'end_ms': 1, 'start_ms': 1,
+         'committed_packs': 0, 'committed_data_bytes': 0, 'committed_index_bytes': 0},
+    ]
+    windows = [{'id': 5, 'tenant': '1:2', 'source_id': 'hot'}, {'id': 6, 'tenant': '1:2', 'source_id': 'hot'}]
+    packs = [{'window_id': 5, 'data_bytes': 10, 'index_bytes': 3}, {'window_id': 6, 'data_bytes': 20, 'index_bytes': 4}]
+
+    def test_ranges_leave_out_the_totals(self):
+        self.assertEqual(coverage_ranges(self.coverage), [
+            {'tenant': '1:2', 'source_id': 'hot', 'start_ms': 1, 'end_ms': 3},
+            {'tenant': '3:4', 'source_id': 'hot', 'start_ms': 1, 'end_ms': 1}])
+        self.assertEqual(coverage_ranges(None), [])
+
+    def test_totals_must_equal_the_packs(self):
+        assert_stream_totals(self.coverage, self.windows, self.packs)
+        # PostgreSQL json_agg returns null for an empty table.
+        assert_stream_totals([{**self.coverage[1]}], None, None)
+        drifted = [{**self.coverage[0], 'committed_data_bytes': 31}, self.coverage[1]]
+        with self.assertRaises(AssertionError):
+            assert_stream_totals(drifted, self.windows, self.packs)
+        with self.assertRaises(AssertionError):
+            assert_stream_totals(self.coverage, self.windows, self.packs[:1])
 
 
 class RuntimeProvenanceTest(unittest.TestCase):

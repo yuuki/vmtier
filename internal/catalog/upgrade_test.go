@@ -132,6 +132,7 @@ func TestSQLiteUpgradeOfReleasedSchema1(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	checkReleasedStreamTotals(t, s)
 	next := hourPublication("1:2", "a", 2, 1)
 	recordPublication(t, s, next)
 	if _, err := s.PublishWindow(ctx, 1, next); err != nil {
@@ -341,7 +342,7 @@ func TestPostgresCopyNeverClaimsTheOriginalsPendingKeys(t *testing.T) {
 	if keys, err := copied.ClaimUnpublishedObjects(ctx, time.Hour, 10); err != nil || len(keys) != 0 {
 		t.Fatalf("copy claimed the original's keys: %v %v", keys, err)
 	}
-	if counts, err := copied.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Foreign: 2}) {
+	if counts, err := copied.UnpublishedObjects(ctx); err != nil || counts != (UnpublishedObjectCounts{Foreign: 2, Bytes: LedgerStateValues{Foreign: 30}}) {
 		t.Fatalf("copy counts: %+v %v", counts, err)
 	}
 	// Its own pending keys remain collectable.
@@ -353,5 +354,300 @@ func TestPostgresCopyNeverClaimsTheOriginalsPendingKeys(t *testing.T) {
 	}
 	if keys, err := copied.ClaimUnpublishedObjects(ctx, time.Hour, 10); err != nil || len(keys) != 2 {
 		t.Fatalf("copy did not claim its own keys: %v %v", keys, err)
+	}
+}
+
+// The DDL of v0.1.0-rc.3 (9130ad2), the last release before the ledger kept
+// object sizes, verbatim.
+var (
+	//go:embed testdata/sqlite-schema2.sql
+	sqliteSchema2 string
+	//go:embed testdata/postgres-schema3.sql
+	postgresSchema3 string
+)
+
+// releasedLedger is the ledger of a catalog written by the release before
+// object sizes: one key in each state.
+var releasedLedger = []struct{ key, state string }{
+	{"tenants/1:2/attempts/old/pending.pack", pendingState},
+	{"tenants/1:2/attempts/old/retired.pack", retiredState},
+	{"tenants/1:2/attempts/old/deleting.pack", deletingState},
+}
+
+// releasedLedgerCounts is releasedLedger after an upgrade: no key has a size.
+var releasedLedgerCounts = UnpublishedObjectCounts{Pending: 1, Retired: 1, Deleting: 1, Unsized: LedgerStateValues{Pending: 1, Retired: 1, Deleting: 1}}
+
+// createReleasedSQLite2 writes a schema 2 catalog as v0.1.0-rc.3 did, with one
+// published window of one pack and releasedLedger.
+func createReleasedSQLite2(t *testing.T, dir, id string, c Contract) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+filepath.Join(dir, SQLiteFile)+"?_journal_mode=WAL&_foreign_keys=on")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	c = canonicalContract(c)
+	cb, _ := json.Marshal(c)
+	bb, _ := json.Marshal(BlobLocator{Type: "s3", Bucket: "test", Region: "us-east-1"})
+	p := hourPublication(c.Tenants[0], c.Sources[0].ID, c.CoverageStart/hourMS, 1)
+	digest, err := validatePublication(c, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{sqliteSchema2, nil},
+		{`INSERT INTO catalog_state VALUES(1,?,?,?,?,?,?,0)`, []any{2, id, pack.VMVersion, 1, string(cb), string(bb)}},
+		{`INSERT INTO coverage VALUES(?,?,?,?)`, []any{c.Tenants[0], c.Sources[0].ID, p.End, c.CoverageStart}},
+		{`INSERT INTO windows(tenant,source_id,start_ms,end_ms,generation,pack_count,digest) VALUES(?,?,?,?,?,?,?)`, []any{p.Tenant, p.SourceID, p.Start, p.End, 1, 1, digest}},
+		{`INSERT INTO packs VALUES(1,0,?,?,?,?,?,?)`, []any{p.Packs[0].DataKey, p.Packs[0].IndexKey, p.Packs[0].DataSHA256, p.Packs[0].IndexSHA256, p.Packs[0].DataBytes, p.Packs[0].IndexBytes}},
+	}
+	for _, record := range releasedLedger {
+		statements = append(statements, struct {
+			query string
+			args  []any
+		}{`INSERT INTO pending_objects VALUES(?,?,?)`, []any{record.key, 1, record.state}})
+	}
+	for _, s := range statements {
+		if _, err := db.Exec(s.query, s.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSQLiteUpgradeOfReleasedSchema2(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	old := filepath.Join(root, "old")
+	createReleasedSQLite2(t, old, "released", hourContract())
+	if s, err := OpenSQLite(ctx, old, "released"); err == nil || !strings.Contains(err.Error(), "catalog-upgrade") {
+		if s != nil {
+			s.Close()
+		}
+		t.Fatalf("schema 2 opened without an upgrade: %v", err)
+	}
+	status, err := UpgradeSQLite(ctx, old, "released")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != SQLiteSchemaVersion || status.Generation != 1 || status.Coverage[0].Start != hourMS || status.Coverage[0].End != 2*hourMS {
+		t.Fatalf("upgraded status: %+v", status)
+	}
+	if again, err := UpgradeSQLite(ctx, old, "released"); err != nil || !reflect.DeepEqual(again, status) {
+		t.Fatalf("repeated upgrade: %+v %v", again, err)
+	}
+	fresh, err := CreateSQLite(ctx, filepath.Join(root, "fresh"), "fresh", hourContract(), BlobLocator{Type: "s3", Bucket: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.Close()
+	if got, want := sqliteShape(t, filepath.Join(old, SQLiteFile)), sqliteShape(t, filepath.Join(root, "fresh", SQLiteFile)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("upgraded schema differs from a fresh one:\nupgraded %v\nfresh    %v", got, want)
+	}
+	s, err := OpenSQLite(ctx, old, "released")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	testUpgradedLedger(t, s, func(gen uint64, p Publication) (uint64, error) { return s.PublishWindow(ctx, gen, p) })
+}
+
+// testUpgradedLedger checks a catalog upgraded from releasedLedger: old keys
+// keep no size and stay collectable; new keys and retired windows get sizes.
+func testUpgradedLedger(t *testing.T, repo Repository, publish func(uint64, Publication) (uint64, error)) {
+	t.Helper()
+	ctx := context.Background()
+	checkReleasedStreamTotals(t, repo)
+	if counts, err := repo.UnpublishedObjects(ctx); err != nil || counts != releasedLedgerCounts {
+		t.Fatalf("upgraded ledger: %+v %v", counts, err)
+	}
+	next := hourPublication("1:2", "a", 2, 1)
+	recordPublication(t, repo, next)
+	if _, err := publish(1, next); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RecordPendingObjects(ctx, "1:2", pendingObjects(7, "tenants/1:2/attempts/new/x.pack")); err != nil {
+		t.Fatal(err)
+	}
+	// The released window's pack descriptor holds the sizes it retires with.
+	if n, err := repo.RetireWindows(ctx, retentionEnding(time.Now().UnixMilli(), 2), 1); err != nil || n != 1 {
+		t.Fatalf("retire the released window: %d %v", n, err)
+	}
+	want := releasedLedgerCounts
+	want.Pending, want.Retired = 2, 3
+	want.Bytes = LedgerStateValues{Pending: 7, Retired: 30}
+	if counts, err := repo.UnpublishedObjects(ctx); err != nil || counts != want {
+		t.Fatalf("ledger after upgrade: %+v %v, want %+v", counts, err, want)
+	}
+	// Keys without a size are claimed and forgotten like any other.
+	keys, err := repo.ClaimUnpublishedObjects(ctx, time.Millisecond, MaxClaimedObjects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ForgetDeletedObjects(ctx, keys); err != nil {
+		t.Fatal(err)
+	}
+	if counts, err := repo.UnpublishedObjects(ctx); err != nil || counts.Unsized.Pending != 0 || counts.Unsized.Deleting != 0 {
+		t.Fatalf("unsized keys were not collected: %+v %v", counts, err)
+	}
+}
+
+// checkReleasedStreamTotals requires the stream totals that an upgrade fills
+// from the one released window of one pack.
+func checkReleasedStreamTotals(t *testing.T, repo Repository) {
+	t.Helper()
+	got, err := repo.(CapacityReader).Capacity(context.Background())
+	want := []StreamCapacity{{Tenant: "1:2", SourceID: "a", Windows: 1, Packs: 1, CommittedDataBytes: 10, CommittedIndexBytes: 20}}
+	if err != nil || !reflect.DeepEqual(got.Streams, want) {
+		t.Fatalf("upgraded stream totals: %+v %v", got.Streams, err)
+	}
+}
+
+// createReleasedPostgres3 writes a schema 3 catalog as v0.1.0-rc.3 did, with
+// one published window of one pack and releasedLedger.
+func createReleasedPostgres3(t *testing.T, ctx context.Context, db *sql.DB, id string, c Contract) {
+	t.Helper()
+	var schema string
+	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	quoted := pq.QuoteIdentifier(schema)
+	c = canonicalContract(c)
+	cb, _ := json.Marshal(c)
+	bb, _ := json.Marshal(BlobLocator{Type: "s3", Bucket: "test", Region: "us-east-1"})
+	p := hourPublication(c.Tenants[0], c.Sources[0].ID, c.CoverageStart/hourMS, 1)
+	digest, err := validatePublication(c, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{strings.ReplaceAll(postgresSchema3, "%[1]s", quoted), nil},
+		{`INSERT INTO catalog_state VALUES(1,3,$1,$2,1,$3,$4,0)`, []any{id, pack.VMVersion, string(cb), string(bb)}},
+		{`INSERT INTO coverage VALUES($1,$2,$3,$4)`, []any{c.Tenants[0], c.Sources[0].ID, p.End, c.CoverageStart}},
+		{`INSERT INTO windows(tenant,source_id,start_ms,end_ms,generation,pack_count,digest) VALUES($1,$2,$3,$4,1,1,$5)`, []any{p.Tenant, p.SourceID, p.Start, p.End, digest}},
+		{`INSERT INTO object_keys SELECT k, id FROM windows, unnest(ARRAY[$1,$2]) AS k`, []any{p.Packs[0].DataKey, p.Packs[0].IndexKey}},
+		{`INSERT INTO packs SELECT id,0,$1,$2,$3,$4,$5,$6 FROM windows`, []any{p.Packs[0].DataKey, p.Packs[0].IndexKey, p.Packs[0].DataSHA256, p.Packs[0].IndexSHA256, p.Packs[0].DataBytes, p.Packs[0].IndexBytes}},
+	}
+	for _, s := range statements {
+		if _, err := db.ExecContext(ctx, s.query, s.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, record := range releasedLedger {
+		// The released catalog recorded its keys in its own incarnation.
+		if _, err := db.ExecContext(ctx, `INSERT INTO pending_objects VALUES($1,1,$2,(`+strings.ReplaceAll(postgresIncarnation, "$1", "$3")+`))`, record.key, record.state, schema); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPostgresUpgradeOfReleasedSchema3(t *testing.T) {
+	ctx, dsn, db := postgresTestDatabase(t)
+	createReleasedPostgres3(t, ctx, db, "released", hourContract())
+	if p, err := OpenPostgres(ctx, dsn, "released"); err == nil || !strings.Contains(err.Error(), "catalog-upgrade") {
+		if p != nil {
+			p.Close()
+		}
+		t.Fatalf("schema 3 opened without an upgrade: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := UpgradePostgres(ctx, dsn, "released"); err != nil {
+			t.Fatalf("upgrade %d: %v", i, err)
+		}
+	}
+	upgraded := postgresShape(t, ctx, db)
+	freshCtx, freshDSN, freshDB := postgresTestDatabase(t)
+	fresh, err := CreatePostgres(freshCtx, freshDSN, "fresh", hourContract(), BlobLocator{Type: "s3", Bucket: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.Close()
+	if want := postgresShape(t, freshCtx, freshDB); !reflect.DeepEqual(upgraded, want) {
+		t.Fatalf("upgraded schema differs from a fresh one:\nupgraded %q\nfresh    %q", upgraded, want)
+	}
+	p, err := OpenPostgres(ctx, dsn, "released")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	if state := postgresStatus(t, ctx, p); state.SchemaVersion != PostgreSQLSchemaVersion || state.Generation != 1 || state.Coverage[0].End != 2*hourMS {
+		t.Fatalf("upgraded status: %+v", state)
+	}
+	testUpgradedLedger(t, p, func(gen uint64, publication Publication) (uint64, error) {
+		return publishPostgresTest(ctx, p, gen, publication)
+	})
+}
+
+// A backup taken by v0.1.0-rc.3 restores into the current schema; its ledger
+// keys keep no size.
+func TestSQLiteRestoreUpgradesReleasedSchema2Backups(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	createReleasedSQLite2(t, filepath.Join(root, "state"), "released", hourContract())
+	writeReleasedBackup(t, filepath.Join(root, "state"), filepath.Join(root, "backup"), "released", 2)
+	restored, err := RestoreSQLite(ctx, filepath.Join(root, "backup"), filepath.Join(root, "restored"), "restored")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	if state := sqliteStatus(t, restored); state.SchemaVersion != SQLiteSchemaVersion || state.ID != "restored" || state.Generation != 1 {
+		t.Fatalf("restored status: %+v", state)
+	}
+	if counts, err := restored.UnpublishedObjects(ctx); err != nil || counts != releasedLedgerCounts {
+		t.Fatalf("restored ledger: %+v %v", counts, err)
+	}
+}
+
+// Restore refuses metadata whose schema differs from the database image: an
+// upgrade must not hide the difference.
+func TestSQLiteRestoreRefusesMetadataOfAnotherSchema(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	s := sqliteTestStore(t, contract())
+	if err := s.Backup(ctx, filepath.Join(root, "current")); err != nil {
+		t.Fatal(err)
+	}
+	createReleasedSQLite2(t, filepath.Join(root, "old"), "released", hourContract())
+	writeReleasedBackup(t, filepath.Join(root, "old"), filepath.Join(root, "released"), "released", 2)
+	for _, tc := range []struct {
+		backup string
+		schema int
+	}{{"current", 2}, {"current", 0}, {"current", -7}, {"released", SQLiteSchemaVersion}} {
+		path := filepath.Join(root, tc.backup, backupMetadataFile)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var meta sqliteBackupMetadata
+		if err := json.Unmarshal(data, &meta); err != nil {
+			t.Fatal(err)
+		}
+		meta.Status.SchemaVersion = tc.schema
+		changed, err := json.Marshal(meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, changed, 0600); err != nil {
+			t.Fatal(err)
+		}
+		dest := filepath.Join(root, fmt.Sprintf("restored-%s-%d", tc.backup, tc.schema))
+		if restored, err := RestoreSQLite(ctx, filepath.Join(root, tc.backup), dest, "restored"); err == nil {
+			restored.Close()
+			t.Fatalf("restored a %s backup whose metadata records schema %d", tc.backup, tc.schema)
+		}
+		if _, err := os.Stat(dest); !os.IsNotExist(err) {
+			t.Fatalf("refused restore left %s: %v", dest, err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

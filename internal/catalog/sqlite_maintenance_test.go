@@ -119,6 +119,14 @@ func TestSQLiteImportV2PreservesReferencesAndCoverage(t *testing.T) {
 			}
 		}
 	}
+	// The import publishes through the ordinary publication, which keeps the
+	// stream totals.
+	if err := checkStreamTotals(ctx, s.db, streamTotalsMismatchSQL("coverage", "windows", "packs")); err != nil {
+		t.Fatal(err)
+	}
+	if capacity, err := s.Capacity(ctx); err != nil || capacity.Windows != 4 || capacity.Packs != 4 {
+		t.Fatalf("imported capacity: %+v %v", capacity, err)
+	}
 	if len(blobs.gets) != len(m.Entries) {
 		t.Fatalf("unexpected import I/O: %v", blobs.gets)
 	}
